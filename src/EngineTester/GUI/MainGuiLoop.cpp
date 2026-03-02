@@ -226,84 +226,8 @@ void MainGuiLoop::main() {
      */
     UiMaster::initialize(loader, guiRenderer, fontRenderer, rectRenderer);
 
-    std::vector<Container *> containers;
-
-    TextureLoader *heartTexture = loader->loadTexture("gui/heart");
-    auto *guiRedHeart  = new GuiTexture(heartTexture->getId(), glm::vec2(-0.0f, 0.0f), glm::vec2(0.075f, 0.075f));
-    auto *guiRedHeart2 = new GuiTexture(heartTexture->getId(), glm::vec2(-0.0f, 0.0f), glm::vec2(0.075f, 0.075f));
-    guiRedHeart->setName("gui/heart");
-    guiRedHeart2->setName("gui/heart2");
-
-    auto sampleModifiedGui = new GuiTexture(loader->loadTexture("gui/lifebar")->getId(),
-                                            glm::vec2(-0.72f, 0.3f),
-                                            glm::vec2(0.290f, 0.0900f) / 3.0f);
-
-    Color     color    = ColorName::Whitesmoke;
-    glm::vec2 position = glm::vec2(0.0f, 0.0f);
-    glm::vec2 size     = glm::vec2(0.290f, 0.0900f);
-    glm::vec2 guiScale = glm::vec2(0.25f, 0.25f);
-    float     alpha    = 0.66f;
-    auto *guiRect = new GuiRect(ColorName::Whitesmoke, position, size, guiScale, alpha);
-    guiRect->setName("guiRect");
-
     TextMaster::init(loader);
-    FontType arialFont  = TextMeshData::loadFont(FontNames::ARIAL,  48);
-    FontType noodleFont = TextMeshData::loadFont(FontNames::NOODLE, 48);
-    FontModel *fontLoaded = loader->loadFontVAO();
-
-    auto *text1 = new GUIText(
-        "This is a sample of a mutliline text. This is a sample of a mutliline text. This is a sample of a mutliline text. This is a sample of a mutliline text. This is a sample of a mutliline text.",
-        0.50f, fontLoaded, &noodleFont, glm::vec2(0.0f, 0.0f), ColorName::Whitesmoke,
-        0.50f * static_cast<float>(DisplayManager::Width()), false);
-    text1->setName("multiline text");
-
-    auto *text2 = new GUIText("Inventory", 0.30f, fontLoaded, &arialFont,
-        glm::vec2(0.0f), ColorName::White, 0.50f * static_cast<float>(DisplayManager::Width()), false);
-    text2->setName("Inventory");
-
-    auto *inventoryCount = new GUIText("217", 0.23f, fontLoaded, &arialFont,
-        glm::vec2(0.0f), ColorName::Yellow, 0.50f * static_cast<float>(DisplayManager::Width()), false);
-    inventoryCount->setName("Count");
-
     GuiComponent *masterContainer = UiMaster::getMasterComponent();
-    masterContainer->setName("Master Container");
-
-    auto *inventoryParent = new GuiComponent(
-        Container::CONTAINER,
-        new UiConstraints(new UiNormalizedConstraint(XAxis, 0.00f),
-                          new UiNormalizedConstraint(YAxis, 0.0f), 50, 50));
-    inventoryParent->setName("Inventory Parent");
-    inventoryParent->setLayer(2);
-    text1->setLayer(2);
-    guiRedHeart->setLayer(2);
-    guiRedHeart2->setLayer(2);
-    text2->setLayer(3);
-    inventoryCount->setLayer(3);
-    guiRect->setLayer(1);
-
-    masterContainer->addChild(inventoryParent,
-        new UiConstraints(new UiNormalizedConstraint(XAxis, 0.00f),
-                          new UiNormalizedConstraint(YAxis, 0.0f), 50, 50));
-    inventoryParent->addChild(guiRect,
-        new UiConstraints(new UiNormalizedConstraint(XAxis, 0.00f),
-                          new UiNormalizedConstraint(YAxis, 0.0f), 50, 50));
-    inventoryParent->addChild(text1,
-        new UiConstraints(new UiNormalizedConstraint(XAxis, 0.00f),
-                          new UiNormalizedConstraint(YAxis, 0.4f), 50, 50));
-    inventoryParent->addChild(guiRedHeart,
-        new UiConstraints(new UiNormalizedConstraint(XAxis, 0.00f),
-                          new UiNormalizedConstraint(YAxis, 0.0f), 50, 50));
-    inventoryParent->addChild(guiRedHeart2,
-        new UiConstraints(new UiNormalizedConstraint(XAxis, 0.15f),
-                          new UiNormalizedConstraint(YAxis, 0.0f), 50, 50));
-    inventoryParent->addChild(text2,
-        new UiConstraints(new UiNormalizedConstraint(XAxis, -0.075f),
-                          new UiNormalizedConstraint(YAxis, -0.04f), 50, 50));
-    inventoryParent->addChild(inventoryCount,
-        new UiConstraints(new UiNormalizedConstraint(XAxis, -0.019f),
-                          new UiNormalizedConstraint(YAxis, 0.03f), 50, 50));
-
-    guiRect->setName("GuiRect");
     masterContainer->initialize();
     UiMaster::applyConstraints();
     UiMaster::createRenderQueue();
@@ -368,8 +292,6 @@ void MainGuiLoop::main() {
             }
         }
 
-        sampleModifiedGui->getPosition() += glm::vec2(0.001f, 0.001f);
-
         // --- Reflection pass for water (1.5) ---
         reflectFbo->bindReflectionFrameBuffer();
         renderer->renderBoundingBoxes(allBoxes);
@@ -381,6 +303,8 @@ void MainGuiLoop::main() {
         // --- Water rendering after opaque geometry (1.5) ---
         renderer->renderWater(playerCamera, lights.empty() ? nullptr : lights[0]);
 
+        // --- Render scene.cfg GUI texture overlays, then UiMaster components ---
+        guiRenderer->render(guis);
         UiMaster::render();
 
         DisplayManager::updateDisplay();
