@@ -29,7 +29,8 @@ GLTFAsset* GLTFLoader::load(const std::string& path) {
     if (scene && scene->mNumMaterials > 0) {
         aiMaterial* mat = scene->mMaterials[0];
 
-        // baseColorFactor — try PBR key first, fall back to classic diffuse
+        // baseColorFactor: use the glTF PBR base-colour key when available (Assimp 5.0+),
+        // otherwise fall back to the classic diffuse colour present in all versions.
         aiColor4D color(1.0f, 1.0f, 1.0f, 1.0f);
 #if defined(AI_MATKEY_BASE_COLOR)
         if (mat->Get(AI_MATKEY_BASE_COLOR, color) != AI_SUCCESS)
@@ -37,14 +38,14 @@ GLTFAsset* GLTFLoader::load(const std::string& path) {
             mat->Get(AI_MATKEY_COLOR_DIFFUSE, color);
         asset->material.baseColorFactor = glm::vec3(color.r, color.g, color.b);
 
-        // metallicFactor
+        // metallicFactor (Assimp 5.0+; defaults to 0.0 when key is absent)
         float metallic = 0.0f;
 #if defined(AI_MATKEY_METALLIC_FACTOR)
         mat->Get(AI_MATKEY_METALLIC_FACTOR, metallic);
 #endif
         asset->material.metallicFactor = metallic;
 
-        // roughnessFactor
+        // roughnessFactor (Assimp 5.0+; defaults to 0.5 when key is absent)
         float roughness = 0.5f;
 #if defined(AI_MATKEY_ROUGHNESS_FACTOR)
         mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness);

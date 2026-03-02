@@ -1,7 +1,6 @@
 // src/RenderEngine/InstancedModel.cpp
 
 #include "InstancedModel.h"
-#include <cstdint>
 
 InstancedModel::InstancedModel(GLuint vao, int idxCount, GLuint tex)
     : vaoID(vao), indexCount(idxCount), textureID(tex) {}
@@ -21,7 +20,7 @@ void InstancedModel::setupInstanceVBO() {
         glEnableVertexAttribArray(loc);
         glVertexAttribPointer(loc, 4, GL_FLOAT, GL_FALSE,
                               static_cast<GLsizei>(sizeof(glm::mat4)),
-                              reinterpret_cast<void*>(static_cast<uintptr_t>(col) * sizeof(glm::vec4)));
+                              reinterpret_cast<void*>(col * sizeof(glm::vec4)));
         glVertexAttribDivisor(loc, 1);  // advance once per instance
     }
 

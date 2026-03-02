@@ -52,8 +52,8 @@ void main() {
         skinnedNormal += w * mat3(transpose(inverse(bm))) * normal;
     }
 
-    // Fallback: if no valid bones, use identity transform
-    if (length(skinnedPos.xyz) < 0.0001 && dot(boneWeights, boneWeights) < 0.0001) {
+    // Fallback: if no valid bones influence this vertex, use identity (pass-through)
+    if (dot(boneWeights, boneWeights) < 0.0001) {
         skinnedPos    = vec4(position, 1.0);
         skinnedNormal = normal;
     }

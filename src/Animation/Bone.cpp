@@ -9,6 +9,7 @@ Bone::Bone(const std::string& n, int i, const glm::mat4& offset)
     : name(n), id(i), offsetMatrix(offset), localTransform(glm::mat4(1.0f)) {}
 
 int Bone::findIndex(const std::vector<float>& times, float t) {
+    if (times.size() < 2) return 0;
     for (int i = 0; i < static_cast<int>(times.size()) - 1; ++i) {
         if (t < times[i + 1]) return i;
     }

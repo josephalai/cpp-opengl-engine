@@ -87,12 +87,16 @@ std::vector<glm::mat4> AnimationController::update(float deltaTime, Skeleton& sk
 void AnimationController::setupDefaultTransitions(std::function<bool()> walkCond,
                                                    std::function<bool()> runCond,
                                                    std::function<bool()> jumpCond) {
-    addTransition("Idle", "Walk", walkCond,  0.2f);
-    addTransition("Walk", "Idle", nullptr,    0.2f);
-    addTransition("Walk", "Run",  runCond,    0.15f);
-    addTransition("Run",  "Walk", nullptr,    0.15f);
-    addTransition("Idle", "Jump", jumpCond,   0.1f);
-    addTransition("Walk", "Jump", jumpCond,   0.1f);
-    addTransition("Run",  "Jump", jumpCond,   0.1f);
-    addTransition("Jump", "Idle", nullptr,    0.2f);
+    // Inverse conditions: transition back when the triggering input is released
+    auto notWalkNotRun = [walkCond, runCond]() { return !walkCond() && !runCond(); };
+    auto walkOnly      = [walkCond]()          { return walkCond(); };
+
+    addTransition("Idle", "Walk", walkCond,      0.2f);
+    addTransition("Walk", "Idle", notWalkNotRun, 0.2f);
+    addTransition("Walk", "Run",  runCond,       0.15f);
+    addTransition("Run",  "Walk", walkOnly,      0.15f);
+    addTransition("Idle", "Jump", jumpCond,      0.1f);
+    addTransition("Walk", "Jump", jumpCond,      0.1f);
+    addTransition("Run",  "Jump", jumpCond,      0.1f);
+    addTransition("Jump", "Idle", nullptr,       0.2f);
 }
