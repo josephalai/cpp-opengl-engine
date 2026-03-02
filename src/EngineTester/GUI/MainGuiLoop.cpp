@@ -38,6 +38,15 @@
 #include "../../Atmosphere/FogSettings.h"
 #include "../../Shadows/ShadowMap.h"
 #include "../../Shaders/PBRMaterial.h"
+// Phase 2 — Animation & Instanced Rendering
+#include "../../Animation/AnimationLoader.h"
+#include "../../Animation/AnimationController.h"
+#include "../../RenderEngine/AnimatedRenderer.h"
+#include "../../Shaders/AnimatedShader.h"
+#include "../../RenderEngine/InstancedModel.h"
+#include "../../RenderEngine/InstancedRenderer.h"
+#include "../../Shaders/InstancedShader.h"
+#include "../../ModelLoader/GLTFLoader.h"
 
 #include <thread>
 
@@ -259,6 +268,101 @@ void MainGuiLoop::main() {
 
     /**
      * -----------------------------------------------------------------------
+     * Phase 2.1 — Skeletal Animation (AnimatedModel + AnimationController)
+     * -----------------------------------------------------------------------
+     */
+    AnimatedShader*      animShader     = new AnimatedShader();
+    AnimatedRenderer*    animRenderer   = new AnimatedRenderer(animShader);
+    AnimatedEntity*      animEntity     = nullptr;
+    AnimationController* animController = nullptr;
+
+    {
+        // Try to load a glTF character from the expected path.
+        // If the file is absent, we skip animated rendering gracefully.
+        std::string charPath =
+            FileSystem::Path("/src/Resources/Tutorial/Characters/character.glb");
+
+        AnimatedModel* animModel = AnimationLoader::load(charPath);
+        if (animModel) {
+            animController = new AnimationController();
+
+            // Register clips by name (fall back to indices 0-3 if names differ)
+            auto registerClip = [&](const std::string& stateName, int fallbackIdx) {
+                int idx = animModel->getClipIndex(stateName);
+                if (idx < 0 && fallbackIdx < static_cast<int>(animModel->clips.size()))
+                    idx = fallbackIdx;
+                if (idx >= 0)
+                    animController->addState(stateName, &animModel->clips[idx]);
+            };
+            registerClip("Idle", 0);
+            registerClip("Walk", 1);
+            registerClip("Run",  2);
+            registerClip("Jump", 3);
+
+            // Keyboard conditions for transitions
+            auto walkCond = []() { return InputMaster::isKeyDown(W) && !InputMaster::isKeyDown(LeftShift); };
+            auto runCond  = []() { return InputMaster::isKeyDown(W) &&  InputMaster::isKeyDown(LeftShift); };
+            auto jumpCond = []() { return InputMaster::isKeyDown(Space); };
+
+            animController->setupDefaultTransitions(walkCond, runCond, jumpCond);
+
+            // Start in Idle state
+            if (!animModel->clips.empty())
+                animController->setState("Idle");
+
+            animEntity             = new AnimatedEntity();
+            animEntity->model      = animModel;
+            animEntity->controller = animController;
+            animEntity->position   = glm::vec3(100.0f, 3.0f, -60.0f);
+            animEntity->scale      = 1.0f;
+
+            std::cout << "[Phase2] Loaded animated character with "
+                      << animModel->clips.size() << " clip(s) and "
+                      << animModel->skeleton.getBoneCount() << " bone(s).\n";
+        } else {
+            std::cout << "[Phase2] No character model found at " << charPath
+                      << " — skeletal rendering skipped.\n";
+        }
+    }
+
+    /**
+     * -----------------------------------------------------------------------
+     * Phase 2.4 — Instanced Rendering (500+ trees in one draw call)
+     * -----------------------------------------------------------------------
+     */
+    InstancedModel* instancedTreeModel = nullptr;
+
+    {
+        ModelData treeData = OBJLoader::loadObjModel("tree");
+        if (!treeData.getIndices().empty()) {
+            RawModel* rawTree   = loader->loadToVAO(treeData);
+            auto*     treeTex   = loader->loadTexture("tree");
+            GLuint    treeTexID = treeTex ? treeTex->getId() : 0;
+
+            instancedTreeModel = new InstancedModel(rawTree->getVaoId(),
+                                                    rawTree->getVertexCount(),
+                                                    treeTexID);
+            instancedTreeModel->setupInstanceVBO();
+
+            // Generate 500 random tree transforms on the terrain
+            srand(42);
+            for (int i = 0; i < 500; ++i) {
+                float x = static_cast<float>(rand() % 800) - 400.0f;
+                float z = static_cast<float>(rand() % 800) - 400.0f;
+                float y = primaryTerrain ? primaryTerrain->getHeightOfTerrain(x, z) : 0.0f;
+                float s = 0.5f + static_cast<float>(rand() % 100) / 100.0f;
+                instancedTreeModel->addInstance(
+                    Maths::createTransformationMatrix(glm::vec3(x, y, z), glm::vec3(0.0f), s));
+            }
+
+            std::cout << "[Phase2] Instanced tree model ready — 500 instances.\n";
+        } else {
+            std::cout << "[Phase2] Could not load tree model for instancing.\n";
+        }
+    }
+
+    /**
+     * -----------------------------------------------------------------------
      * Main Game Loop
      * -----------------------------------------------------------------------
      */
@@ -305,6 +409,20 @@ void MainGuiLoop::main() {
         // --- Main scene pass via scene graph (1.2) ---
         renderer->renderSceneGraph(sceneGraph, assimpEntities, allTerrains, lights);
 
+        // --- Phase 2.1: Animated character rendering ---
+        if (animEntity) {
+            std::vector<AnimatedEntity*> animEntities = { animEntity };
+            animRenderer->render(animEntities, DisplayManager::delta, lights,
+                                 playerCamera, renderer->getProjectionMatrix());
+        }
+
+        // --- Phase 2.4: Instanced rendering (500 trees) ---
+        if (instancedTreeModel && instancedTreeModel->getInstanceCount() > 0) {
+            renderer->processInstancedEntity(instancedTreeModel,
+                                             instancedTreeModel->getInstances());
+            renderer->renderInstanced(lights);
+        }
+
         // --- Water rendering after opaque geometry (1.5) ---
         renderer->renderWater(playerCamera, lights.empty() ? nullptr : lights[0]);
 
@@ -328,6 +446,16 @@ void MainGuiLoop::main() {
     renderer->cleanUp();
     loader->cleanUp();
     waterShader->cleanUp();
+    // Phase 2 cleanup
+    animShader->cleanUp();
+    delete animRenderer;
+    if (animEntity) {
+        animEntity->model->cleanUp();
+        delete animEntity->model;
+        delete animEntity->controller;
+        delete animEntity;
+    }
+    delete instancedTreeModel;
 
     DisplayManager::closeDisplay();
 }
