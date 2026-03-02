@@ -81,6 +81,8 @@ void TerrainShader::connectTextureUnits() {
 void TerrainShader::loadFogDensity(float density) {
     this->setFloat(location_fogDensity, density);
 }
+
+void TerrainShader::getAllUniformLocations() {
     location_transformationMatrix = getUniformLocation(transformationMatrix);
     location_projectionMatrix = getUniformLocation(projectionMatrix);
     location_viewMatrix = getUniformLocation(viewMatrix);
