@@ -15,6 +15,9 @@ add_executable(engine ${ENGINE_SOURCES})
 
 target_include_directories(engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
+# Embed the source root so FileSystem can locate resources regardless of CWD.
+target_compile_definitions(engine PRIVATE RESOURCE_ROOT="${CMAKE_SOURCE_DIR}")
+
 # --- Dependencies ---
 
 # OpenGL — always required for this engine

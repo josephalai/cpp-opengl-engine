@@ -89,17 +89,21 @@ void MainGuiLoop::main() {
         }));
 
         ModelData stallData = OBJLoader::loadObjModel("Stall");
-        BoundingBoxData stallBbData = OBJLoader::loadBoundingBox(stallData, ClickBoxTypes::BOX, BoundTypes::AABB);
-        RawBoundingBox* pStallBox = loader->loadToVAO(stallBbData);
-        auto stallModel = new TexturedModel(loader->loadToVAO(stallData),
-                                            new ModelTexture("stallTexture", PNG, Material{2.0f, 2.0f}));
-        player = new Player(stallModel,
-                            new BoundingBox(pStallBox, BoundingBoxIndex::genUniqueId()),
-                            glm::vec3(100.0f, 3.0f, -50.0f),
-                            glm::vec3(0.0f, 180.0f, 0.0f), 1.0f);
-        InteractiveModel::setInteractiveBox(player);
-        entities.push_back(player);
-        playerCamera = new PlayerCamera(player);
+        if (!stallData.getIndices().empty()) {
+            BoundingBoxData stallBbData = OBJLoader::loadBoundingBox(stallData, ClickBoxTypes::BOX, BoundTypes::AABB);
+            RawBoundingBox* pStallBox = loader->loadToVAO(stallBbData);
+            auto stallModel = new TexturedModel(loader->loadToVAO(stallData),
+                                                new ModelTexture("stallTexture", PNG, Material{2.0f, 2.0f}));
+            player = new Player(stallModel,
+                                new BoundingBox(pStallBox, BoundingBoxIndex::genUniqueId()),
+                                glm::vec3(100.0f, 3.0f, -50.0f),
+                                glm::vec3(0.0f, 180.0f, 0.0f), 1.0f);
+            InteractiveModel::setInteractiveBox(player);
+            entities.push_back(player);
+            playerCamera = new PlayerCamera(player);
+        } else {
+            std::cerr << "[MainGuiLoop] Could not load Stall model — resources path may be wrong\n";
+        }
     }
 
     /**

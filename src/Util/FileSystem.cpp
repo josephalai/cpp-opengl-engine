@@ -4,7 +4,18 @@
 
 #include "FileSystem.h"
 
-std::string HOME_PATH = realpath(".", NULL);
+std::string HOME_PATH =
+#ifdef RESOURCE_ROOT
+    RESOURCE_ROOT
+#else
+    []() -> std::string {
+        char* raw = realpath(".", nullptr);
+        std::string path = raw ? raw : ".";
+        free(raw);
+        return path;
+    }()
+#endif
+    ;
 
 std::string FileSystem::Path(std::string in) {
     return HOME_PATH + in;
