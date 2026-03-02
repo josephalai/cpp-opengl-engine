@@ -1,3 +1,4 @@
+// Legacy — see Engine class for the active entry point.
 //
 // Created by Joseph Alai on 7/6/21.
 //
@@ -23,87 +24,10 @@
 #include "../RenderEngine/FrameBuffers.h"
 #include "../Interaction/InteractiveModel.h"
 #include "../Util/CommonHeader.h"
-// test to load objects.
 #include <thread>
-
-void testCraftStuff(float x, float y, float z) {
-    float result;
-    PRINT_FOURLN("x, y, z = ", x, y, z);
-    int nearestX = roundf(x);
-    int nearestY = roundf(y);
-    int nearestZ = roundf(z);
-    PRINT_FOURLN("nearestX, nearestY, nearestZ: roundf(x), roundf(y), roundf(z)", nearestX, nearestY, nearestZ);
-    float marginX = x - nearestX;
-    float marginY = y - nearestY;
-    float marginZ = z - nearestZ;
-    PRINT_FOURLN("marginX, marginY, marginZ: (x - nearestX), (y - nearestY), (z - nearestZ):", marginX, marginY,
-                 marginZ);
-    float padding = 0.25;
-    for (int dy = 0; dy < 2; dy++) {
-        if (marginX < -padding) {
-            x = nearestX - padding;
-        }
-        if (marginX > padding) {
-            x = nearestX + padding;
-        }
-        if (marginY < -padding) {
-            y = nearestY - padding;
-            result = 1;
-        }
-        if (marginY > padding) {
-            y = nearestY + padding;
-            result = 1;
-        }
-        if (marginZ < -padding) {
-            z = nearestZ - padding;
-        }
-        if (marginZ > padding) {
-            z = nearestZ + padding;
-        }
-        PRINT_FOURLN("x, y, z", x, y, z);
-    }
-}
-
-#include "../World/Block.h"
 #include "../Guis/GuiComponent.h"
 #include "../Guis/UiMaster.h"
 #include "../Guis/Rect/GuiRect.h"
-
-void testMap() {
-    std::map<int, Block> a;
-    a[1] = {1, 2, 3, 4};
-    a[4] = {3, 4, 6, 2};
-    a[29] = {3, 39, 12, 43};
-
-    std::map<int, Block>::iterator it2 = a.find(29120);
-    if (it2 == a.end()) {
-        std::cout << "could not find it." << std::endl;
-    }
-
-    std::map<int, Block>::iterator it;
-    for (it = a.begin(); it != a.end(); it++) {
-        std::cout << it->first << ": " << it->second.x << ", " << it->second.y << ", " << it->second.z << ", "
-                  << it->second.w << ", " << std::endl;
-    }
-    std::cout << a[92108].x << ", " << a[92108].y << ", " << a[92108].z << ", " << a[92108].w << ", " << std::endl;
-}
-
-void testLoader() {
-    testMap();
-    for (auto x:std::vector<float>{0, 0.25f, 0.3f, 0.4f, 0.49f, 0.51f, 0.6f, 0.75f, .9f, 1.0f, 1.1f, 1.4f}) {
-        for (auto ynum:std::vector<float>{Utils::randomFloat() * 1000, Utils::randomFloat() * 1000,
-                                          Utils::randomFloat() * 1000, Utils::randomFloat() * 1000,
-                                          Utils::randomFloat() * 1000, Utils::randomFloat() * 1000,
-                                          Utils::randomFloat() * 1000, Utils::randomFloat() * 1000}) {
-            for (auto znum:std::vector<float>{Utils::randomFloat() * 1000, Utils::randomFloat() * 1000,
-                                              Utils::randomFloat() * 1000, Utils::randomFloat() * 1000,
-                                              Utils::randomFloat() * 1000, Utils::randomFloat() * 1000,
-                                              Utils::randomFloat() * 1000, Utils::randomFloat() * 1000}) {
-                testCraftStuff(x, ynum, znum);
-            }
-        }
-    }
-}
 
 void MainGameLoop::main() {
 
@@ -435,7 +359,6 @@ void MainGameLoop::main() {
     allBoxes.insert(allBoxes.end(), entities.begin(), entities.end());
     allBoxes.insert(allBoxes.end(), scenes.begin(), scenes.end());
 
-    newUiComponent(loader, texts->at(0));
     /**
      * Main Game Loop
      */
@@ -522,59 +445,6 @@ void MainGameLoop::main() {
      * Close display
      */
     DisplayManager::closeDisplay();
-}
-
-void MainGameLoop::newUiComponent(Loader *loader, GUIText *text) {
-    std::cout << "I am in the loading of the new UiComponent... So this is what it is." << std::endl;
-    auto lifeBar = new GuiComponent(Container::CONTAINER);
-    lifeBar->setParent(lifeBar);
-    lifeBar->setConstraints(new UiConstraints(0.25, 1, 800, 800));
-    auto lifebar = new GuiTexture(loader->loadTexture("gui/lifebar")->getId(), glm::vec2(-0.72f, 0.9f),
-                                  glm::vec2(0.290f, 0.0900f));
-    auto green = new GuiTexture(loader->loadTexture("gui/green")->getId(), glm::vec2(-0.7f, 0.9f),
-                                glm::vec2(0.185f, 0.070f));
-    auto heart = new GuiTexture(loader->loadTexture("gui/heart")->getId(), glm::vec2(-0.9f, 0.9f),
-                                glm::vec2(0.075f, 0.075f));
-    FontType arial = TextMeshData::loadFont("arial", 48);
-
-    lifeBar->addChild(lifebar, new UiConstraints(0, 0, 120, 43));
-    lifeBar->addChild(green, new UiConstraints(10, 10, 110, 22));
-    lifeBar->addChild(heart, new UiConstraints(30, 40, 100, 52));
-    lifeBar->addChild(text, new UiConstraints(30, 40, 100, 52));
-    lifeBar->initialize();
-
-
-    for (Container *component : lifeBar->getChildren()) {
-        std::cout << "Inside loop soup..." << std::endl;
-        switch (component->getType()) {
-            case Container::IMAGE: {
-                GuiTexture *p = dynamic_cast<GuiTexture *>(component);
-                std::cout << "The texture is " << p->getTexture() << std::endl;
-            }
-                break;
-            case Container::TEXT: {
-                GUIText *p = dynamic_cast<GUIText *>(component);
-                std::cout << "The texture is " << p->getText() << std::endl;
-            }
-                break;
-
-                // this falls through to the next case because they will both be containers.
-            case Container::COLORED_BOX: {
-                GuiRect *r = dynamic_cast<GuiRect *>(component);
-                std::cout << "The color is: " << r->getColor().r << r->getColor().g << r->getColor().b;
-            }
-            case Container::CONTAINER: {
-                GuiComponent *p = dynamic_cast<GuiComponent *>(component);
-                std::cout << "The size of this is: " << p->getChildren().size() << std::endl;
-                break;
-            }
-        }
-    }
-
-    // loop througu lifeBar
-    // add all the position modifications to the objects themselves
-    // they will render like normal, but be modified to fit the grouping
-
 }
 
 glm::vec3 MainGameLoop::generateRandomPosition(Terrain *terrain, float yOffset) {

@@ -1,196 +1,59 @@
 cmake_minimum_required(VERSION 3.19)
 project(engine)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-SET(CMAKE_EXE_LINKER_FLAGS "-v")
-set(CMAKE_CXX_VISIBILITY_PRESET)
+# Gather all source files automatically.
+# Note: re-run cmake when adding/removing files (GLOB_RECURSE does not auto-detect changes).
+file(GLOB_RECURSE ENGINE_SOURCES
+    "${CMAKE_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/*.h"
+)
 
-add_executable(engine
-        src/main.cpp
-        src/RenderEngine/DisplayManager.h
-        src/EngineTester/MainGameLoop.h
-        src/Entities/Camera.h
-        src/Models/RawModel.h
-        src/RenderEngine/Loader.h
-        src/RenderEngine/EntityRenderer.h
-        src/Textures/TextureLoader.h
-        src/Shaders/ShaderProgram.h
-        src/Shaders/StaticShader.h
-        src/Libraries/images/stb_image.h
-        src/Textures/ModelTexture.h
-        src/Models/TexturedModel.h
-        src/Util/FileSystem.h
-        src/Toolbox/Maths.h
-        src/Entities/Entity.h
-        src/Entities/CameraInput.h
-        src/RenderEngine/ObjLoader.h
-        src/RenderEngine/Vertex.h
-        src/RenderEngine/ModelData.h
-        src/Util/Debug.h
-        src/Entities/Light.h
-        src/RenderEngine/MasterRenderer.h
-        src/Util/Utils.h
-        src/Terrain/Terrain.h
-        src/Shaders/TerrainShader.h
-        src/RenderEngine/TerrainRenderer.h
-        src/RenderEngine/RenderStyle.h
-        src/Entities/Camera.cpp
-        src/EngineTester/MainGameLoop.cpp
-        src/RenderEngine/DisplayManager.cpp
-        src/Entities/CameraInput.cpp
-        src/Terrain/Terrain.cpp
-        src/Textures/TextureLoader.cpp
-        src/Textures/ModelTexture.cpp
-        src/Shaders/ShaderProgram.cpp
-        src/Util/FileSystem.cpp
-        src/Shaders/StaticShader.cpp
-        src/Shaders/TerrainShader.cpp
-        src/RenderEngine/EntityRenderer.cpp
-        src/RenderEngine/Loader.cpp
-        src/RenderEngine/MasterRenderer.cpp
-        src/RenderEngine/ObjLoader.cpp
-        src/RenderEngine/TerrainRenderer.cpp
-        src/RenderEngine/AssimpEntityLoader.h
-        src/RenderEngine/AssimpMeshData.h
-        src/Shaders/AssimpStaticShader.cpp
-        src/Shaders/AssimpStaticShader.h
-        src/Entities/AssimpEntity.h
-        src/RenderEngine/AssimpEntityRenderer.h
-        src/Textures/TerrainTexture.h
-        src/Textures/TerrainTexturePack.h
-        src/Entities/Player.h
-        src/Entities/Player.cpp
-        src/Entities/PlayerCamera.h
-        src/Terrain/HeightMap.h
-        src/Terrain/HeightMap.cpp
-        src/Entities/PlayerCamera.cpp
-        src/RenderEngine/AssimpMeshData.cpp
-        src/RenderEngine/AssimpEntityLoader.cpp
-        src/Guis/Texture/GuiTexture.h
-        src/Guis/Texture/GuiTexture.cpp
-        src/Guis/Texture/GuiRenderer.cpp
-        src/Guis/Texture/GuiRenderer.h
-        src/Guis/Texture/GuiShader.cpp
-        src/Guis/Texture/GuiShader.h
-        src/Util/LightUtil.h
-        src/Skybox/SkyboxShader.cpp
-        src/Skybox/SkyboxShader.h
-        src/Skybox/SkyboxRenderer.cpp
-        src/Skybox/SkyboxRenderer.h
-        src/Util/ColorName.h
-        src/Toolbox/MousePicker.cpp
-        src/Toolbox/MousePicker.h
-        src/Guis/Text/FontMeshCreator/TextMeshData.cpp
-        src/Guis/Text/FontMeshCreator/TextMeshData.h
-        src/Guis/Text/FontRendering/FontShader.cpp
-        src/Guis/Text/FontRendering/FontShader.h
-        src/Guis/Text/FontRendering/FontRenderer.cpp
-        src/Guis/Text/FontRendering/FontRenderer.h
-        src/Guis/Text/FontMeshCreator/GUIText.cpp
-        src/Guis/Text/FontMeshCreator/GUIText.h
-        src/Guis/Text/FontMeshCreator/Character.h
-        src/Guis/Text/FontMeshCreator/Word.cpp
-        src/Guis/Text/FontMeshCreator/Word.h
-        src/Guis/Text/FontMeshCreator/Line.cpp
-        src/Guis/Text/FontMeshCreator/Line.h
-        src/Guis/Text/FontMeshCreator/FontModel.h
-        src/Guis/Text/FontRendering/TextMaster.cpp
-        src/Guis/Text/FontRendering/TextMaster.h
-        src/Guis/Text/FontMeshCreator/TextMeshCreator.cpp
-        src/Guis/Text/FontMeshCreator/TextMeshCreator.h
-        src/BoundingBox/RawBoundingBox.h
-        src/Models/RawData.h
-        src/BoundingBox/BoundingBox.h
-        src/BoundingBox/BoundingBoxRenderer.cpp
-        src/BoundingBox/BoundingBoxRenderer.h
-        src/BoundingBox/BoundingBoxShader.cpp
-        src/BoundingBox/BoundingBoxShader.h
-        src/BoundingBox/BoundingBoxIndex.cpp
-        src/BoundingBox/BoundingBoxIndex.h
-        src/Input/InputMaster.h
-        src/Input/InputMaster.cpp
-        src/Toolbox/TerrainPicker.cpp
-        src/Toolbox/TerrainPicker.h
-        src/Toolbox/Picker.cpp
-        src/Toolbox/Picker.h
-        src/RenderEngine/FrameBuffers.cpp
-        src/RenderEngine/FrameBuffers.h
-        src/RenderEngine/AssimpEntityRenderer.cpp
-        src/RenderEngine/MeshData.h
-        src/RenderEngine/BoundingBoxData.h
-        src/Util/CommonHeader.h
-        src/Toolbox/Screenshot.h
-        src/Interfaces/Clickable.h
-        src/Interfaces/Positionable.h
-        src/Interfaces/Interactive.h
-        src/Util/ColorName.cpp
-        src/Interaction/InteractiveModel.cpp
-        src/Interaction/InteractiveModel.h
-        src/Entities/Entity.cpp
-        src/Entities/AssimpEntity.cpp
-        src/Entities/Light.cpp
-        src/World/World.cpp
-        src/World/World.h
-        src/World/HashMap.h
-        src/World/Chunk.cpp
-        src/World/Chunk.h
-        src/World/Map.cpp
-        src/World/Map.h
-        src/World/Block.h
-        src/World/WorldCommon.h
-        src/OpenGLWrapper/OpenGLUtils.cpp
-        src/OpenGLWrapper/OpenGLUtils.h
-        src/Toolbox/Color.h
-        src/Toolbox/Color.cpp
-        src/Collision/AABB.cpp
-        src/Collision/AABB.h
-        src/Toolbox/Noise.h
-        src/Guis/UiConstraints.cpp
-        src/Guis/UiConstraints.h
-        src/Guis/Alpha.cpp
-        src/Guis/Alpha.h
-        src/Guis/UiContainer.h
-        src/Guis/GuiComponent.cpp
-        src/Guis/Container.h
-        src/Guis/GuiComponent.h
-        src/Guis/UiMaster.cpp
-        src/Guis/UiMaster.h
-        src/Guis/Rect/RectRenderer.cpp
-        src/Guis/Rect/RectRenderer.h
-        src/Guis/Rect/RectShader.cpp
-        src/Guis/Rect/RectShader.h
-        src/Guis/Rect/GuiRect.cpp
-        src/Guis/Rect/GuiRect.h)
+add_executable(engine ${ENGINE_SOURCES})
 
-if (EXISTS deps/glrequired)
+target_include_directories(engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+# --- Dependencies ---
+
+# OpenGL (conditional for laptop vs desktop)
+if (EXISTS ${CMAKE_SOURCE_DIR}/deps/glrequired)
     message(STATUS "Requiring OpenGL")
     find_package(OpenGL REQUIRED)
-    target_link_libraries(engine glfw)
-    target_link_libraries(engine OpenGL::GL)
-endif ()
+    target_link_libraries(engine PRIVATE OpenGL::GL)
+endif()
 
-include_directories(deps/glfw)
+# GLFW
 add_subdirectory(deps/glfw)
-include_directories(deps/glfw/GLFW/include)
+target_include_directories(engine PRIVATE deps/glfw/include)
 
-include_directories(deps/freetype2)
+# FreeType
 add_subdirectory(deps/freetype2)
-include_directories(deps/freetype2/include)
-target_link_libraries(engine freetype)
+target_include_directories(engine PRIVATE deps/freetype2/include)
 
+# PNG
 find_package(PNG REQUIRED)
-include_directories(${PNG_INCLUDE_DIR})
+target_include_directories(engine PRIVATE ${PNG_INCLUDE_DIR})
 
-include_directories(deps/assimp-4)
+# Assimp
 add_subdirectory(deps/assimp-4)
-include_directories(deps/assimp-4/include)
+target_include_directories(engine PRIVATE deps/assimp-4/include)
 
+# Quill (logging)
 add_subdirectory(deps/quill)
 
-target_link_libraries(engine glfw ${GLFW_LIBRARIES} ${PNG_LIBRARY} assimp quill)
-include_directories(deps/glm/glm)
-target_link_libraries(engine glm)
-
-
+# GLM
 add_subdirectory(deps/glm EXCLUDE_FROM_ALL)
+target_include_directories(engine PRIVATE deps/glm)
+
+# Link all
+target_link_libraries(engine PRIVATE
+    glfw
+    ${GLFW_LIBRARIES}
+    freetype
+    ${PNG_LIBRARY}
+    assimp
+    quill
+    glm
+)

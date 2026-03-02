@@ -1,9 +1,10 @@
+// Legacy — see Engine class for the active entry point.
 //
 // Created by Joseph Alai on 6/30/21.
 //
 
-#ifndef CRAFTPROJ_MAINGAMELOOP_H
-#define CRAFTPROJ_MAINGAMELOOP_H
+#ifndef ENGINE_MAINGAMELOOP_H
+#define ENGINE_MAINGAMELOOP_H
 
 
 #include "../Terrain/Terrain.h"
@@ -18,8 +19,6 @@ public:
     static glm::vec3 generateRandomRotation();
 
     static float generateRandomScale(float min, float max);
-
-    static void newUiComponent(Loader *loader, GUIText *text);
 };
 
-#endif //CRAFTPROJ_MAINGAMELOOP_H
+#endif //ENGINE_MAINGAMELOOP_H
