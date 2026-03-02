@@ -44,6 +44,10 @@ public:
         PlayerCamera*&              playerCamera
     );
 
+    // Sentinel: when y == kSnapY the entity's y is resolved from terrain height.
+    // Public so that file-static helpers in SceneLoader.cpp can reference it.
+    static constexpr float kSnapY = -99999.0f;
+
 private:
     // -----------------------------------------------------------------------
     // Parsed record types (internal to one load() call)
@@ -118,10 +122,6 @@ private:
         float x = 0, y = 0;
         float w = 0, h = 0;
     };
-
-    // Sentinel: when y == kSnapY the entity's y is resolved from terrain height.
-    // Public so that file-static helpers in SceneLoader.cpp can reference it.
-    static constexpr float kSnapY = -99999.0f;
 
 private:
     // -----------------------------------------------------------------------
