@@ -33,3 +33,7 @@ std::string FileSystem::TerrainTexture(std::string in) {
 std::string FileSystem::Skybox(std::string in) {
     return HOME_PATH + "/src/Resources/Tutorial/skybox/" + in + ".png";
 }
+
+std::string FileSystem::Scene(std::string in) {
+    return HOME_PATH + "/src/Resources/" + in;
+}

@@ -34,22 +34,11 @@ private:
     /// Load fonts and text objects
     void initFonts();
 
-    /// Load 3D models and textures (uses threading)
-    void loadModels();
+    /// Load 3-D scene from scene.cfg via SceneLoader; falls back to built-in
+    /// defaults if the file is missing or cannot be parsed.
+    void loadScene();
 
-    /// Create terrain tiles
-    void initTerrain();
-
-    /// Spawn entities into the world
-    void spawnEntities();
-
-    /// Create player and camera
-    void initPlayer();
-
-    /// Set up lights
-    void initLights();
-
-    /// Initialize GUI components
+    /// Initialize GUI components (UI overlay, constraints hierarchy)
     void initGui();
 
     /// Initialize renderers (MasterRenderer, GuiRenderer, etc.)
@@ -91,22 +80,8 @@ private:
     FontModel* fontModel = nullptr;
     GUIText* clickColorText = nullptr;
     GUIText* pNameText = nullptr;
-    FontType* arialFont = nullptr;
+    FontType* arialFont  = nullptr;
     FontType* noodleFont = nullptr;
-
-    // Models (loaded in loadModels, used in spawnEntities/initPlayer)
-    TexturedModel* staticLamp = nullptr;
-    TexturedModel* staticFern = nullptr;
-    TexturedModel* staticGrass = nullptr;
-    TexturedModel* staticStall = nullptr;
-    TexturedModel* staticTree = nullptr;
-    TexturedModel* staticFluffyTree = nullptr;
-    RawBoundingBox* pLampBox = nullptr;
-    RawBoundingBox* pFernBox = nullptr;
-    RawBoundingBox* pGrassBox = nullptr;
-    RawBoundingBox* pStallBox = nullptr;
-    RawBoundingBox* pTreeBox = nullptr;
-    RawBoundingBox* pFluffyTreeBox = nullptr;
 
     // GUI components updated per-frame
     GuiTexture* sampleModifiedGui = nullptr;
