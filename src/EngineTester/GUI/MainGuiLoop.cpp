@@ -56,6 +56,7 @@ void MainGuiLoop::main() {
     std::vector<Light *>        lights;
     std::vector<Terrain *>      allTerrains;
     std::vector<GuiTexture *>   guis;
+    std::vector<WaterTile>      waterTiles;
     Terrain*                    primaryTerrain = nullptr;
     Player*                     player         = nullptr;
     PlayerCamera*               playerCamera   = nullptr;
@@ -66,7 +67,7 @@ void MainGuiLoop::main() {
     bool sceneLoaded = SceneLoader::load(
         FileSystem::Scene("scene.cfg"),
         loader,
-        entities, assimpEntities, lights, allTerrains, guis,
+        entities, assimpEntities, lights, allTerrains, guis, waterTiles,
         primaryTerrain, player, playerCamera);
 
     if (!sceneLoaded || !player || !playerCamera) {
@@ -195,7 +196,13 @@ void MainGuiLoop::main() {
     auto* waterRenderer = new WaterRenderer(loader, waterShader, renderer->getProjectionMatrix(),
                                             reflectFbo, dudvTex, waterNorm);
     renderer->setWaterRenderer(waterRenderer);
-    renderer->addWaterTile(WaterTile(0.0f, -1.0f, -200.0f));
+    // Add water tiles from scene.cfg; fall back to a single hardcoded tile if none configured
+    if (waterTiles.empty()) {
+        renderer->addWaterTile(WaterTile(0.0f, -1.0f, -200.0f));
+    } else {
+        for (const auto& tile : waterTiles)
+            renderer->addWaterTile(tile);
+    }
 
     /**
      * -----------------------------------------------------------------------
