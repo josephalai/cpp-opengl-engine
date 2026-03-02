@@ -46,6 +46,12 @@ private:
     const std::string materialShininess = "material.shininess";
     const std::string materialReflectivity = "material.reflectivity";
 
+    const std::string fogDensity = "fogDensity";
+    const std::string useNormalMap = "useNormalMap";
+    const std::string useSpecularMap = "useSpecularMap";
+    const std::string normalMapSampler = "normalMapSampler";
+    const std::string specularMapSampler = "specularMapSampler";
+
     GLint location_transformationMatrix;
     GLint location_projectionMatrix;
     GLint location_viewMatrix;
@@ -69,6 +75,12 @@ private:
 
     GLint location_materialShininess;
     GLint location_materialReflectivity;
+
+    GLint location_fogDensity;
+    GLint location_useNormalMap;
+    GLint location_useSpecularMap;
+    GLint location_normalMapSampler;
+    GLint location_specularMapSampler;
 public:
     GLuint attribute;
 
@@ -87,6 +99,12 @@ public:
     void loadLight(std::vector<Light *>light);
 
     void loadMaterial(Material material);
+
+    void loadFogDensity(float density);
+    void loadUseNormalMap(bool use);
+    void loadUseSpecularMap(bool use);
+    void loadNormalMapSampler(int unit);
+    void loadSpecularMapSampler(int unit);
 
     void loadFakeLightingVariable(bool useFakeLighting);
 

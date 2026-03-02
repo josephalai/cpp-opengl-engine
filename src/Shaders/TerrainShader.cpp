@@ -8,6 +8,9 @@
 TerrainShader::TerrainShader() : ShaderProgram(VertexPath, FragmentPath, nullptr) {
     this->initialize();
     this->loadTransformationMatrix();
+    this->start();
+    this->setFloat(getUniformLocation("fogDensity"), 0.007f);
+    this->stop();
 }
 
 void TerrainShader::bindAttributes() {
@@ -75,7 +78,9 @@ void TerrainShader::connectTextureUnits() {
     this->setInt(location_blendMap, 4);
 }
 
-void TerrainShader::getAllUniformLocations() {
+void TerrainShader::loadFogDensity(float density) {
+    this->setFloat(location_fogDensity, density);
+}
     location_transformationMatrix = getUniformLocation(transformationMatrix);
     location_projectionMatrix = getUniformLocation(projectionMatrix);
     location_viewMatrix = getUniformLocation(viewMatrix);
@@ -104,4 +109,5 @@ void TerrainShader::getAllUniformLocations() {
     location_gTexture = getUniformLocation(gTexture);
     location_bTexture = getUniformLocation(bTexture);
     location_blendMap = getUniformLocation(blendMap);
+    location_fogDensity = getUniformLocation(fogDensity);
 }
