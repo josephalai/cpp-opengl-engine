@@ -95,7 +95,7 @@ void MainGameLoop::main() {
 
     std::vector<std::thread> vThreads;
 
-    std::vector<const std::string> modelFiles = {"lamp", "fern", "grassModel", "Stall", "tree", "fluffy-tree"};
+    std::vector<std::string> modelFiles = {"lamp", "fern", "grassModel", "Stall", "tree", "fluffy-tree"};
     std::vector<ModelData *> modelDatas = {&lampData, &fernData, &grassData, &stallData, &treeData, &fluffyTreeData};
     std::vector<BoundingBoxData *> bbDatas = {&lampBbData, &fernBbData, &grassBnData, &stallBbData, &treeBbData,
                                               &fluffyTreeBbData};

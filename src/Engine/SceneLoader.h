@@ -119,6 +119,11 @@ private:
         float w = 0, h = 0;
     };
 
+    // Sentinel: when y == kSnapY the entity's y is resolved from terrain height.
+    // Public so that file-static helpers in SceneLoader.cpp can reference it.
+    static constexpr float kSnapY = -99999.0f;
+
+private:
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
@@ -127,9 +132,6 @@ private:
     static float randomScale(float mn, float mx);
     static glm::vec3 randomPosition(Terrain* terrain, float yOffset = 0.0f);
     static glm::vec3 randomRotation();
-
-    // Sentinel: when y == kSnapY the entity's y is resolved from terrain
-    static constexpr float kSnapY = -99999.0f;
 };
 
 #endif // ENGINE_SCENELOADER_H
