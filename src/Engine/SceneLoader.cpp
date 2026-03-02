@@ -1,8 +1,7 @@
 //
 // SceneLoader.cpp — parses scene.cfg and loads the described scene objects.
 //
-// Config format (see src/Resources/Tutorial/scene.cfg for a fully-commented
-// example):
+// Config format (see src/Resources/scene.cfg for a fully-commented example):
 //
 //   # comment
 //   terrain <heightmapFile> <blendmapFile>
@@ -16,6 +15,7 @@
 //   player <alias> <x> <y> <z> [rx ry rz] [scale=F]
 //   assimp <path> [random[+offset]|<x> <y> <z>] [scaleMin=F scaleMax=F]
 //   gui <textureFile> <x> <y> <w> <h>
+//   text <font> <size> <x> <y> [maxWidth=F] [color=R,G,B] [centered] "message"
 //
 
 #include "SceneLoader.h"
@@ -23,6 +23,8 @@
 #include "../Util/LightUtil.h"
 #include "../Textures/TerrainTexture.h"
 #include "../Interaction/InteractiveModel.h"
+#include "../Guis/Text/FontMeshCreator/TextMeshData.h"
+#include "../Toolbox/Color.h"
 
 #include <fstream>
 #include <sstream>
@@ -38,11 +40,27 @@
 
 std::vector<std::string> SceneLoader::tokenize(const std::string& line) {
     std::vector<std::string> tokens;
-    std::istringstream iss(line);
-    std::string tok;
-    while (iss >> tok) {
-        if (!tok.empty() && tok[0] == '#') break;   // rest is comment
-        tokens.push_back(tok);
+    const size_t n = line.size();
+    size_t i = 0;
+    while (i < n) {
+        // skip whitespace
+        if (std::isspace(static_cast<unsigned char>(line[i]))) { ++i; continue; }
+        // comment — stop here
+        if (line[i] == '#') break;
+        // quoted string — collect everything between the quotes as one token
+        if (line[i] == '"') {
+            ++i;
+            std::string tok;
+            while (i < n && line[i] != '"') tok += line[i++];
+            if (i < n) ++i;  // consume closing "
+            tokens.push_back(tok);
+            continue;
+        }
+        // plain token — stop at whitespace or '#'
+        std::string tok;
+        while (i < n && !std::isspace(static_cast<unsigned char>(line[i])) && line[i] != '#')
+            tok += line[i++];
+        if (!tok.empty()) tokens.push_back(tok);
     }
     return tokens;
 }
@@ -108,6 +126,7 @@ bool SceneLoader::load(
     std::vector<Light*>&        lights,
     std::vector<Terrain*>&      allTerrains,
     std::vector<GuiTexture*>&   guis,
+    std::vector<GUIText*>&      texts,
     std::vector<WaterTile>&     waterTiles,
     Terrain*&                   primaryTerrain,
     Player*&                    player,
@@ -133,6 +152,7 @@ bool SceneLoader::load(
     PlayerDef                  playerDef;
     bool                       hasPlayer = false;
     std::vector<GuiDef>        guiDefs;
+    std::vector<TextDef>       textDefs;
     std::vector<WaterDef>      waterDefs;
 
     std::string line;
@@ -328,6 +348,46 @@ bool SceneLoader::load(
                 gd.w = std::stof(tokens[4]);
                 gd.h = std::stof(tokens[5]);
                 guiDefs.push_back(gd);
+            }
+        }
+        // ----------------------------------------------------------------
+        // text <font> <size> <x> <y> [maxWidth=F] [color=R,G,B] [centered] "message"
+        //
+        // font    — font name (maps to Resources/Tutorial/Fonts/<name>.ttf)
+        // size    — FreeType pixel size (e.g. 24, 36, 48)
+        // x, y    — NDC position (-1..+1), top-left of text block
+        // maxWidth— optional; max line width as fraction of screen width (0..1)
+        // color   — optional; float RGB components 0..1 (e.g. color=1.0,0.84,0.0)
+        // centered— optional keyword; centers the text within maxWidth
+        // "message"— quoted text string (required, must be last)
+        else if (cmd == "text") {
+            // minimum: text <font> <size> <x> <y> "message" = 6 tokens
+            if (tokens.size() >= 6) {
+                TextDef td;
+                td.fontName = tokens[1];
+                try { td.fontSize = std::stoi(tokens[2]); } catch (...) {}
+                try { td.x = std::stof(tokens[3]); } catch (...) {}
+                try { td.y = std::stof(tokens[4]); } catch (...) {}
+                // message is always the last token (quoted string)
+                td.message = tokens.back();
+                // parse optional tokens between position and message
+                for (size_t i = 5; i + 1 < tokens.size(); ++i) {
+                    if (tokens[i] == "centered") { td.centered = true; continue; }
+                    auto v = optVal(tokens[i], "maxWidth");
+                    if (!v.empty()) { td.maxWidth = std::stof(v); continue; }
+                    v = optVal(tokens[i], "color");
+                    if (!v.empty()) {
+                        // parse "R,G,B"
+                        std::istringstream cs(v);
+                        std::string comp;
+                        float* dst[3] = {&td.r, &td.g, &td.b};
+                        int ci = 0;
+                        while (std::getline(cs, comp, ',') && ci < 3) {
+                            try { *dst[ci++] = std::stof(comp); } catch (...) {}
+                        }
+                    }
+                }
+                if (!td.message.empty()) textDefs.push_back(td);
             }
         }
         // ----------------------------------------------------------------
@@ -564,12 +624,52 @@ bool SceneLoader::load(
         waterTiles.emplace_back(wd.x, wd.height, wd.z);
     }
 
+    // -----------------------------------------------------------------------
+    // Pass 11: text overlays
+    //
+    // Requires TextMaster::init(loader) to have been called by the caller
+    // before SceneLoader::load() so that GUIText constructors can register
+    // themselves into TextMaster's batch map.
+    // -----------------------------------------------------------------------
+    if (!textDefs.empty()) {
+        // A single FontModel (dynamic VAO/VBO) is shared by all texts.
+        FontModel* sharedFontModel = loader->loadFontVAO();
+
+        // Cache loaded FontType objects by (name, size) to avoid re-loading
+        // the same FreeType face multiple times.
+        std::map<std::pair<std::string,int>, FontType> fontCache;
+
+        for (auto& td : textDefs) {
+            auto key = std::make_pair(td.fontName, td.fontSize);
+            auto it = fontCache.find(key);
+            if (it == fontCache.end()) {
+                fontCache.emplace(key, TextMeshData::loadFont(td.fontName, td.fontSize));
+                it = fontCache.find(key);
+            }
+            FontType* ft = &it->second;
+
+            // maxWidth is stored as a fraction of screen width; convert to pixels
+            // so that GUIText::getMaxLineSize() matches FontRenderer expectations.
+            auto* guiText = new GUIText(
+                td.message,
+                static_cast<float>(td.fontSize),
+                sharedFontModel,
+                ft,
+                glm::vec2(td.x, td.y),
+                Color(td.r, td.g, td.b),
+                td.maxWidth,
+                td.centered);
+            texts.push_back(guiText);
+        }
+    }
+
     std::cout << "[SceneLoader] Scene loaded: "
               << entities.size()   << " entities, "
               << scenes.size()     << " assimp scenes, "
               << lights.size()     << " lights, "
               << allTerrains.size()<< " terrain tiles, "
               << guis.size()       << " GUI textures, "
+              << texts.size()      << " text overlays, "
               << waterTiles.size() << " water tiles." << std::endl;
 
     return true;

@@ -17,6 +17,7 @@
 #include "../../Toolbox/MousePicker.h"
 #include <ft2build.h>
 #include FT_FREETYPE_H
+#include "../../Guis/Text/GUIText.h"
 #include "../../Guis/Text/Rendering/FontRenderer.h"
 #include "../../Util/ColorName.h"
 #include "../../Guis/Text/Rendering/TextMaster.h"
@@ -56,10 +57,15 @@ void MainGuiLoop::main() {
     std::vector<Light *>        lights;
     std::vector<Terrain *>      allTerrains;
     std::vector<GuiTexture *>   guis;
+    std::vector<GUIText *>      texts;
     std::vector<WaterTile>      waterTiles;
     Terrain*                    primaryTerrain = nullptr;
     Player*                     player         = nullptr;
     PlayerCamera*               playerCamera   = nullptr;
+
+    // TextMaster must be initialized before SceneLoader::load() so that
+    // GUIText constructors (which call TextMaster::loadText) work correctly.
+    TextMaster::init(loader);
 
     /**
      * Load scene from scene.cfg (falls back to minimal defaults if file missing)
@@ -67,7 +73,7 @@ void MainGuiLoop::main() {
     bool sceneLoaded = SceneLoader::load(
         FileSystem::Scene("scene.cfg"),
         loader,
-        entities, assimpEntities, lights, allTerrains, guis, waterTiles,
+        entities, assimpEntities, lights, allTerrains, guis, texts, waterTiles,
         primaryTerrain, player, playerCamera);
 
     if (!sceneLoaded || !player || !playerCamera) {
@@ -226,7 +232,6 @@ void MainGuiLoop::main() {
      */
     UiMaster::initialize(loader, guiRenderer, fontRenderer, rectRenderer);
 
-    TextMaster::init(loader);
     GuiComponent *masterContainer = UiMaster::getMasterComponent();
     masterContainer->initialize();
     UiMaster::applyConstraints();
@@ -306,6 +311,8 @@ void MainGuiLoop::main() {
         // --- Render scene.cfg GUI texture overlays, then UiMaster components ---
         guiRenderer->render(guis);
         UiMaster::render();
+        // --- Render scene.cfg text overlays registered in TextMaster ---
+        TextMaster::render();
 
         DisplayManager::updateDisplay();
     }
