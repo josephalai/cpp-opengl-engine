@@ -115,6 +115,7 @@ ModelData OBJLoader::loadObjModel(const std::string &filename) {
     FILE *file = std::fopen(std::move(FileSystem::Model(filename)).c_str(), "r");
     if (file == nullptr) {
         printf("Impossible to open the file: %s !\n", copy.c_str());
+        return ModelData{};
     }
 
     while (true) {

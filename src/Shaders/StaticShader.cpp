@@ -8,6 +8,14 @@
 StaticShader::StaticShader() : ShaderProgram(VertexPath, FragmentPath, nullptr) {
     this->initialize();
     this->loadTransformationMatrix();
+    this->start();
+    // Default: no fog, no normal/specular map
+    this->loadFogDensity(0.007f);
+    this->loadUseNormalMap(false);
+    this->loadUseSpecularMap(false);
+    this->loadNormalMapSampler(1);
+    this->loadSpecularMapSampler(2);
+    this->stop();
 }
 
 void StaticShader::bindAttributes() {
@@ -79,6 +87,26 @@ void StaticShader::loadOffset(float x, float y) {
     this->setVec2(location_textureOffset, glm::vec2(x, y));
 }
 
+void StaticShader::loadFogDensity(float density) {
+    this->setFloat(location_fogDensity, density);
+}
+
+void StaticShader::loadUseNormalMap(bool use) {
+    this->setBool(location_useNormalMap, use);
+}
+
+void StaticShader::loadUseSpecularMap(bool use) {
+    this->setBool(location_useSpecularMap, use);
+}
+
+void StaticShader::loadNormalMapSampler(int unit) {
+    this->setInt(location_normalMapSampler, unit);
+}
+
+void StaticShader::loadSpecularMapSampler(int unit) {
+    this->setInt(location_specularMapSampler, unit);
+}
+
 
 void StaticShader::getAllUniformLocations() {
     location_transformationMatrix = getUniformLocation(transformationMatrix);
@@ -106,5 +134,11 @@ void StaticShader::getAllUniformLocations() {
 
     location_materialShininess = getUniformLocation(materialShininess);
     location_materialReflectivity = getUniformLocation(materialReflectivity);
+
+    location_fogDensity        = getUniformLocation(fogDensity);
+    location_useNormalMap      = getUniformLocation(useNormalMap);
+    location_useSpecularMap    = getUniformLocation(useSpecularMap);
+    location_normalMapSampler  = getUniformLocation(normalMapSampler);
+    location_specularMapSampler = getUniformLocation(specularMapSampler);
 
 }

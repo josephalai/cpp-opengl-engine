@@ -31,6 +31,10 @@ GUIText::GUIText(const std::string &textString, float fontSize, FontModel *font,
     this->color = color;
     this->lineMaxLength = maxLineLength;
     this->centerText = centered;
+    // Sync the inherited constraints position so FontRenderer::prepareText
+    // reads the correct NDC position for standalone (non-UiMaster) texts.
+    // UiMaster-managed texts have constraints replaced by addChild anyway.
+    constraints->setConstraintPosition(position);
     TextMaster::loadText(this);
 }
 

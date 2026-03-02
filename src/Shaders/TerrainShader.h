@@ -49,6 +49,8 @@ class TerrainShader : public ShaderProgram {
     const std::string bTexture = "bTexture";
     const std::string blendMap = "blendMap";
 
+    const std::string fogDensity = "fogDensity";
+
     GLint location_transformationMatrix;
     GLint location_projectionMatrix;
     GLint location_viewMatrix;
@@ -73,6 +75,7 @@ class TerrainShader : public ShaderProgram {
     GLint location_gTexture;
     GLint location_bTexture;
     GLint location_blendMap;
+    GLint location_fogDensity;
 public:
     GLuint attribute;
 
@@ -96,6 +99,7 @@ public:
 
     void connectTextureUnits();
 
+    void loadFogDensity(float density);
 
 protected:
     void getAllUniformLocations() override;

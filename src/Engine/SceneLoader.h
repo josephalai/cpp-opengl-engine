@@ -21,9 +21,11 @@
 #include "../Terrain/Terrain.h"
 #include "../Textures/TerrainTexturePack.h"
 #include "../Guis/Texture/GuiTexture.h"
+#include "../Guis/Text/GUIText.h"
 #include "../Models/TexturedModel.h"
 #include "../RenderEngine/ObjLoader.h"
 #include "../BoundingBox/BoundingBoxIndex.h"
+#include "../Water/WaterTile.h"
 
 /// Reads src/Resources/Tutorial/scene.cfg and loads the described 3-D scene
 /// content into the vectors/pointers passed by reference.  Returns true on
@@ -39,6 +41,8 @@ public:
         std::vector<Light*>&        lights,
         std::vector<Terrain*>&      allTerrains,
         std::vector<GuiTexture*>&   guis,
+        std::vector<GUIText*>&      texts,
+        std::vector<WaterTile>&     waterTiles,
         Terrain*&                   primaryTerrain,
         Player*&                    player,
         PlayerCamera*&              playerCamera
@@ -121,6 +125,23 @@ private:
         std::string textureFile;
         float x = 0, y = 0;
         float w = 0, h = 0;
+    };
+
+    struct TextDef {
+        std::string fontName  = "arial";  ///< font name; maps to Resources/Tutorial/Fonts/<name>.ttf
+        int         fontSize  = 48;       ///< FreeType pixel size
+        float       x         = 0.0f;    ///< NDC x position (-1..+1)
+        float       y         = 0.0f;    ///< NDC y position (-1..+1)
+        float       maxWidth  = 1.0f;    ///< max line width as screen-width fraction
+        float       r         = 1.0f;    ///< red   (0..1)
+        float       g         = 1.0f;    ///< green (0..1)
+        float       b         = 1.0f;    ///< blue  (0..1)
+        bool        centered  = false;
+        std::string message;             ///< the text content (supports spaces via quoting)
+    };
+
+    struct WaterDef {
+        float x = 0, height = 0, z = 0;
     };
 
 private:

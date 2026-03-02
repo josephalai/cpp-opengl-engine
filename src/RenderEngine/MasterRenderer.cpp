@@ -26,6 +26,9 @@ MasterRenderer::MasterRenderer(PlayerCamera *cameraInput, Loader *loader) : shad
     sceneRenderer = new AssimpEntityRenderer(sceneShader);
     skyboxRenderer = new SkyboxRenderer(loader, this->projectionMatrix, &skyColor);
     bRenderer = new BoundingBoxRenderer(bShader, this->projectionMatrix);
+
+    // PBR shader — initialise lazily so OpenGL context is guaranteed
+    pbrShader = new PBRShader();
 }
 
 void MasterRenderer::cleanUp() {
@@ -33,6 +36,9 @@ void MasterRenderer::cleanUp() {
     terrainShader->cleanUp();
     sceneShader->cleanUp();
     bShader->cleanUp();
+    if (pbrShader)    pbrShader->cleanUp();
+    if (shadowShader) shadowShader->cleanUp();
+    if (waterRenderer) waterRenderer->cleanUp();
 }
 
 Color MasterRenderer::skyColor = const_cast<Color &>(ColorName::Skyblue);
@@ -59,6 +65,7 @@ void MasterRenderer::render(const std::vector<Light *>&suns) {
     shader->loadViewPosition(camera);
     shader->loadViewMatrix(camera->getViewMatrix());
     shader->loadProjectionMatrix(MasterRenderer::createProjectionMatrix());
+    shader->loadFogDensity(fogSettings.density);
     renderer->render(entities);
 
     entities->clear();
@@ -83,6 +90,7 @@ void MasterRenderer::render(const std::vector<Light *>&suns) {
     terrainShader->loadViewPosition(camera);
     terrainShader->loadViewMatrix(camera->getViewMatrix());
     terrainShader->loadProjectionMatrix(MasterRenderer::createProjectionMatrix());
+    terrainShader->loadFogDensity(fogSettings.density);
     terrainRenderer->render(terrains);
 
     terrains->clear();
@@ -196,4 +204,54 @@ void MasterRenderer::prepareBoundingBoxRender() {
     // render
     // ------
     OpenGLUtils::clearFrameBuffer(Color(1.0f));
+}
+
+// ---------------------------------------------------------------------------
+// Shadow mapping
+// ---------------------------------------------------------------------------
+
+void MasterRenderer::enableShadowMapping(int mapSize) {
+    delete shadowMap;
+    delete shadowShader;
+    shadowMap    = new ShadowMap(mapSize);
+    shadowShader = new ShadowShader();
+}
+
+void MasterRenderer::renderShadowPass(const std::vector<Entity*>& allEntities,
+                                       const std::vector<Light*>&  lights) {
+    if (!shadowMap || !shadowShader) return;
+
+    // Use the first directional light for the shadow map
+    glm::vec3 lightDir(0.0f, -1.0f, 0.0f);
+    for (auto* l : lights) {
+        if (l->getLighting().constant < 0.0f) {
+            lightDir = glm::normalize(l->getPosition());
+            break;
+        }
+    }
+
+    glm::vec3 viewCenter = camera->Position;
+    glm::mat4 lsm = shadowMap->computeLightSpaceMatrix(lightDir, viewCenter, 300.0f);
+    shadowMap->renderShadowMap(allEntities, lsm, shadowShader);
+    shadowMap->unbind(DisplayManager::Width(), DisplayManager::Height());
+}
+
+// ---------------------------------------------------------------------------
+// Water
+// ---------------------------------------------------------------------------
+
+void MasterRenderer::renderWater(Camera* cam, Light* sun) {
+    if (!waterRenderer || waterTiles.empty()) return;
+    waterRenderer->render(waterTiles, cam, createProjectionMatrix(), sun);
+}
+
+// ---------------------------------------------------------------------------
+// Scene Graph
+// ---------------------------------------------------------------------------
+
+void MasterRenderer::renderSceneGraph(SceneGraph& graph, std::vector<AssimpEntity*> aEntities,
+                                       std::vector<Terrain*> terrains, std::vector<Light*> lights) {
+    graph.update();
+    std::vector<Entity*> sgEntities = graph.collectEntities();
+    renderScene(sgEntities, aEntities, terrains, lights);
 }
