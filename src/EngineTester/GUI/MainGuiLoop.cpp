@@ -56,7 +56,7 @@ void MainGuiLoop::main() {
 
     std::vector<std::thread> vThreads;
 
-    std::vector<const std::string> modelFiles = {"Stall"};
+    std::vector<std::string> modelFiles = {"Stall"};
     std::vector<ModelData *> modelDatas = {&stallData};
     std::vector<BoundingBoxData *> bbDatas = {&stallBbData};
 

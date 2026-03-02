@@ -95,7 +95,7 @@ void Engine::initGui() {
                                        glm::vec2(0.290f, 0.0900f) / 3.0f);
     guis.push_back(sampleModifiedGui);
 
-    glm::vec3 color  = glm::vec3(ColorName::Cyan.getR(),  ColorName::Cyan.getG(),  ColorName::Cyan.getB());
+    Color     color   = ColorName::Cyan;
     glm::vec2 position  = glm::vec2(-0.75f, 0.67f);
     glm::vec2 size      = glm::vec2(0.290f, 0.0900f);
     glm::vec2 scale     = glm::vec2(0.25f,  0.33f);
@@ -103,11 +103,11 @@ void Engine::initGui() {
 
     auto guiRect  = new GuiRect(color, position, size, scale, alpha);
     glm::vec2 position2 = glm::vec2(-0.55f, 0.37f);
-    glm::vec3 color2    = glm::vec3(ColorName::Green.getR(), ColorName::Green.getG(), ColorName::Green.getB());
+    Color     color2    = ColorName::Green;
     auto guiRect2 = new GuiRect(color2, position2, size, scale, alpha);
     rects.push_back(guiRect);
 
-    sampleModifiedGui->addChild(sampleModifiedGui, new UiConstraints(0, 0, 200, 200));
+    sampleModifiedGui->addChild(sampleModifiedGui, new UiConstraints(0.0f, 0.0f, 200, 200));
 
     masterContainer = UiMaster::getMasterComponent();
     auto parent     = new GuiComponent(Container::CONTAINER, new UiConstraints(0.01f, -0.01f, 50, 50));
