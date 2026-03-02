@@ -20,6 +20,7 @@
 
 #include "SceneLoader.h"
 #include "../Util/FileSystem.h"
+#include "../RenderEngine/DisplayManager.h"
 #include "../Util/LightUtil.h"
 #include "../Textures/TerrainTexture.h"
 #include "../Interaction/InteractiveModel.h"
@@ -650,16 +651,16 @@ bool SceneLoader::load(
             }
             FontType* ft = it->second;
 
-            // maxWidth is stored as a fraction of screen width; convert to pixels
-            // so that GUIText::getMaxLineSize() matches FontRenderer expectations.
+            // Font is loaded at td.fontSize pixels, so scale=1.0 renders at native size.
+            // maxWidth is a screen-width fraction; convert to pixels for Line comparison.
             auto* guiText = new GUIText(
                 td.message,
-                static_cast<float>(td.fontSize),
+                1.0f,
                 sharedFontModel,
                 ft,
                 glm::vec2(td.x, td.y),
                 Color(td.r, td.g, td.b),
-                td.maxWidth,
+                td.maxWidth * static_cast<float>(DisplayManager::Width()),
                 td.centered);
             texts.push_back(guiText);
         }
