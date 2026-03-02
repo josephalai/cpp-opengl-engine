@@ -13,6 +13,9 @@
 #include "../Entities/PlayerCamera.h"
 #include "../RenderEngine/FrameBuffers.h"
 #include "../Toolbox/TerrainPicker.h"
+#include "../Water/WaterRenderer.h"
+#include "../Water/WaterShader.h"
+#include "../Water/WaterTile.h"
 #include "../Interaction/InteractiveModel.h"
 #include "../Guis/Text/FontMeshCreator/TextMeshData.h"
 
@@ -61,11 +64,15 @@ private:
     FontRenderer* fontRenderer = nullptr;
     FrameBuffers* reflectFbo = nullptr;
     TerrainPicker* picker = nullptr;
+    WaterRenderer* waterRenderer = nullptr;
+    WaterShader* waterShader = nullptr;
 
     // --- Scene data ---
     Player* player = nullptr;
     PlayerCamera* playerCamera = nullptr;
     Terrain* primaryTerrain = nullptr;
+
+    std::vector<WaterTile> waterTiles;
 
     std::vector<Terrain*> allTerrains;
     std::vector<Light*> lights;

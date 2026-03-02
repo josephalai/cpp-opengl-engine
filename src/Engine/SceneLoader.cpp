@@ -108,6 +108,7 @@ bool SceneLoader::load(
     std::vector<Light*>&        lights,
     std::vector<Terrain*>&      allTerrains,
     std::vector<GuiTexture*>&   guis,
+    std::vector<WaterTile>&     waterTiles,
     Terrain*&                   primaryTerrain,
     Player*&                    player,
     PlayerCamera*&              playerCamera)
@@ -132,6 +133,7 @@ bool SceneLoader::load(
     PlayerDef                  playerDef;
     bool                       hasPlayer = false;
     std::vector<GuiDef>        guiDefs;
+    std::vector<WaterDef>      waterDefs;
 
     std::string line;
     int lineNo = 0;
@@ -326,6 +328,17 @@ bool SceneLoader::load(
                 gd.w = std::stof(tokens[4]);
                 gd.h = std::stof(tokens[5]);
                 guiDefs.push_back(gd);
+            }
+        }
+        // ----------------------------------------------------------------
+        // water <x> <height> <z>
+        else if (cmd == "water") {
+            if (tokens.size() >= 4) {
+                WaterDef wd;
+                wd.x      = std::stof(tokens[1]);
+                wd.height = std::stof(tokens[2]);
+                wd.z      = std::stof(tokens[3]);
+                waterDefs.push_back(wd);
             }
         }
         else if (cmd != "#") {
@@ -544,12 +557,20 @@ bool SceneLoader::load(
                                       glm::vec2(gd.w, gd.h)));
     }
 
+    // -----------------------------------------------------------------------
+    // Pass 10: water tiles
+    // -----------------------------------------------------------------------
+    for (auto& wd : waterDefs) {
+        waterTiles.emplace_back(wd.x, wd.height, wd.z);
+    }
+
     std::cout << "[SceneLoader] Scene loaded: "
-              << entities.size()  << " entities, "
-              << scenes.size()    << " assimp scenes, "
-              << lights.size()    << " lights, "
+              << entities.size()   << " entities, "
+              << scenes.size()     << " assimp scenes, "
+              << lights.size()     << " lights, "
               << allTerrains.size()<< " terrain tiles, "
-              << guis.size()      << " GUI textures." << std::endl;
+              << guis.size()       << " GUI textures, "
+              << waterTiles.size() << " water tiles." << std::endl;
 
     return true;
 }

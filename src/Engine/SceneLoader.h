@@ -24,6 +24,7 @@
 #include "../Models/TexturedModel.h"
 #include "../RenderEngine/ObjLoader.h"
 #include "../BoundingBox/BoundingBoxIndex.h"
+#include "../Water/WaterTile.h"
 
 /// Reads src/Resources/Tutorial/scene.cfg and loads the described 3-D scene
 /// content into the vectors/pointers passed by reference.  Returns true on
@@ -39,6 +40,7 @@ public:
         std::vector<Light*>&        lights,
         std::vector<Terrain*>&      allTerrains,
         std::vector<GuiTexture*>&   guis,
+        std::vector<WaterTile>&     waterTiles,
         Terrain*&                   primaryTerrain,
         Player*&                    player,
         PlayerCamera*&              playerCamera
@@ -121,6 +123,10 @@ private:
         std::string textureFile;
         float x = 0, y = 0;
         float w = 0, h = 0;
+    };
+
+    struct WaterDef {
+        float x = 0, height = 0, z = 0;
     };
 
 private:
