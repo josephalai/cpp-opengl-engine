@@ -5,8 +5,8 @@
 #ifndef ENGINE_RECTRENDERER_H
 #define ENGINE_RECTRENDERER_H
 
-#include "../../RenderEngine/Loader.h"
-#include "GuiRect.h"
+#include "../../../RenderEngine/Loader.h"
+#include "../GuiRect.h"
 #include "RectShader.h"
 
 class RectRenderer {

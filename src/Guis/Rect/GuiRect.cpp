@@ -4,34 +4,26 @@
 
 #include "GuiRect.h"
 
-
 /**
  * @brief GuiTexture stores the textureId, fontSize, and the vertex of the GUI
  * @param textureId
  * @param position
  * @param scale
  */
-GuiRect::GuiRect(glm::vec3 &color, glm::vec2 &position, glm::vec2 &size, glm::vec2 &scale, float alpha) :
+GuiRect::GuiRect(Color color, glm::vec2 &position, glm::vec2 &size, glm::vec2 &scale, float alpha) :
         color(color), position(position), scale(scale), size(size), alpha(alpha), GuiComponent(COLORED_BOX) {}
 
-glm::vec2 &GuiRect::getPosition() {
-    return position;
-}
 
 const glm::vec2 &GuiRect::getScale() {
     return scale;
 }
 
-const glm::vec3 &GuiRect::getColor() const {
-    return color;
+const glm::vec3 GuiRect::getColor() const {
+    return glm::vec3(color.getR(), color.getG(), color.getB());
 }
 
-void GuiRect::setColor(const glm::vec3 &color) {
+void GuiRect::setColor(Color color) {
     GuiRect::color = color;
-}
-
-void GuiRect::setPosition(const glm::vec2 &position) {
-    GuiRect::position = position;
 }
 
 const glm::vec2 &GuiRect::getSize() const {

@@ -3,8 +3,8 @@
 //
 
 #include "RectRenderer.h"
-#include "../../Toolbox/Maths.h"
-#include "../../OpenGLWrapper/OpenGLUtils.h"
+#include "../../../Toolbox/Maths.h"
+#include "../../../OpenGLWrapper/OpenGLUtils.h"
 
 /**
  * @brief RectRenderer loads the vertex of a square (2d) into a Vao (RawModel).
@@ -58,7 +58,8 @@ void RectRenderer::cleanUp() {
  * @param gui
  */
 void RectRenderer::prepareInstance(GuiRect *gui) {
-    glm::mat4 matrix = Maths::createTransformationMatrix(gui->getConstraints()->getAdjustedPosition(), gui->getScale());
+    glm::mat4 matrix = Maths::createTransformationMatrix(gui->getConstraints()->getCalculatedRelativePosition(), gui->getScale());
+    std::cout << gui->getName() << " has transformation of " << gui->getConstraints()->getCalculatedRelativePosition().x << ", " << gui->getConstraints()->getCalculatedRelativePosition().y << std::endl;
     shader->loadTransformationMatrix(matrix);
     shader->loadColor(gui->getColor());
     shader->loadAlpha(gui->getAlpha());

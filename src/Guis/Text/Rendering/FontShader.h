@@ -14,8 +14,8 @@
 class FontShader : public ShaderProgram {
 private:
 
-    constexpr static const char *VertexPath = "/src/Guis/Text/FontRendering/Shaders/VertexShader.glsl";
-    constexpr static const char *FragmentPath = "/src/Guis/Text/FontRendering/Shaders/FragmentShader.glsl";
+    constexpr static const char *VertexPath = "/src/Guis/Text/Rendering/Shaders/VertexShader.glsl";
+    constexpr static const char *FragmentPath = "/src/Guis/Text/Rendering/Shaders/FragmentShader.glsl";
     // attribute names
     const std::string vertex = "vertex";
 

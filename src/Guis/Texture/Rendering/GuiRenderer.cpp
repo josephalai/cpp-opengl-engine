@@ -3,8 +3,8 @@
 //
 
 #include "GuiRenderer.h"
-#include "../../Toolbox/Maths.h"
-#include "../../OpenGLWrapper/OpenGLUtils.h"
+#include "../../../Toolbox/Maths.h"
+#include "../../../OpenGLWrapper/OpenGLUtils.h"
 
 /**
  * @brief GuiRenderer loads the vertex of a square (2d) into a Vao (RawModel).
@@ -60,7 +60,7 @@ void GuiRenderer::cleanUp() {
  * @param gui
  */
 void GuiRenderer::prepareInstance(GuiTexture *gui) {
-    glm::mat4 matrix = Maths::createTransformationMatrix(gui->getConstraints()->getAdjustedPosition(), gui->getScale());
+    glm::mat4 matrix = Maths::createTransformationMatrix(gui->getConstraints()->getCalculatedRelativePosition(), gui->getScale());
     shader->loadTransformationMatrix(matrix);
 }
 

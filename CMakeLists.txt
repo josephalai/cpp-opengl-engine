@@ -17,12 +17,9 @@ target_include_directories(engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 # --- Dependencies ---
 
-# OpenGL (conditional for laptop vs desktop)
-if (EXISTS ${CMAKE_SOURCE_DIR}/deps/glrequired)
-    message(STATUS "Requiring OpenGL")
-    find_package(OpenGL REQUIRED)
-    target_link_libraries(engine PRIVATE OpenGL::GL)
-endif()
+# OpenGL — always required for this engine
+find_package(OpenGL REQUIRED)
+target_link_libraries(engine PRIVATE OpenGL::GL)
 
 # GLFW
 add_subdirectory(deps/glfw)

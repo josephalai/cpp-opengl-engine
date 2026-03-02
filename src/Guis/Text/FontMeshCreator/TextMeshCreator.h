@@ -10,7 +10,7 @@
 #include "Line.h"
 #include "Character.h"
 #include "Word.h"
-#include "GUIText.h"
+#include "../GUIText.h"
 
 class TextMeshCreator {
 protected:

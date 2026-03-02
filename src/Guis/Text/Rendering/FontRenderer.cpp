@@ -7,6 +7,7 @@
 #include "../../../OpenGLWrapper/OpenGLUtils.h"
 #include "../../../Toolbox/Maths.h"
 #include "../../../Util/CommonHeader.h"
+#include "../../Constraints/Tools.h"
 
 FontRenderer::FontRenderer() {
     shader = new FontShader();
@@ -49,7 +50,7 @@ void FontRenderer::render(std::map<FontType *, std::vector<GUIText *>> *texts) {
 void FontRenderer::renderTextMesh(GUIText *text) {
     auto meshData = TextMeshCreator::createTextMesh(text);
 
-    // if we want to hardcode the x and y positions, set x = text.getPosition.x, etc.
+    // if we want to hardcode the x and y positions, set x = text.getConstraintPosition.x, etc.
     float x = 0;
     float y = 0;
 
@@ -117,7 +118,11 @@ void FontRenderer::prepare() {
  * @param text
  */
 void FontRenderer::prepareText(GUIText *text) {
-    glm::mat4 matrix = Maths::createTransformationMatrix(text->getConstraints()->getAdjustedPosition(), glm::vec2(1.0f));
+    glm::vec2 v = text->getConstraints()->getCalculatedRelativePosition();
+    v.x = ((v.x + 1) / 2) * static_cast<float>(DisplayManager::Width());
+    v.y = ((v.y + 1) / 2) * static_cast<float>(DisplayManager::Height());
+    glm::mat4 matrix = Maths::createTransformationMatrix(v, glm::vec2(1.0f));
+
     shader->loadTransformationMatrix(matrix);
 }
 

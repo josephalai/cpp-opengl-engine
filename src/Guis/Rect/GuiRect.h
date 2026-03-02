@@ -7,12 +7,13 @@
 
 #include "glm/glm.hpp"
 #include "../GuiComponent.h"
+#include "../../Toolbox/Color.h"
 
 
 class GuiRect : public GuiComponent {
 private:
 
-    glm::vec3 color;
+    Color color;
 
     glm::vec2 position;
 
@@ -25,17 +26,13 @@ private:
      */
     glm::vec2 scale;
 public:
-    explicit GuiRect(glm::vec3 &color, glm::vec2 &position, glm::vec2 &size, glm::vec2 &scale, float alpha);
-
-    glm::vec2 &getPosition();
+    explicit GuiRect(Color color, glm::vec2 &position, glm::vec2 &size, glm::vec2 &scale, float alpha);
 
     const glm::vec2 &getScale();
 
-    const glm::vec3 &getColor() const;
+    const glm::vec3 getColor() const;
 
-    void setColor(const glm::vec3 &color);
-
-    void setPosition(const glm::vec2 &position);
+    void setColor(Color color);
 
     const glm::vec2 &getSize() const;
 
