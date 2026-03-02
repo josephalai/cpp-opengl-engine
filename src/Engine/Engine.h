@@ -4,10 +4,10 @@
 #include <vector>
 #include <memory>
 #include "../RenderEngine/MasterRenderer.h"
-#include "../Guis/Texture/GuiRenderer.h"
-#include "../Guis/Rect/RectRenderer.h"
-#include "../Guis/Text/FontRendering/FontRenderer.h"
-#include "../Guis/Text/FontRendering/TextMaster.h"
+#include "../Guis/Texture/Rendering/GuiRenderer.h"
+#include "../Guis/Rect/Rendering/RectRenderer.h"
+#include "../Guis/Text/Rendering/FontRenderer.h"
+#include "../Guis/Text/Rendering/TextMaster.h"
 #include "../Guis/UiMaster.h"
 #include "../Entities/Player.h"
 #include "../Entities/PlayerCamera.h"

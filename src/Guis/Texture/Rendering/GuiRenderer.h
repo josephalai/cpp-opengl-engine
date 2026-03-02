@@ -5,8 +5,8 @@
 #ifndef ENGINE_GUIRENDERER_H
 #define ENGINE_GUIRENDERER_H
 
-#include "../../RenderEngine/Loader.h"
-#include "GuiTexture.h"
+#include "../../../RenderEngine/Loader.h"
+#include "../GuiTexture.h"
 #include "GuiShader.h"
 
 class GuiRenderer {

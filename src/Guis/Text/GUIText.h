@@ -7,15 +7,14 @@
 
 #include <iostream>
 #include "glm/glm.hpp"
-#include "TextMeshData.h"
-#include "FontModel.h"
-#include "../../../Toolbox/Color.h"
-#include "../../GuiComponent.h"
+#include "FontMeshCreator/TextMeshData.h"
+#include "FontMeshCreator/FontModel.h"
+#include "../../Toolbox/Color.h"
+#include "../GuiComponent.h"
 
 class GUIText : public GuiComponent {
 private:
 
-    glm::vec2 position;
 
     float lineMaxLength = 1.0f;
 
@@ -37,6 +36,7 @@ private:
 
     bool centerText = false;
 public:
+    glm::vec2 position;
 
     /**
      * Creates a new textString, loads the textString's quads into a VAO, and adds the textString
@@ -66,8 +66,6 @@ public:
     GUIText(const std::string &textString, float fontSize, FontModel *font, FontType *fontType, glm::vec2(position),
             Color color, float maxLineLength, bool centered);
 
-    glm::vec2 &getPosition();
-
     FontType *getFontType();
 
     FontModel *getFont();
@@ -95,6 +93,8 @@ public:
     void setNumberOfLines(int number);
 
     bool isCentered() const;
+
+    glm::vec2 &getPosition();
 
 //    void show() ;
 //

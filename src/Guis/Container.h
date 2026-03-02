@@ -6,7 +6,7 @@
 #define ENGINE_CONTAINER_H
 
 #include <vector>
-#include "UiConstraints.h"
+#include "Constraints/UiConstraints.h"
 
 class Container {
 public:
@@ -16,7 +16,7 @@ public:
         COLORED_BOX,
         CONTAINER
     };
-protected:
+public:
     Container *parent = nullptr;
     GuiType type;
     std::string name;
@@ -25,14 +25,14 @@ protected:
     std::vector<Container *> children;
     std::vector<Container *> childrenToAdd;
     std::vector<Container *> childrenToRemove;
-    UiConstraints *constraints = new UiConstraints();
+    UiConstraints *constraints;
 public:
 
 protected:
     bool sterile = false;
 
     int layer = -1;
-    bool hidden;
+    bool hidden = false;
 public:
     /**
      * @brief Initializes a basic container, which is similar to a linked list. Specifies what type of container it is,
@@ -41,10 +41,14 @@ public:
      * @param sterile
      */
     explicit Container(GuiType type, bool sterile, std::string name = "component") : type(type), sterile(sterile),
-                                                                                     name(name) {
+                                                                                     name(name), constraints(new UiConstraints()) {
         childrenToRemove = std::vector<Container *>();
         children = std::vector<Container *>();
         childrenToAdd = std::vector<Container *>();
+    }
+
+    explicit Container(int layer) {
+        this->layer = layer;
     }
     virtual ~Container() {}
     const std::string &getName() const {
@@ -112,7 +116,7 @@ public:
         }
         childrenToAdd.clear();
         std::cout << "added: " << children.size() << std::endl;
-        SortChildrenByLayer();
+//        SortChildrenByLayer(true);
     }
 
     /**
@@ -224,25 +228,25 @@ public:
         Container::layer = layer;
     }
 
-    /**
-     * @brief Comparatory "less than" function for sort.
-     *
-     * @param other
-     * @return
-     */
-    bool operator<(const Container &other) const {
-        return layer < other.layer;
+
+    static bool sortByName(Container *A, Container *B) //function to sort fruits by names
+    {
+        return (A->name < B->name);
     }
 
-    /**
-     * @brief Comparatory "greater than" function, for sort.
-     * @param other
-     *
-     * @return
-     */
-    bool operator>(const Container &other) const {
-        return layer > other.layer;
+    bool operator < (const Container &a) const{
+        return layer <a.layer;
     }
+
+//    /**
+//     * @brief Comparatory "greater than" function, for sort.
+//     * @param other
+//     *
+//     * @return
+//     */
+//    bool operator>(const Container &other) const {
+//        return layer > other.layer;
+//    }
 
     /**
      * @brief Sorts the children by layer.

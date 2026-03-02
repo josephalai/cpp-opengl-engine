@@ -8,16 +8,15 @@
 
 #include "GuiComponent.h"
 #include "../RenderEngine/DisplayManager.h"
-#include "Rect/RectRenderer.h"
-#include "Texture/GuiRenderer.h"
-#include "Text/FontRendering/FontRenderer.h"
+#include "Rect/Rendering/RectRenderer.h"
+#include "Texture/Rendering/GuiRenderer.h"
+#include "Text/Rendering/FontRenderer.h"
 #include <map>
 
 class UiMaster {
 private:
     static UiConstraints *masterConstraints;
     static GuiComponent *masterContainer;
-    static std::vector<Container *> renderOrder;
 
     // try to move everything GUI related into this renderer
     static Loader *loader;
@@ -48,13 +47,15 @@ public:
     /**
      * @brief applies the constraints to the children. This is to keep the UI as groups.
      *
-     * @param component must be the master PARENT component.
+     * @param parentComponent must be the master PARENT parentComponent.
      */
-    static void applyConstraints(GuiComponent *component);
+    static void applyConstraints(GuiComponent *parentComponent);
 
     static void applyConstraints();
 
     static void createRenderQueue(GuiComponent *component);
+
+    static void createRenderQueue();
 
     /**
      * @brief Gets the constraints of the master UiComponent (the container of all UI components).
@@ -76,6 +77,12 @@ public:
     static void render();
 
     static void cleanUp();
+
+    static void printComponentPosition(Container *childComponent);
+
+    static void  printComponentInformation(GuiComponent *parentComponent);
+
+    static std::vector<Container *> renderOrder;
 };
 
 

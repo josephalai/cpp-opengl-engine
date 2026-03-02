@@ -6,12 +6,11 @@
 #define ENGINE_UICONTAINER_H
 
 #include <vector>
-#include "UiConstraints.h"
+#include "Constraints/UiConstraints.h"
 #include "Container.h"
 
 class UiContainer : public Container {
 protected:
-    UiConstraints *constraints;
     UiContainer *parent = nullptr;
 
     bool visible = true;
@@ -38,9 +37,6 @@ public:
     virtual bool isClicked() = 0;
 
     virtual bool isMouseOver() = 0;
-
-    // triggerable
-
 };
 
 #endif //ENGINE_UICONTAINER_H

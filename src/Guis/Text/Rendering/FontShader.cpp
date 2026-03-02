@@ -15,6 +15,10 @@ void FontShader::bindAttributes() {
     this->bindAttribute(0, vertex);
 }
 
+void FontShader::loadTransformationMatrix(glm::mat4 matrix) {
+    this->setMat4(location_transformationMatrix, matrix);
+}
+
 void FontShader::loadProjectionMatrix(glm::mat4 matrix) {
     this->setMat4(location_projectionMatrix, matrix);
 }
@@ -27,8 +31,4 @@ void FontShader::getAllUniformLocations() {
     location_textColor = getUniformLocation(textColor);
     location_projectionMatrix = getUniformLocation(projectionMatrix);
     location_transformationMatrix = getUniformLocation(transformationMatrix);
-}
-
-void FontShader::loadTransformationMatrix(glm::mat4 matrix) {
-    this->setMat4(location_transformationMatrix, matrix);
 }
