@@ -73,7 +73,7 @@ void Engine::loadScene() {
     const std::string configPath = FileSystem::Scene("scene.cfg");
     SceneLoader::load(configPath, loader,
                       entities, scenes, lights,
-                      allTerrains, guis, waterTiles,
+                      allTerrains, guis, texts, waterTiles,
                       primaryTerrain, player, playerCamera);
 }
 
