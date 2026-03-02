@@ -1,0 +1,555 @@
+//
+// SceneLoader.cpp — parses scene.cfg and loads the described scene objects.
+//
+// Config format (see src/Resources/Tutorial/scene.cfg for a fully-commented
+// example):
+//
+//   # comment
+//   terrain <heightmapFile> <blendmapFile>
+//   terrain_tile <gridX> <gridZ> [primary]
+//   light directional <x> <y> <z> <r> <g> <b>
+//   light point <x> [terrain[+offset]|<y>] <z> <r> <g> <b> [dist=<N>]
+//   model <alias> <objFile> <textureFile> [atlas=N] [transparent] [fakeLighting]
+//         [shininess=F] [reflectivity=F]
+//   entity <alias> <x> [terrain[+offset]|<y>] <z> [rx ry rz] [scale=F]
+//   random <alias> <count> [scaleMin=F] [scaleMax=F] [atlas]
+//   player <alias> <x> <y> <z> [rx ry rz] [scale=F]
+//   assimp <path> [random[+offset]|<x> <y> <z>] [scaleMin=F scaleMax=F]
+//   gui <textureFile> <x> <y> <w> <h>
+//
+
+#include "SceneLoader.h"
+#include "../Util/FileSystem.h"
+#include "../Util/LightUtil.h"
+#include "../Textures/TerrainTexture.h"
+#include "../Interaction/InteractiveModel.h"
+
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <thread>
+#include <algorithm>
+#include <cstdlib>
+#include <cmath>
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+std::vector<std::string> SceneLoader::tokenize(const std::string& line) {
+    std::vector<std::string> tokens;
+    std::istringstream iss(line);
+    std::string tok;
+    while (iss >> tok) {
+        if (!tok.empty() && tok[0] == '#') break;   // rest is comment
+        tokens.push_back(tok);
+    }
+    return tokens;
+}
+
+float SceneLoader::randomFloat() {
+    return static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+}
+
+float SceneLoader::randomScale(float mn, float mx) {
+    float multiplier = (mx > 1.0f) ? std::ceil(mx) : 1.0f;
+    float r = randomFloat() * multiplier;
+    if (r < mn) r = mn;
+    if (r > mx) r = mx;
+    return r;
+}
+
+glm::vec3 SceneLoader::randomPosition(Terrain* terrain, float yOffset) {
+    glm::vec3 p;
+    p.x = std::floor(randomFloat() * 1500.f - 800.f);
+    p.z = std::floor(randomFloat() * -800.f);
+    p.y = terrain->getHeightOfTerrain(p.x, p.z) + yOffset;
+    return p;
+}
+
+glm::vec3 SceneLoader::randomRotation() {
+    float ry = (randomFloat() * 100.f - 50.f) * 180.0f;
+    return glm::vec3(0.0f, ry, 0.0f);
+}
+
+// ---------------------------------------------------------------------------
+// Parse a "y token": either a plain float, or "terrain" / "terrain+N"
+// Returns kSnapY sentinel + stores offset when terrain-relative.
+// ---------------------------------------------------------------------------
+static float parseY(const std::string& tok, float& yOffset) {
+    yOffset = 0.0f;
+    if (tok.rfind("terrain", 0) == 0) {
+        // terrain  OR  terrain+3.5  OR  terrain-1.0
+        std::string rest = tok.substr(7);
+        if (!rest.empty()) {
+            yOffset = std::stof(rest);  // handles "+N" and "-N"
+        }
+        return SceneLoader::kSnapY;
+    }
+    return std::stof(tok);
+}
+
+// Parse an "option=value" token.  Returns the value string or "".
+static std::string optVal(const std::string& tok, const std::string& key) {
+    if (tok.rfind(key + "=", 0) == 0)
+        return tok.substr(key.size() + 1);
+    return {};
+}
+
+// ---------------------------------------------------------------------------
+// SceneLoader::load
+// ---------------------------------------------------------------------------
+
+bool SceneLoader::load(
+    const std::string&          configPath,
+    Loader*                     loader,
+    std::vector<Entity*>&       entities,
+    std::vector<AssimpEntity*>& scenes,
+    std::vector<Light*>&        lights,
+    std::vector<Terrain*>&      allTerrains,
+    std::vector<GuiTexture*>&   guis,
+    Terrain*&                   primaryTerrain,
+    Player*&                    player,
+    PlayerCamera*&              playerCamera)
+{
+    std::ifstream file(configPath);
+    if (!file.is_open()) {
+        std::cerr << "[SceneLoader] Cannot open: " << configPath << std::endl;
+        return false;
+    }
+    std::cout << "[SceneLoader] Loading scene from: " << configPath << std::endl;
+
+    // -----------------------------------------------------------------------
+    // Pass 1: parse the whole file into definition structs
+    // -----------------------------------------------------------------------
+    TerrainDef                 terrainDef;
+    std::vector<TerrainTileDef> tileDefs;
+    std::vector<ModelDef>      modelDefs;
+    std::vector<AssimpDef>     assimpDefs;
+    std::vector<LightDef>      lightDefs;
+    std::vector<EntityDef>     entityDefs;
+    std::vector<RandomDef>     randomDefs;
+    PlayerDef                  playerDef;
+    bool                       hasPlayer = false;
+    std::vector<GuiDef>        guiDefs;
+
+    std::string line;
+    int lineNo = 0;
+    while (std::getline(file, line)) {
+        ++lineNo;
+        // strip inline comments and tokenize
+        auto tokens = tokenize(line);
+        if (tokens.empty()) continue;
+
+        const std::string& cmd = tokens[0];
+
+        // ----------------------------------------------------------------
+        // terrain <heightmapFile> <blendmapFile>
+        if (cmd == "terrain") {
+            if (tokens.size() >= 3) {
+                terrainDef.heightmapFile = tokens[1];
+                terrainDef.blendmapFile  = tokens[2];
+            }
+        }
+        // ----------------------------------------------------------------
+        // terrain_tile <gridX> <gridZ> [primary]
+        else if (cmd == "terrain_tile") {
+            if (tokens.size() >= 3) {
+                TerrainTileDef t;
+                t.gridX   = std::stoi(tokens[1]);
+                t.gridZ   = std::stoi(tokens[2]);
+                t.primary = (tokens.size() >= 4 && tokens[3] == "primary");
+                tileDefs.push_back(t);
+            }
+        }
+        // ----------------------------------------------------------------
+        // light directional <x> <y> <z> <r> <g> <b>
+        // light point       <x> <y|terrain[+N]> <z> <r> <g> <b> [dist=N]
+        else if (cmd == "light") {
+            if (tokens.size() >= 8) {
+                LightDef ld;
+                ld.directional = (tokens[1] == "directional");
+                ld.x = std::stof(tokens[2]);
+                float yo = 0.0f;
+                ld.y = parseY(tokens[3], yo);
+                if (ld.y == kSnapY) { ld.snapY = true; ld.yOffset = yo; }
+                ld.z = std::stof(tokens[4]);
+                ld.r = std::stof(tokens[5]);
+                ld.g = std::stof(tokens[6]);
+                ld.b = std::stof(tokens[7]);
+                for (size_t i = 8; i < tokens.size(); ++i) {
+                    auto v = optVal(tokens[i], "dist");
+                    if (!v.empty()) ld.attenDist = std::stof(v);
+                }
+                lightDefs.push_back(ld);
+            }
+        }
+        // ----------------------------------------------------------------
+        // model <alias> <objFile> <textureFile> [options…]
+        else if (cmd == "model") {
+            if (tokens.size() >= 4) {
+                ModelDef md;
+                md.alias       = tokens[1];
+                md.objFile     = tokens[2];
+                md.textureFile = tokens[3];
+                for (size_t i = 4; i < tokens.size(); ++i) {
+                    if (tokens[i] == "transparent")   { md.transparent  = true; continue; }
+                    if (tokens[i] == "fakeLighting")  { md.fakeLighting = true; continue; }
+                    auto v = optVal(tokens[i], "atlas");
+                    if (!v.empty()) { md.atlasRows    = std::stoi(v); continue; }
+                    v = optVal(tokens[i], "shininess");
+                    if (!v.empty()) { md.shininess    = std::stof(v); continue; }
+                    v = optVal(tokens[i], "reflectivity");
+                    if (!v.empty()) { md.reflectivity = std::stof(v); continue; }
+                }
+                modelDefs.push_back(md);
+            }
+        }
+        // ----------------------------------------------------------------
+        // assimp <path> [random[+offset]|<x> <y> <z>] [scaleMin=F scaleMax=F]
+        else if (cmd == "assimp") {
+            if (tokens.size() >= 2) {
+                AssimpDef ad;
+                ad.path = tokens[1];
+                if (tokens.size() >= 3 && tokens[2].rfind("random", 0) == 0) {
+                    ad.randomPos = true;
+                    std::string rest = tokens[2].substr(6);  // after "random"
+                    if (!rest.empty()) ad.yOffset = std::stof(rest);
+                    for (size_t i = 3; i < tokens.size(); ++i) {
+                        auto v = optVal(tokens[i], "scaleMin");
+                        if (!v.empty()) { ad.scaleMin = std::stof(v); continue; }
+                        v = optVal(tokens[i], "scaleMax");
+                        if (!v.empty()) { ad.scaleMax = std::stof(v); continue; }
+                        // bare positional scaleMin scaleMax pair
+                        if (i + 1 < tokens.size() && v.empty()) {
+                            try {
+                                ad.scaleMin = std::stof(tokens[i]);
+                                ad.scaleMax = std::stof(tokens[i + 1]);
+                                ++i;
+                            } catch (...) {}
+                        }
+                    }
+                } else if (tokens.size() >= 5) {
+                    ad.x = std::stof(tokens[2]);
+                    ad.y = std::stof(tokens[3]);
+                    ad.z = std::stof(tokens[4]);
+                }
+                assimpDefs.push_back(ad);
+            }
+        }
+        // ----------------------------------------------------------------
+        // entity <alias> <x> <y|terrain[+N]> <z> [rx ry rz] [scale=F]
+        else if (cmd == "entity") {
+            if (tokens.size() >= 5) {
+                EntityDef ed;
+                ed.alias = tokens[1];
+                ed.x     = std::stof(tokens[2]);
+                float yo = 0.0f;
+                ed.y     = parseY(tokens[3], yo);
+                if (ed.y == kSnapY) { ed.snapY = true; }
+                ed.z     = std::stof(tokens[4]);
+                size_t i = 5;
+                // optional rx ry rz (three bare floats)
+                if (i + 2 < tokens.size()) {
+                    try {
+                        ed.rx = std::stof(tokens[i]);
+                        ed.ry = std::stof(tokens[i + 1]);
+                        ed.rz = std::stof(tokens[i + 2]);
+                        i += 3;
+                    } catch (...) {}
+                }
+                for (; i < tokens.size(); ++i) {
+                    auto v = optVal(tokens[i], "scale");
+                    if (!v.empty()) ed.scale = std::stof(v);
+                }
+                entityDefs.push_back(ed);
+            }
+        }
+        // ----------------------------------------------------------------
+        // random <alias> <count> [scaleMin=F] [scaleMax=F] [atlas]
+        else if (cmd == "random") {
+            if (tokens.size() >= 3) {
+                RandomDef rd;
+                rd.alias = tokens[1];
+                rd.count = std::stoi(tokens[2]);
+                // bare scaleMin scaleMax pair
+                size_t i = 3;
+                if (i + 1 < tokens.size()) {
+                    try {
+                        rd.scaleMin = std::stof(tokens[i]);
+                        rd.scaleMax = std::stof(tokens[i + 1]);
+                        i += 2;
+                    } catch (...) {}
+                }
+                for (; i < tokens.size(); ++i) {
+                    auto v = optVal(tokens[i], "scaleMin");
+                    if (!v.empty()) { rd.scaleMin = std::stof(v); continue; }
+                    v = optVal(tokens[i], "scaleMax");
+                    if (!v.empty()) { rd.scaleMax = std::stof(v); continue; }
+                    if (tokens[i] == "atlas") rd.useAtlas = true;
+                }
+                randomDefs.push_back(rd);
+            }
+        }
+        // ----------------------------------------------------------------
+        // player <alias> <x> <y> <z> [rx ry rz] [scale=F]
+        else if (cmd == "player") {
+            if (tokens.size() >= 5) {
+                playerDef.alias = tokens[1];
+                playerDef.x     = std::stof(tokens[2]);
+                playerDef.y     = std::stof(tokens[3]);
+                playerDef.z     = std::stof(tokens[4]);
+                size_t i = 5;
+                if (i + 2 < tokens.size()) {
+                    try {
+                        playerDef.rx = std::stof(tokens[i]);
+                        playerDef.ry = std::stof(tokens[i + 1]);
+                        playerDef.rz = std::stof(tokens[i + 2]);
+                        i += 3;
+                    } catch (...) {}
+                }
+                for (; i < tokens.size(); ++i) {
+                    auto v = optVal(tokens[i], "scale");
+                    if (!v.empty()) playerDef.scale = std::stof(v);
+                }
+                hasPlayer = true;
+            }
+        }
+        // ----------------------------------------------------------------
+        // gui <textureFile> <x> <y> <w> <h>
+        else if (cmd == "gui") {
+            if (tokens.size() >= 6) {
+                GuiDef gd;
+                gd.textureFile = tokens[1];
+                gd.x = std::stof(tokens[2]);
+                gd.y = std::stof(tokens[3]);
+                gd.w = std::stof(tokens[4]);
+                gd.h = std::stof(tokens[5]);
+                guiDefs.push_back(gd);
+            }
+        }
+        else if (cmd != "#") {
+            std::cerr << "[SceneLoader] Unknown command '" << cmd
+                      << "' at line " << lineNo << std::endl;
+        }
+    }
+    file.close();
+
+    // -----------------------------------------------------------------------
+    // Pass 2: load terrain
+    // -----------------------------------------------------------------------
+
+    auto backgroundTex = new TerrainTexture(loader->loadTexture("MultiTextureTerrain/grass")->getId());
+    auto rTex          = new TerrainTexture(loader->loadTexture("MultiTextureTerrain/dirt")->getId());
+    auto gTex          = new TerrainTexture(loader->loadTexture("MultiTextureTerrain/blueflowers")->getId());
+    auto bTex          = new TerrainTexture(loader->loadTexture("MultiTextureTerrain/brickroad")->getId());
+    auto texturePack   = new TerrainTexturePack(backgroundTex, rTex, gTex, bTex);
+    auto blendMap      = new TerrainTexture(
+        loader->loadTexture("MultiTextureTerrain/" + terrainDef.blendmapFile)->getId());
+
+    // If the config did not specify any tiles, provide the default four tiles
+    if (tileDefs.empty()) {
+        tileDefs = {
+            { 0, -1, true },
+            {-1, -1, false },
+            { 0,  0, false },
+            {-1,  0, false },
+        };
+    }
+    // Ensure exactly one primary tile (first tile if none marked)
+    bool hasPrimary = false;
+    for (auto& t : tileDefs) if (t.primary) { hasPrimary = true; break; }
+    if (!hasPrimary) tileDefs[0].primary = true;
+
+    for (auto& td : tileDefs) {
+        auto t = new Terrain(td.gridX, td.gridZ, loader, texturePack, blendMap,
+                             terrainDef.heightmapFile);
+        allTerrains.push_back(t);
+        if (td.primary) primaryTerrain = t;
+    }
+
+    // -----------------------------------------------------------------------
+    // Pass 3: load models concurrently
+    // -----------------------------------------------------------------------
+
+    // model alias → (TexturedModel*, RawBoundingBox*)
+    struct LoadedModel {
+        TexturedModel*   model = nullptr;
+        RawBoundingBox*  bbox  = nullptr;
+    };
+    std::map<std::string, LoadedModel> modelMap;
+
+    // parallel load: one thread per model
+    struct RawLoad {
+        ModelData       data;
+        BoundingBoxData bbData;
+    };
+    std::vector<RawLoad> rawLoads(modelDefs.size());
+
+    {
+        auto f = [](ModelData* pData, BoundingBoxData* pBb, const std::string& file) {
+            *pData = OBJLoader::loadObjModel(file);
+            *pBb   = OBJLoader::loadBoundingBox(*pData, ClickBoxTypes::BOX, BoundTypes::AABB);
+        };
+        std::vector<std::thread> threads;
+        for (size_t i = 0; i < modelDefs.size(); ++i) {
+            threads.emplace_back(f, &rawLoads[i].data, &rawLoads[i].bbData,
+                                 modelDefs[i].objFile);
+        }
+        for (auto& t : threads) t.join();
+    }
+
+    // upload to GPU
+    for (size_t i = 0; i < modelDefs.size(); ++i) {
+        const auto& md = modelDefs[i];
+        LoadedModel lm;
+        lm.bbox = loader->loadToVAO(rawLoads[i].bbData);
+
+        ModelTexture* tex;
+        if (md.transparent || md.fakeLighting) {
+            tex = new ModelTexture(md.textureFile, PNG, md.transparent, md.fakeLighting,
+                                   Material{ md.shininess, md.reflectivity });
+        } else {
+            tex = new ModelTexture(md.textureFile, PNG,
+                                   Material{ md.shininess, md.reflectivity });
+        }
+        if (md.atlasRows > 1) tex->setNumberOfRows(md.atlasRows);
+
+        lm.model = new TexturedModel(loader->loadToVAO(rawLoads[i].data), tex);
+        modelMap[md.alias] = lm;
+    }
+
+    // -----------------------------------------------------------------------
+    // Pass 4: lights
+    // -----------------------------------------------------------------------
+    for (auto& ld : lightDefs) {
+        float yVal = ld.y;
+        if (ld.snapY && primaryTerrain) {
+            yVal = primaryTerrain->getHeightOfTerrain(ld.x, ld.z) + ld.yOffset;
+        }
+        if (ld.directional) {
+            lights.push_back(new Light(
+                glm::vec3(ld.x, yVal, ld.z),
+                glm::vec3(ld.r, ld.g, ld.b),
+                Lighting{
+                    .ambient  = glm::vec3(0.2f, 0.2f, 0.2f),
+                    .diffuse  = glm::vec3(0.5f, 0.5f, 0.5f),
+                    .constant = Light::kDirectional,
+                }));
+        } else {
+            auto d = LightUtil::AttenuationDistance(static_cast<int>(ld.attenDist));
+            Lighting l{ glm::vec3(0.2f, 0.2f, 0.2f), glm::vec3(0.5f, 0.5f, 0.5f),
+                        d.x, d.y, d.z };
+            lights.push_back(new Light(glm::vec3(ld.x, yVal, ld.z),
+                                       glm::vec3(ld.r, ld.g, ld.b), l));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Pass 5: fixed entities
+    // -----------------------------------------------------------------------
+    for (auto& ed : entityDefs) {
+        auto it = modelMap.find(ed.alias);
+        if (it == modelMap.end()) {
+            std::cerr << "[SceneLoader] entity references unknown model alias '"
+                      << ed.alias << "'\n";
+            continue;
+        }
+        auto& lm = it->second;
+        float yVal = ed.y;
+        if (ed.snapY && primaryTerrain)
+            yVal = primaryTerrain->getHeightOfTerrain(ed.x, ed.z);
+
+        entities.push_back(new Entity(
+            lm.model,
+            new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
+            glm::vec3(ed.x, yVal, ed.z),
+            glm::vec3(ed.rx, ed.ry, ed.rz),
+            ed.scale));
+    }
+
+    // -----------------------------------------------------------------------
+    // Pass 6: random entities
+    // -----------------------------------------------------------------------
+    for (auto& rd : randomDefs) {
+        auto it = modelMap.find(rd.alias);
+        if (it == modelMap.end()) {
+            std::cerr << "[SceneLoader] random references unknown model alias '"
+                      << rd.alias << "'\n";
+            continue;
+        }
+        auto& lm = it->second;
+        for (int i = 0; i < rd.count; ++i) {
+            glm::vec3 pos = randomPosition(primaryTerrain);
+            glm::vec3 rot = randomRotation();
+            float     sc  = randomScale(rd.scaleMin, rd.scaleMax);
+            if (rd.useAtlas) {
+                int idx = (rand() % 4) + 1;   // atlas row 1-4
+                entities.push_back(new Entity(lm.model,
+                    new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
+                    idx, pos, rot, sc));
+            } else {
+                entities.push_back(new Entity(lm.model,
+                    new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
+                    pos, rot, sc));
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Pass 7: assimp entities
+    // -----------------------------------------------------------------------
+    for (auto& ad : assimpDefs) {
+        auto* mesh = new AssimpMesh(ad.path);
+        auto  bbData  = OBJLoader::loadBoundingBox(mesh, ClickBoxTypes::BOX, BoundTypes::AABB);
+        auto* rawBb   = loader->loadToVAO(bbData);
+        glm::vec3 pos = ad.randomPos
+            ? randomPosition(primaryTerrain, ad.yOffset)
+            : glm::vec3(ad.x, ad.y, ad.z);
+        float sc = randomScale(ad.scaleMin, ad.scaleMax);
+        scenes.push_back(new AssimpEntity(mesh,
+            new BoundingBox(rawBb, BoundingBoxIndex::genUniqueId()),
+            pos, randomRotation(), sc));
+    }
+
+    // -----------------------------------------------------------------------
+    // Pass 8: player
+    // -----------------------------------------------------------------------
+    if (hasPlayer) {
+        auto it = modelMap.find(playerDef.alias);
+        if (it != modelMap.end()) {
+            auto& lm = it->second;
+            player = new Player(
+                lm.model,
+                new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
+                glm::vec3(playerDef.x, playerDef.y, playerDef.z),
+                glm::vec3(playerDef.rx, playerDef.ry, playerDef.rz),
+                playerDef.scale);
+            InteractiveModel::setInteractiveBox(player);
+            entities.push_back(player);
+            playerCamera = new PlayerCamera(player);
+        } else {
+            std::cerr << "[SceneLoader] player references unknown model alias '"
+                      << playerDef.alias << "'\n";
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Pass 9: GUI textures
+    // -----------------------------------------------------------------------
+    for (auto& gd : guiDefs) {
+        auto* tex = loader->loadTexture(gd.textureFile);
+        guis.push_back(new GuiTexture(tex->getId(),
+                                      glm::vec2(gd.x, gd.y),
+                                      glm::vec2(gd.w, gd.h)));
+    }
+
+    std::cout << "[SceneLoader] Scene loaded: "
+              << entities.size()  << " entities, "
+              << scenes.size()    << " assimp scenes, "
+              << lights.size()    << " lights, "
+              << allTerrains.size()<< " terrain tiles, "
+              << guis.size()      << " GUI textures." << std::endl;
+
+    return true;
+}

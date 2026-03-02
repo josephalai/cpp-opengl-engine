@@ -1,5 +1,4 @@
-#include <iostream>
-#include "EngineTester/MainGameLoop.h"
+#include "EngineTester/GUI/MainGuiLoop.h"
 
 /**
  *
@@ -23,8 +22,6 @@
  */
 
 int main() {
-    std::cout << "GL Engine Started!" << std::endl;
-
-    MainGameLoop::main();
+    MainGuiLoop::main();
     return 0;
 }

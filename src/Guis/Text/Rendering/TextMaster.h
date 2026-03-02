@@ -8,7 +8,7 @@
 #include <iostream>
 #include "FontRenderer.h"
 #include "../FontMeshCreator/TextMeshData.h"
-#include "../FontMeshCreator/GUIText.h"
+#include "../GUIText.h"
 #include "../../../RenderEngine/Loader.h"
 
 class TextMaster {

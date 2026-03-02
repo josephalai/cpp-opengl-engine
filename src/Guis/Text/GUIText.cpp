@@ -3,7 +3,7 @@
 //
 
 #include "GUIText.h"
-#include "../FontRendering/TextMaster.h"
+#include "Rendering/TextMaster.h"
 
 /**
  * @brief This inputs everything needed to render a Text GUI
@@ -46,10 +46,6 @@ FontType *GUIText::getFontType() {
     return this->fontType;
 }
 
-glm::vec2 &GUIText::getPosition() {
-    return this->position;
-}
-
 float GUIText::getFontSize() const {
     return this->fontSize;
 }
@@ -80,4 +76,7 @@ void GUIText::setNumberOfLines(int number) {
 
 bool GUIText::isCentered() const {
     return centerText;
+}
+glm::vec2 &GUIText::getPosition() {
+    return position;
 }

@@ -8,7 +8,7 @@
 
 #include "FontShader.h"
 #include "../../../RenderEngine/Loader.h"
-#include "../FontMeshCreator/GUIText.h"
+#include "../GUIText.h"
 #include "../../../Toolbox/Color.h"
 
 class FontRenderer {

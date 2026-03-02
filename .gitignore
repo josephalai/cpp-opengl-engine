@@ -1,25 +1,43 @@
-.idea/*
+# Build directories
 cmake-build-*/
-.DS_Store/*
-CMakeFiles/*
-CMakeCache.txt
-Testing/*
-cmake_*
-*.cbp
-engine
+build/
+out/
+
+# IDE
+.idea/
+.vscode/
+*.xcodeproj/
+*.xcworkspace/
+
+# macOS
 .DS_Store
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
 Makefile
+Testing/
+cmake_*
+CPack*
+CMakeDoxy*
+
+# Binaries
+engine
+*.cbp
+engine.cbp*
+bin/*
+lib/*
+
+# Assets (large/tutorial)
 *.zip
 *.log
-lib/*
 *.blend1
 *.mtl
+*.tga
 src/Resources/Models/Tutorial/*
 src/Resources/Tutorial/Backpack/*
 src/Resources/Tutorial/*
-CPack*
-engine.cbp*
-CMakeDoxy*
-bin/*
-*.tga
+
+# Git
 .gitmessage

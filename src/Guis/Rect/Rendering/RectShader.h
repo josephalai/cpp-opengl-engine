@@ -5,16 +5,16 @@
 #ifndef ENGINE_RECTSHADER_H
 #define ENGINE_RECTSHADER_H
 
-#include "../../Entities/CameraInput.h"
-#include "../../Textures/ModelTexture.h"
-#include "../../Shaders/ShaderProgram.h"
-#include "../../Entities/Light.h"
+#include "../../../Entities/CameraInput.h"
+#include "../../../Textures/ModelTexture.h"
+#include "../../../Shaders/ShaderProgram.h"
+#include "../../../Entities/Light.h"
 
 class RectShader : public ShaderProgram {
 
 private:
-    constexpr static const char *VertexPath = "/src/Guis/Rect/Shaders/VertexShader.glsl";
-    constexpr static const char *FragmentPath = "/src/Guis/Rect/Shaders/FragmentShader.glsl";
+    constexpr static const char *VertexPath = "/src/Guis/Rect/Rendering/Shaders/VertexShader.glsl";
+    constexpr static const char *FragmentPath = "/src/Guis/Rect/Rendering/Shaders/FragmentShader.glsl";
     // attribute names
     const std::string position = "position";
 
