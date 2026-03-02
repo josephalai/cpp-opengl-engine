@@ -28,32 +28,29 @@ endif()
 add_subdirectory(deps/glfw)
 target_include_directories(engine PRIVATE deps/glfw/include)
 
-# FreeType
-add_subdirectory(deps/freetype2)
-target_include_directories(engine PRIVATE deps/freetype2/include)
+# FreeType — use the system library (brew install freetype) to avoid
+# cmake_minimum_required VERSION < 3.5 errors from the bundled source tree.
+find_package(Freetype REQUIRED)
 
 # PNG
 find_package(PNG REQUIRED)
 target_include_directories(engine PRIVATE ${PNG_INCLUDE_DIR})
 
-# Assimp
-add_subdirectory(deps/assimp-4)
-target_include_directories(engine PRIVATE deps/assimp-4/include)
+# Assimp — use the system library (brew install assimp) for the same reason.
+find_package(assimp REQUIRED)
 
 # Quill (logging)
 add_subdirectory(deps/quill)
 
-# GLM
-add_subdirectory(deps/glm EXCLUDE_FROM_ALL)
+# GLM — header-only; just add the include path, no add_subdirectory needed.
 target_include_directories(engine PRIVATE deps/glm)
 
 # Link all
 target_link_libraries(engine PRIVATE
     glfw
     ${GLFW_LIBRARIES}
-    freetype
+    Freetype::Freetype
     ${PNG_LIBRARY}
-    assimp
+    assimp::assimp
     quill
-    glm
 )

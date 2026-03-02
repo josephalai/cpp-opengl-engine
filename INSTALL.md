@@ -18,10 +18,10 @@ xcode-select --install
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-### 3. CMake, pkg-config, libpng
+### 3. CMake, pkg-config, libpng, FreeType, Assimp
 
 ```bash
-brew install cmake pkg-config libpng
+brew install cmake pkg-config libpng freetype assimp
 ```
 
 ---
@@ -37,7 +37,7 @@ cd cpp-opengl-engine
 
 ## Set Up Dependencies
 
-The `deps/` folder is gitignored. You must clone each dependency manually:
+The `deps/` folder is gitignored. Clone the deps that are still built from source:
 
 ```bash
 mkdir -p deps
@@ -46,23 +46,18 @@ cd deps
 # GLFW 3.3+ (window / OpenGL context)
 git clone https://github.com/glfw/glfw.git
 
-# GLM (math library — vectors, matrices)
+# GLM (math library — vectors, matrices; header-only)
 git clone https://github.com/g-truc/glm.git
-
-# Assimp 4.x (3D model loading — must use v4.1.0, not latest)
-git clone --branch v4.1.0 --depth 1 https://github.com/assimp/assimp.git assimp-4
-
-# FreeType 2 (font rendering)
-git clone https://gitlab.freedesktop.org/freetype/freetype.git freetype2
-cd freetype2
-git checkout VER-2-11-0
-cd ..
 
 # Quill (logging)
 git clone https://github.com/odygrd/quill.git
 
 cd ..
 ```
+
+> **FreeType** and **Assimp** are now installed as system libraries via `brew install freetype assimp`
+> (see Prerequisites above).  Do **not** clone them into `deps/` — the build uses
+> `find_package` to locate the brew-installed versions.
 
 ---
 
@@ -104,8 +99,9 @@ Run from the **project root** — resources are loaded relative to the working d
 | Problem | Fix |
 |---------|-----|
 | `libpng not found` | `brew install libpng` then re-run cmake |
-| Assimp build errors | Make sure you cloned the `v4.1.0` tag, not `main` |
-| FreeType errors about harfbuzz / brotli | `brew install harfbuzz` or use `VER-2-11-0` tag |
+| `FreeType not found` | `brew install freetype` then re-run cmake |
+| `assimp not found` | `brew install assimp` then re-run cmake |
+| CMake error about `cmake_minimum_required` / VERSION < 3.5 | Ensure FreeType and Assimp are installed via brew (not cloned into `deps/`) |
 | `No OpenGL context` | Ensure Xcode CLT is installed; check GPU support |
 | Black screen / no textures | Run from project root, not from `cmake-build-debug/` |
 | Retina display issues | Already handled — `RETINA_NUMBER` scales framebuffer automatically |
