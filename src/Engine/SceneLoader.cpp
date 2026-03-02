@@ -636,17 +636,19 @@ bool SceneLoader::load(
         FontModel* sharedFontModel = loader->loadFontVAO();
 
         // Cache loaded FontType objects by (name, size) to avoid re-loading
-        // the same FreeType face multiple times.
-        std::map<std::pair<std::string,int>, FontType> fontCache;
+        // the same FreeType face multiple times.  Stored as heap-allocated
+        // pointers so they outlive this function and remain valid for the
+        // lifetime of the GUIText objects that reference them.
+        std::map<std::pair<std::string,int>, FontType*> fontCache;
 
         for (auto& td : textDefs) {
             auto key = std::make_pair(td.fontName, td.fontSize);
             auto it = fontCache.find(key);
             if (it == fontCache.end()) {
-                fontCache.emplace(key, TextMeshData::loadFont(td.fontName, td.fontSize));
+                fontCache.emplace(key, new FontType(TextMeshData::loadFont(td.fontName, td.fontSize)));
                 it = fontCache.find(key);
             }
-            FontType* ft = &it->second;
+            FontType* ft = it->second;
 
             // maxWidth is stored as a fraction of screen width; convert to pixels
             // so that GUIText::getMaxLineSize() matches FontRenderer expectations.
