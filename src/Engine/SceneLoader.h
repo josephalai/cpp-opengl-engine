@@ -152,6 +152,7 @@ private:
         bool  snapY   = false;
         float yOffset = 0.0f;
         float scale   = 1.0f;
+        float rx = 0.0f, ry = 0.0f, rz = 0.0f;  ///< Optional Euler rotation override (degrees)
     };
 
 private:
