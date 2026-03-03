@@ -7,19 +7,7 @@
 // ---------------------------------------------------------------------------
 // Private helper: transition to a state identified by raw hash
 // ---------------------------------------------------------------------------
-static void setStateByHash(
-    uint32_t                                            h,
-    std::unordered_map<uint32_t, AnimationState>&       states_,
-    std::unordered_map<uint32_t, std::string>&          stateNames_,
-    std::string&                                        currentStateName_,
-    uint32_t&                                           currentStateHash_,
-    std::string&                                        previousStateName_,
-    uint32_t&                                           previousStateHash_,
-    bool&                                               blending_,
-    float&                                              blendElapsed_,
-    float&                                              blendDuration_,
-    const std::vector<AnimationTransition>&             transitions_)
-{
+void AnimationController::setStateByHash(uint32_t h) {
     if (h == currentStateHash_) return;
 
     if (h != 0 && states_.find(h) == states_.end()) {
@@ -42,7 +30,6 @@ static void setStateByHash(
     auto it = stateNames_.find(h);
     currentStateName_ = (it != stateNames_.end()) ? it->second : std::to_string(h);
 #else
-    (void)stateNames_;
     currentStateName_ = std::to_string(h);
 #endif
 
@@ -66,6 +53,10 @@ static void setStateByHash(
 void AnimationController::addState(StringId id, AnimationClip* clip,
                                     float speed, bool looping) {
     uint32_t h = id.value();
+    if (h == 0) {
+        std::cerr << "[AnimationController] Cannot register a state with hash=0 (reserved for bind-pose)\n";
+        return;
+    }
     states_[h] = AnimationState("", clip, speed, looping);
 #ifndef NDEBUG
     const std::string* name = StringId::lookupName(h);
@@ -80,10 +71,7 @@ void AnimationController::addTransition(StringId from, StringId to,
 }
 
 void AnimationController::setState(StringId id) {
-    setStateByHash(id.value(), states_, stateNames_,
-                   currentStateName_, currentStateHash_,
-                   previousStateName_, previousStateHash_,
-                   blending_, blendElapsed_, blendDuration_, transitions_);
+    setStateByHash(id.value());
 }
 
 // ---------------------------------------------------------------------------
@@ -94,10 +82,7 @@ std::vector<glm::mat4> AnimationController::update(float deltaTime, Skeleton& sk
     // Check automatic transitions — handles bind-pose (hash=0) → movement and back.
     for (const auto& t : transitions_) {
         if (t.from == currentStateHash_ && t.condition && t.condition()) {
-            setStateByHash(t.to, states_, stateNames_,
-                           currentStateName_, currentStateHash_,
-                           previousStateName_, previousStateHash_,
-                           blending_, blendElapsed_, blendDuration_, transitions_);
+            setStateByHash(t.to);
             break;
         }
     }

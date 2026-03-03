@@ -52,7 +52,9 @@ const float gradient = 5.0;
 
 void main()
 {
-    // Select model matrix: per-instance attribute or per-draw uniform
+    // Select model matrix: per-instance attribute or per-draw uniform.
+    // useInstancing is a uniform (same value for all vertices), so all
+    // invocations in a draw call follow the same branch — no GPU divergence.
     mat4 modelMatrix;
     if (useInstancing) {
         modelMatrix = mat4(instanceMatrix0, instanceMatrix1,

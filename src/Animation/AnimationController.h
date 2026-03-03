@@ -53,10 +53,14 @@ public:
     void addTransition(const std::string& from, const std::string& to,
                        std::function<bool()> condition = nullptr,
                        float blendDuration = 0.3f) {
-        addTransition(StringId(from), StringId(to), condition, blendDuration);
+        // Empty string "" conventionally means "bind-pose" (hash=0)
+        StringId f = from.empty() ? StringId() : StringId(from);
+        StringId t = to.empty()   ? StringId() : StringId(to);
+        addTransition(f, t, condition, blendDuration);
     }
     void setState(const std::string& name) {
-        setState(StringId(name));
+        // Empty string "" → bind-pose (hash=0)
+        setState(name.empty() ? StringId() : StringId(name));
     }
 
     // ------------------------------------------------------------------
@@ -76,6 +80,8 @@ public:
                                   std::function<bool()> jumpCond);
 
 private:
+    /// Core transition helper — sets state by hash without going through string→hash.
+    void setStateByHash(uint32_t h);
     /// Internal state map keyed by StringId hash (uint32_t).
     std::unordered_map<uint32_t, AnimationState> states_;
 

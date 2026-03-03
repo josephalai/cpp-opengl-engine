@@ -60,10 +60,16 @@ void EntityRenderer::renderInstanced(TexturedModel* model, const std::vector<Ent
 
     GLuint vbo = getOrCreateInstanceVBO();
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER,
-                 static_cast<GLsizeiptr>(matrices.size() * sizeof(glm::mat4)),
-                 matrices.data(),
-                 GL_DYNAMIC_DRAW);
+
+    GLsizeiptr needed = static_cast<GLsizeiptr>(matrices.size() * sizeof(glm::mat4));
+    if (needed > instanceVBOCap_) {
+        // Grow: allocate a new buffer large enough for this batch
+        glBufferData(GL_ARRAY_BUFFER, needed, matrices.data(), GL_DYNAMIC_DRAW);
+        instanceVBOCap_ = needed;
+    } else {
+        // Reuse existing allocation — avoids GPU-side reallocation cost
+        glBufferSubData(GL_ARRAY_BUFFER, 0, needed, matrices.data());
+    }
 
     // A mat4 occupies 4 consecutive vec4 attribute slots (locations 4–7)
     for (int col = 0; col < 4; ++col) {

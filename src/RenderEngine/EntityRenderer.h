@@ -18,13 +18,13 @@
 class EntityRenderer {
 private:
     StaticShader *shader;
-    GLuint instanceVBO_ = 0; ///< Per-frame dynamic VBO for instance matrices.
+    GLuint instanceVBO_         = 0; ///< Per-frame dynamic VBO for instance matrices.
+    GLsizeiptr instanceVBOCap_  = 0; ///< Current allocated capacity of instanceVBO_ in bytes.
 
 public:
 
     EntityRenderer(StaticShader *shader);
     ~EntityRenderer();
-
     /**
      * @brief accepts a map[model]std::vector<Entity *>, and traverses through
      *        it, and draws them -- so as not to copy objects.
