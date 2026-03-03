@@ -100,6 +100,13 @@ static void buildBoneHierarchy(const aiNode* aiNode,
     Bone* current = skeleton.getBoneByName(nodeName);
 
     if (current) {
+        // Initialise to the bind-pose local transform so that in the rest state
+        // globalTransform * offsetMatrix == identity (correct bind-pose rendering).
+        // The animation system will overwrite localTransform each frame for bones
+        // that have keyframe channels; bones without channels keep this value,
+        // which is the correct bind-pose position.
+        current->localTransform = toGlm(aiNode->mTransformation);
+
         // Attach to parent if one exists
         if (parent) {
             parent->children.push_back(current);

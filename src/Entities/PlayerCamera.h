@@ -17,7 +17,9 @@ public:
 
     // Vertical offset of the orbit pivot above the player's origin.
     // Must be consistent between calculateCameraPosition() and getViewMatrix().
-    constexpr static const float kOrbitPivotY = 4.0f;
+    // Set to approximately the character's chest height so the camera centers
+    // on the body rather than above the head when zoomed in close.
+    constexpr static const float kOrbitPivotY = 1.5f;
 
     /**
      * @brief PlayerCamera (extending CameraInput), is modified based on the player's movements.
