@@ -18,6 +18,8 @@
 #include "../Water/WaterTile.h"
 #include "../Interaction/InteractiveModel.h"
 #include "../Guis/Text/FontMeshCreator/TextMeshData.h"
+#include "../RenderEngine/AnimatedRenderer.h"
+#include "../Shaders/AnimatedShader.h"
 
 class Engine {
 public:
@@ -93,6 +95,11 @@ private:
     // GUI components updated per-frame
     GuiTexture* sampleModifiedGui = nullptr;
     GuiComponent* masterContainer = nullptr;
+
+    // --- Animation ---
+    AnimatedShader*   animShader   = nullptr;
+    AnimatedRenderer* animRenderer = nullptr;
+    std::vector<AnimatedEntity*> animatedEntities;
 };
 
 #endif // ENGINE_ENGINE_H

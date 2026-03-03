@@ -39,14 +39,12 @@
 #include "../../Shadows/ShadowMap.h"
 #include "../../Shaders/PBRMaterial.h"
 // Phase 2 — Animation & Instanced Rendering
-#include "../../Animation/AnimationLoader.h"
 #include "../../Animation/AnimationController.h"
 #include "../../RenderEngine/AnimatedRenderer.h"
 #include "../../Shaders/AnimatedShader.h"
 #include "../../RenderEngine/InstancedModel.h"
 #include "../../RenderEngine/InstancedRenderer.h"
 #include "../../Shaders/InstancedShader.h"
-#include "../../ModelLoader/GLTFLoader.h"
 
 #include <thread>
 
@@ -68,6 +66,7 @@ void MainGuiLoop::main() {
     std::vector<GuiTexture *>   guis;
     std::vector<GUIText *>      texts;
     std::vector<WaterTile>      waterTiles;
+    std::vector<AnimatedEntity*> animatedEntities;
     Terrain*                    primaryTerrain = nullptr;
     Player*                     player         = nullptr;
     PlayerCamera*               playerCamera   = nullptr;
@@ -83,7 +82,8 @@ void MainGuiLoop::main() {
         FileSystem::Scene("scene.cfg"),
         loader,
         entities, assimpEntities, lights, allTerrains, guis, texts, waterTiles,
-        primaryTerrain, player, playerCamera);
+        primaryTerrain, player, playerCamera,
+        animatedEntities);
 
     if (!sceneLoaded || !player || !playerCamera) {
         std::cerr << "[MainGuiLoop] SceneLoader failed or missing player — using minimal defaults\n";
@@ -268,62 +268,35 @@ void MainGuiLoop::main() {
 
     /**
      * -----------------------------------------------------------------------
-     * Phase 2.1 — Skeletal Animation (AnimatedModel + AnimationController)
+     * Phase 2.1 — Skeletal Animation renderer + keyboard-driven transitions
      * -----------------------------------------------------------------------
+     * Models are loaded by SceneLoader via animated_character lines in scene.cfg.
+     * Here we just create the renderer and wire keyboard conditions to every
+     * AnimationController that was set up by SceneLoader.
      */
-    AnimatedShader*      animShader     = new AnimatedShader();
-    AnimatedRenderer*    animRenderer   = new AnimatedRenderer(animShader);
-    AnimatedEntity*      animEntity     = nullptr;
-    AnimationController* animController = nullptr;
+    AnimatedShader*   animShader   = new AnimatedShader();
+    AnimatedRenderer* animRenderer = new AnimatedRenderer(animShader);
 
-    {
-        // Try to load a glTF character from the expected path.
-        // If the file is absent, we skip animated rendering gracefully.
-        std::string charPath =
-            FileSystem::Path("/src/Resources/Tutorial/Characters/character.glb");
+    // Keyboard conditions shared by all animated characters
+    auto walkCond = []() { return InputMaster::isKeyDown(W) && !InputMaster::isKeyDown(LeftShift); };
+    auto runCond  = []() { return InputMaster::isKeyDown(W) &&  InputMaster::isKeyDown(LeftShift); };
+    auto jumpCond = []() { return InputMaster::isKeyDown(Space); };
 
-        AnimatedModel* animModel = AnimationLoader::load(charPath);
-        if (animModel) {
-            animController = new AnimationController();
-
-            // Register clips by name (fall back to indices 0-3 if names differ)
-            auto registerClip = [&](const std::string& stateName, int fallbackIdx) {
-                int idx = animModel->getClipIndex(stateName);
-                if (idx < 0 && fallbackIdx < static_cast<int>(animModel->clips.size()))
-                    idx = fallbackIdx;
-                if (idx >= 0)
-                    animController->addState(stateName, &animModel->clips[idx]);
-            };
-            registerClip("Idle", 0);
-            registerClip("Walk", 1);
-            registerClip("Run",  2);
-            registerClip("Jump", 3);
-
-            // Keyboard conditions for transitions
-            auto walkCond = []() { return InputMaster::isKeyDown(W) && !InputMaster::isKeyDown(LeftShift); };
-            auto runCond  = []() { return InputMaster::isKeyDown(W) &&  InputMaster::isKeyDown(LeftShift); };
-            auto jumpCond = []() { return InputMaster::isKeyDown(Space); };
-
-            animController->setupDefaultTransitions(walkCond, runCond, jumpCond);
-
-            // Start in Idle state
-            if (!animModel->clips.empty())
-                animController->setState("Idle");
-
-            animEntity             = new AnimatedEntity();
-            animEntity->model      = animModel;
-            animEntity->controller = animController;
-            animEntity->position   = glm::vec3(100.0f, 3.0f, -60.0f);
-            animEntity->scale      = 1.0f;
-
-            std::cout << "[Phase2] Loaded animated character with "
-                      << animModel->clips.size() << " clip(s) and "
-                      << animModel->skeleton.getBoneCount() << " bone(s).\n";
-        } else {
-            std::cout << "[Phase2] No character model found at " << charPath
-                      << " — skeletal rendering skipped.\n";
-        }
+    // Re-wire transitions with live keyboard conditions for every animated character.
+    // SceneLoader registered no-op lambdas; replace with real input-driven ones now.
+    // setupDefaultTransitions is safe to call even when not all clip states exist —
+    // the AnimationController silently ignores transitions to unregistered states.
+    for (auto* ae : animatedEntities) {
+        if (ae && ae->controller)
+            ae->controller->setupDefaultTransitions(walkCond, runCond, jumpCond);
     }
+
+    if (!animatedEntities.empty())
+        std::cout << "[MainGuiLoop] " << animatedEntities.size()
+                  << " animated character(s) ready for rendering.\n";
+    else
+        std::cout << "[MainGuiLoop] No animated_character entries in scene.cfg — "
+                     "add one to see skeletal animation.\n";
 
     /**
      * -----------------------------------------------------------------------
@@ -409,10 +382,9 @@ void MainGuiLoop::main() {
         // --- Main scene pass via scene graph (1.2) ---
         renderer->renderSceneGraph(sceneGraph, assimpEntities, allTerrains, lights);
 
-        // --- Phase 2.1: Animated character rendering ---
-        if (animEntity) {
-            std::vector<AnimatedEntity*> animEntities = { animEntity };
-            animRenderer->render(animEntities, DisplayManager::delta, lights,
+        // --- Phase 2.1: Animated characters (loaded via scene.cfg animated_character) ---
+        if (!animatedEntities.empty()) {
+            animRenderer->render(animatedEntities, DisplayManager::delta, lights,
                                  playerCamera, renderer->getProjectionMatrix());
         }
 
@@ -449,11 +421,12 @@ void MainGuiLoop::main() {
     // Phase 2 cleanup
     animShader->cleanUp();
     delete animRenderer;
-    if (animEntity) {
-        animEntity->model->cleanUp();
-        delete animEntity->model;
-        delete animEntity->controller;
-        delete animEntity;
+    for (auto* ae : animatedEntities) {
+        if (ae) {
+            if (ae->model) { ae->model->cleanUp(); delete ae->model; }
+            delete ae->controller;
+            delete ae;
+        }
     }
     delete instancedTreeModel;
 

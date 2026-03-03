@@ -26,6 +26,7 @@
 #include "../RenderEngine/ObjLoader.h"
 #include "../BoundingBox/BoundingBoxIndex.h"
 #include "../Water/WaterTile.h"
+#include "../RenderEngine/AnimatedRenderer.h"
 
 /// Reads src/Resources/Tutorial/scene.cfg and loads the described 3-D scene
 /// content into the vectors/pointers passed by reference.  Returns true on
@@ -45,7 +46,8 @@ public:
         std::vector<WaterTile>&     waterTiles,
         Terrain*&                   primaryTerrain,
         Player*&                    player,
-        PlayerCamera*&              playerCamera
+        PlayerCamera*&              playerCamera,
+        std::vector<AnimatedEntity*>& animatedEntities
     );
 
     // Sentinel: when y == kSnapY the entity's y is resolved from terrain height.
@@ -142,6 +144,14 @@ private:
 
     struct WaterDef {
         float x = 0, height = 0, z = 0;
+    };
+
+    struct AnimCharDef {
+        std::string path;       ///< Path relative to src/Resources/Tutorial/ (incl. extension)
+        float x = 0, y = 0, z = 0;
+        bool  snapY   = false;
+        float yOffset = 0.0f;
+        float scale   = 1.0f;
     };
 
 private:

@@ -26,6 +26,7 @@
 #include "../Interaction/InteractiveModel.h"
 #include "../Guis/Text/FontMeshCreator/TextMeshData.h"
 #include "../Toolbox/Color.h"
+#include "../Animation/AnimationLoader.h"
 
 #include <fstream>
 #include <sstream>
@@ -33,6 +34,7 @@
 #include <thread>
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <cmath>
 
 // ---------------------------------------------------------------------------
@@ -131,7 +133,8 @@ bool SceneLoader::load(
     std::vector<WaterTile>&     waterTiles,
     Terrain*&                   primaryTerrain,
     Player*&                    player,
-    PlayerCamera*&              playerCamera)
+    PlayerCamera*&              playerCamera,
+    std::vector<AnimatedEntity*>& animatedEntities)
 {
     std::ifstream file(configPath);
     if (!file.is_open()) {
@@ -155,6 +158,7 @@ bool SceneLoader::load(
     std::vector<GuiDef>        guiDefs;
     std::vector<TextDef>       textDefs;
     std::vector<WaterDef>      waterDefs;
+    std::vector<AnimCharDef>   animCharDefs;
 
     std::string line;
     int lineNo = 0;
@@ -400,6 +404,27 @@ bool SceneLoader::load(
                 wd.height = std::stof(tokens[2]);
                 wd.z      = std::stof(tokens[3]);
                 waterDefs.push_back(wd);
+            }
+        }
+        // ----------------------------------------------------------------
+        // animated_character <path> <x> <y|terrain[+N]> <z> [scale=F]
+        //   path  — file path relative to src/Resources/Tutorial/ (incl. extension)
+        //   x y z — world position (y supports "terrain[+N]" snap)
+        //   scale — optional uniform scale (default 1.0)
+        else if (cmd == "animated_character") {
+            if (tokens.size() >= 5) {
+                AnimCharDef ac;
+                ac.path = tokens[1];
+                ac.x = std::stof(tokens[2]);
+                float yo = 0.0f;
+                ac.y = parseY(tokens[3], yo);
+                if (ac.y == kSnapY) { ac.snapY = true; ac.yOffset = yo; }
+                ac.z = std::stof(tokens[4]);
+                for (size_t i = 5; i < tokens.size(); ++i) {
+                    auto v = optVal(tokens[i], "scale");
+                    if (!v.empty()) ac.scale = std::stof(v);
+                }
+                animCharDefs.push_back(ac);
             }
         }
         else if (cmd != "#") {
@@ -666,14 +691,93 @@ bool SceneLoader::load(
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Pass 12: animated characters
+    // -----------------------------------------------------------------------
+
+    // Helper: normalize clip name to Title Case for known states.
+    // Handles .glb files that export lowercase names ("idle" → "Idle").
+    auto normalizeClipName = [](const std::string& raw) -> std::string {
+        static const char* known[] = {"Idle", "Walk", "Run", "Jump", nullptr};
+        for (int i = 0; known[i]; ++i) {
+            if (raw.size() == std::strlen(known[i])) {
+                bool same = true;
+                for (size_t k = 0; k < raw.size(); ++k)
+                    same = same && (std::tolower(raw[k]) == std::tolower(known[i][k]));
+                if (same) return known[i];
+            }
+        }
+        // Unknown clip: capitalize the first letter, keep the rest.
+        std::string out = raw;
+        if (!out.empty()) out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+        return out;
+    };
+
+    for (auto& ac : animCharDefs) {
+        std::string absPath = FileSystem::Path("/src/Resources/Tutorial/" + ac.path);
+        AnimatedModel* animModel = AnimationLoader::load(absPath);
+        if (!animModel) {
+            std::cerr << "[SceneLoader] Failed to load animated_character: " << absPath << "\n";
+            continue;
+        }
+
+        float yVal = ac.y;
+        if (ac.snapY && primaryTerrain)
+            yVal = primaryTerrain->getHeightOfTerrain(ac.x, ac.z) + ac.yOffset;
+
+        auto* controller = new AnimationController();
+
+        // Register each clip under its normalized state name.
+        for (auto& clip : animModel->clips) {
+            std::string stateName = normalizeClipName(clip.name);
+            controller->addState(stateName, &clip);
+        }
+
+        // Set up default transitions only when the known states exist.
+        auto hasState = [&](const std::string& s) -> bool {
+            for (const auto& clip : animModel->clips)
+                if (normalizeClipName(clip.name) == s) return true;
+            return false;
+        };
+
+        if (hasState("Idle") && hasState("Walk")) {
+            controller->setupDefaultTransitions(
+                []() { return false; },  // conditions are set to no-op here;
+                []() { return false; },  // callers (Engine) override via setState()
+                []() { return false; });
+        }
+
+        // Start playback on the first available state (prefer "Idle").
+        if (hasState("Idle"))
+            controller->setState("Idle");
+        else if (!animModel->clips.empty())
+            controller->setState(normalizeClipName(animModel->clips[0].name));
+
+        auto* ae       = new AnimatedEntity();
+        ae->model      = animModel;
+        ae->controller = controller;
+        ae->position   = glm::vec3(ac.x, yVal, ac.z);
+        ae->scale      = ac.scale;
+
+        animatedEntities.push_back(ae);
+
+        std::cout << "[SceneLoader] Loaded animated_character '" << ac.path
+                  << "': " << animModel->clips.size() << " clip(s), "
+                  << animModel->skeleton.getBoneCount() << " bone(s).\n";
+    }
+
+    // -----------------------------------------------------------------------
+    // Final status log
+    // -----------------------------------------------------------------------
     std::cout << "[SceneLoader] Scene loaded: "
-              << entities.size()   << " entities, "
-              << scenes.size()     << " assimp scenes, "
-              << lights.size()     << " lights, "
-              << allTerrains.size()<< " terrain tiles, "
-              << guis.size()       << " GUI textures, "
-              << texts.size()      << " text overlays, "
-              << waterTiles.size() << " water tiles." << std::endl;
+              << entities.size()        << " entities, "
+              << scenes.size()          << " assimp scenes, "
+              << lights.size()          << " lights, "
+              << allTerrains.size()     << " terrain tiles, "
+              << guis.size()            << " GUI textures, "
+              << texts.size()           << " text overlays, "
+              << waterTiles.size()      << " water tiles, "
+              << animatedEntities.size()<< " animated characters." << std::endl;
 
     return true;
 }
