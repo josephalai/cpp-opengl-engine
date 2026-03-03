@@ -38,6 +38,9 @@ void Heightmap::calculateMapFromImage() {
     }
     heightData = result;
     stbi_image_free(imageData);
+    // Reset global flip flag so subsequent texture loads (entity textures etc.)
+    // are not unintentionally flipped; those rely on the UV-flip in the OBJ loader.
+    stbi_set_flip_vertically_on_load(0);
 }
 
 float Heightmap::getHeight(int x, int z) {
