@@ -629,9 +629,10 @@ bool SceneLoader::load(
     // -----------------------------------------------------------------------
     // Pass 5: fixed entities
     // -----------------------------------------------------------------------
-    // Track which entity index each alias first appears at (for physics_body
-    // lookup).
-    std::map<std::string, int> entityAliasFirstIndex;
+    // Track ALL entity indices per alias so that a single physics_body line
+    // applies to every entity sharing that alias (e.g. all 3 lamps), not just
+    // the first one.
+    std::map<std::string, std::vector<int>> entityAliasByIndex;
     for (auto& ed : entityDefs) {
         auto it = modelMap.find(ed.alias);
         if (it == modelMap.end()) {
@@ -644,9 +645,8 @@ bool SceneLoader::load(
         if (ed.snapY && primaryTerrain)
             yVal = primaryTerrain->getHeightOfTerrain(ed.x, ed.z);
 
-        // Record first index for this alias before pushing
-        if (entityAliasFirstIndex.find(ed.alias) == entityAliasFirstIndex.end())
-            entityAliasFirstIndex[ed.alias] = static_cast<int>(entities.size());
+        // Record this entity's index before pushing
+        entityAliasByIndex[ed.alias].push_back(static_cast<int>(entities.size()));
 
         entities.push_back(new Entity(
             lm.model,
@@ -892,23 +892,28 @@ bool SceneLoader::load(
     // Pass 13: resolve physics body definitions → PhysicsBodyCfg
     // -----------------------------------------------------------------------
     for (const auto& pd : physicsBodyRawDefs) {
-        auto it = entityAliasFirstIndex.find(pd.alias);
-        if (it == entityAliasFirstIndex.end()) {
+        auto it = entityAliasByIndex.find(pd.alias);
+        if (it == entityAliasByIndex.end()) {
             std::cerr << "[SceneLoader] physics_body references unknown entity alias '"
                       << pd.alias << "'\n";
             continue;
         }
-        PhysicsBodyCfg cfg;
-        cfg.entityIndex = it->second;
-        cfg.type        = pd.type;
-        cfg.shape       = pd.shape;
-        cfg.mass        = pd.mass;
-        cfg.halfExtents = pd.halfExtents;
-        cfg.radius      = pd.radius;
-        cfg.height      = pd.height;
-        cfg.friction    = pd.friction;
-        cfg.restitution = pd.restitution;
-        physicsBodyCfgs.push_back(cfg);
+        // Emit one PhysicsBodyCfg for EVERY entity that shares this alias so
+        // that all instances (e.g. each of the three lamp entities) get a
+        // rigid body, not just the first one.
+        for (int idx : it->second) {
+            PhysicsBodyCfg cfg;
+            cfg.entityIndex = idx;
+            cfg.type        = pd.type;
+            cfg.shape       = pd.shape;
+            cfg.mass        = pd.mass;
+            cfg.halfExtents = pd.halfExtents;
+            cfg.radius      = pd.radius;
+            cfg.height      = pd.height;
+            cfg.friction    = pd.friction;
+            cfg.restitution = pd.restitution;
+            physicsBodyCfgs.push_back(cfg);
+        }
     }
     for (float h : physicsGroundHeights) {
         PhysicsGroundCfg gcfg;
