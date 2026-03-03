@@ -4,72 +4,100 @@
 #include <cmath>
 #include <iostream>
 
-void AnimationController::addState(const std::string& name, AnimationClip* clip,
-                                    float speed, bool looping) {
-    states[name] = AnimationState(name, clip, speed, looping);
-}
+// ---------------------------------------------------------------------------
+// Private helper: transition to a state identified by raw hash
+// ---------------------------------------------------------------------------
+void AnimationController::setStateByHash(uint32_t h) {
+    if (h == currentStateHash_) return;
 
-void AnimationController::addTransition(const std::string& from, const std::string& to,
-                                         std::function<bool()> condition, float bDuration) {
-    transitions.push_back({ from, to, condition, bDuration });
-}
-
-void AnimationController::setState(const std::string& name) {
-    // Empty name → return to bind-pose (no active clip).
-    if (name.empty()) {
-        previousStateName = currentStateName;
-        currentStateName  = "";
-        blending          = false;   // no crossfade when dropping to bind pose
-        blendElapsed      = 0.0f;
+    if (h != 0 && states_.find(h) == states_.end()) {
+        std::cerr << "[AnimationController] Unknown state hash: " << h << "\n";
         return;
     }
 
-    if (states.find(name) == states.end()) {
-        std::cerr << "[AnimationController] Unknown state: " << name << "\n";
+    previousStateName_ = currentStateName_;
+    previousStateHash_ = currentStateHash_;
+    currentStateHash_  = h;
+
+    if (h == 0) {
+        currentStateName_ = "";
+        blending_         = false;
+        blendElapsed_     = 0.0f;
         return;
     }
-    if (name == currentStateName) return;
 
-    previousStateName = currentStateName;
-    currentStateName  = name;
-    states[name].reset();
+#ifndef NDEBUG
+    auto it = stateNames_.find(h);
+    currentStateName_ = (it != stateNames_.end()) ? it->second : std::to_string(h);
+#else
+    currentStateName_ = std::to_string(h);
+#endif
 
-    // Determine blend duration from the matching transition
-    blendDuration = 0.3f;
-    for (const auto& t : transitions) {
-        if (t.from == previousStateName && t.to == name) {
-            blendDuration = t.blendDuration;
+    states_[h].reset();
+
+    blendDuration_ = 0.3f;
+    for (const auto& t : transitions_) {
+        if (t.from == previousStateHash_ && t.to == h) {
+            blendDuration_ = t.blendDuration;
             break;
         }
     }
-
-    blending     = !previousStateName.empty();
-    blendElapsed = 0.0f;
+    blending_     = (previousStateHash_ != 0);
+    blendElapsed_ = 0.0f;
 }
+
+// ---------------------------------------------------------------------------
+// StringId-based primary API
+// ---------------------------------------------------------------------------
+
+void AnimationController::addState(StringId id, AnimationClip* clip,
+                                    float speed, bool looping) {
+    uint32_t h = id.value();
+    if (h == 0) {
+        std::cerr << "[AnimationController] Cannot register a state with hash=0 (reserved for bind-pose)\n";
+        return;
+    }
+    states_[h] = AnimationState("", clip, speed, looping);
+#ifndef NDEBUG
+    const std::string* name = StringId::lookupName(h);
+    if (name) stateNames_[h] = *name;
+#endif
+}
+
+void AnimationController::addTransition(StringId from, StringId to,
+                                         std::function<bool()> condition,
+                                         float bDuration) {
+    transitions_.push_back({ from.value(), to.value(), condition, bDuration });
+}
+
+void AnimationController::setState(StringId id) {
+    setStateByHash(id.value());
+}
+
+// ---------------------------------------------------------------------------
+// update()
+// ---------------------------------------------------------------------------
 
 std::vector<glm::mat4> AnimationController::update(float deltaTime, Skeleton& skeleton) {
-    // Check automatic transitions first — this handles the bind-pose ("") → movement
-    // case as well as the normal state-to-state transitions.
-    for (const auto& t : transitions) {
-        if (t.from == currentStateName && t.condition && t.condition()) {
-            setState(t.to);
+    // Check automatic transitions — handles bind-pose (hash=0) → movement and back.
+    for (const auto& t : transitions_) {
+        if (t.from == currentStateHash_ && t.condition && t.condition()) {
+            setStateByHash(t.to);
             break;
         }
     }
 
-    if (currentStateName.empty()) {
-        // No active clip — return bind-pose matrices.
+    if (currentStateHash_ == 0) {
         return skeleton.computeBoneMatrices();
     }
 
-    if (blending && !previousStateName.empty()) {
-        blendElapsed += deltaTime;
-        float factor = AnimationBlender::crossfadeFactor(blendElapsed, blendDuration);
+    if (blending_ && previousStateHash_ != 0) {
+        blendElapsed_ += deltaTime;
+        float factor = AnimationBlender::crossfadeFactor(blendElapsed_, blendDuration_);
 
-        AnimationState& prev = states[previousStateName];
-        AnimationState& curr = states[currentStateName];
+        AnimationState& prev = states_[previousStateHash_];
+        AnimationState& curr = states_[currentStateHash_];
 
-        // Advance both times
         prev.currentTime += deltaTime * prev.speed;
         curr.currentTime += deltaTime * curr.speed;
 
@@ -86,54 +114,60 @@ std::vector<glm::mat4> AnimationController::update(float deltaTime, Skeleton& sk
                                     factor, skeleton);
         }
 
-        if (factor >= 1.0f) blending = false;
+        if (factor >= 1.0f) blending_ = false;
     } else {
-        // Single state playback
-        states[currentStateName].update(deltaTime, skeleton);
+        states_[currentStateHash_].update(deltaTime, skeleton);
     }
 
     return skeleton.computeBoneMatrices();
 }
 
+// ---------------------------------------------------------------------------
+// setupDefaultTransitions
+// ---------------------------------------------------------------------------
+
 void AnimationController::setupDefaultTransitions(std::function<bool()> walkCond,
                                                    std::function<bool()> runCond,
                                                    std::function<bool()> jumpCond) {
-    // Inverse conditions: transition back when the triggering input is released
+    constexpr StringId kIdle ("Idle");
+    constexpr StringId kWalk ("Walk");
+    constexpr StringId kRun  ("Run");
+    constexpr StringId kJump ("Jump");
+    constexpr StringId kBind;   // hash == 0 → bind pose
+
     auto notWalkNotRun = [walkCond, runCond]() { return !walkCond() && !runCond(); };
-    auto walkOnly      = [walkCond]()          { return walkCond(); };
+    auto walkOnly      = [walkCond]()           { return walkCond(); };
 
-    bool hasIdle = states.count("Idle") > 0;
-    bool hasWalk = states.count("Walk") > 0;
-    bool hasRun  = states.count("Run")  > 0;
-    bool hasJump = states.count("Jump") > 0;
+    bool hasIdle = states_.count(kIdle.value()) > 0;
+    bool hasWalk = states_.count(kWalk.value()) > 0;
+    bool hasRun  = states_.count(kRun.value())  > 0;
+    bool hasJump = states_.count(kJump.value()) > 0;
 
-    // Standard transitions: only add when both endpoint states exist.
     if (hasIdle && hasWalk) {
-        addTransition("Idle", "Walk", walkCond,      0.2f);
-        addTransition("Walk", "Idle", notWalkNotRun, 0.2f);
+        addTransition(kIdle, kWalk, walkCond,      0.2f);
+        addTransition(kWalk, kIdle, notWalkNotRun, 0.2f);
     }
     if (hasWalk && hasRun) {
-        addTransition("Walk", "Run",  runCond,  0.15f);
-        addTransition("Run",  "Walk", walkOnly, 0.15f);
+        addTransition(kWalk, kRun,  runCond,  0.15f);
+        addTransition(kRun,  kWalk, walkOnly, 0.15f);
     }
-    if (hasIdle && hasJump) addTransition("Idle", "Jump", jumpCond, 0.1f);
-    if (hasWalk && hasJump) addTransition("Walk", "Jump", jumpCond, 0.1f);
-    if (hasRun  && hasJump) addTransition("Run",  "Jump", jumpCond, 0.1f);
-    if (hasJump && hasIdle) addTransition("Jump", "Idle", nullptr,  0.2f);
+    if (hasIdle && hasJump) addTransition(kIdle, kJump, jumpCond, 0.1f);
+    if (hasWalk && hasJump) addTransition(kWalk, kJump, jumpCond, 0.1f);
+    if (hasRun  && hasJump) addTransition(kRun,  kJump, jumpCond, 0.1f);
+    if (hasJump && hasIdle) addTransition(kJump, kIdle, nullptr,  0.2f);
 
-    // For models with no Idle clip: add bind-pose ("") ↔ movement transitions so
-    // the character stands still in T-pose until the player provides input.
+    // For models with no Idle clip: bind-pose ↔ movement transitions.
     if (!hasIdle) {
         if (hasWalk) {
-            addTransition("",     "Walk", walkCond,      0.0f);
-            addTransition("Walk", "",     notWalkNotRun, 0.0f);
+            addTransition(kBind, kWalk, walkCond,      0.0f);
+            addTransition(kWalk, kBind, notWalkNotRun, 0.0f);
         }
         if (hasRun) {
-            addTransition("", "Run", runCond, 0.0f);
+            addTransition(kBind, kRun, runCond, 0.0f);
         }
         if (hasJump) {
-            addTransition("",     "Jump", jumpCond, 0.0f);
-            addTransition("Jump", "",     nullptr,  0.0f);
+            addTransition(kBind, kJump, jumpCond, 0.0f);
+            addTransition(kJump, kBind, nullptr,  0.0f);
         }
     }
 }

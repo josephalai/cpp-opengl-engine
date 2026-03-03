@@ -140,5 +140,9 @@ void StaticShader::getAllUniformLocations() {
     location_useSpecularMap    = getUniformLocation(useSpecularMap);
     location_normalMapSampler  = getUniformLocation(normalMapSampler);
     location_specularMapSampler = getUniformLocation(specularMapSampler);
+    location_useInstancing     = getUniformLocation(useInstancing);
 
+}
+void StaticShader::loadUseInstancing(bool use) {
+    this->setBool(location_useInstancing, use);
 }

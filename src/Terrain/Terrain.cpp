@@ -106,8 +106,8 @@ float Terrain::getHeightOfTerrain(float worldX, float worldZ) {
         return 0;
     }
 
-    float xCoord = (float) (static_cast<int>(terrainX) % static_cast<int>(gridSquareSize)) / gridSquareSize;
-    float zCoord = (float) (static_cast<int>(terrainZ) % static_cast<int>(gridSquareSize)) / gridSquareSize;
+    float xCoord = fmod(terrainX, gridSquareSize) / gridSquareSize;
+    float zCoord = fmod(terrainZ, gridSquareSize) / gridSquareSize;
 
     if (xCoord <= (1 - zCoord)) {
         return Maths::barryCentric(glm::vec3(0, heights[gridX][gridZ], 0), glm::vec3(1,

@@ -20,6 +20,13 @@ layout (location = 1) in vec2 textureCoords;
 layout (location = 2) in vec3 normal;
 layout (location = 3) in vec3 tangent;   // optional — used for normal mapping
 
+// Instanced rendering: per-instance model matrix supplied as 4 consecutive vec4
+// attributes (locations 4–7).  Only read when useInstancing == true.
+layout (location = 4) in vec4 instanceMatrix0;
+layout (location = 5) in vec4 instanceMatrix1;
+layout (location = 6) in vec4 instanceMatrix2;
+layout (location = 7) in vec4 instanceMatrix3;
+
 out vec2 pass_textureCoords;
 out vec3 surfaceNormal;
 out vec3 toLightVector[4];
@@ -27,9 +34,11 @@ out vec4 worldPosition;
 out float visibility;
 out mat3 TBN;   // tangent-space basis (for normal mapping)
 
-uniform mat4 transformationMatrix; // model matrix
+uniform mat4 transformationMatrix; // model matrix (used when useInstancing == false)
 uniform mat4 viewMatrix; // view matrix
 uniform mat4 projectionMatrix; // projection matrix
+
+uniform bool useInstancing;  // true → read model matrix from instance attributes
 
 uniform float useFakeLighting;
 
@@ -43,12 +52,23 @@ const float gradient = 5.0;
 
 void main()
 {
-    worldPosition = transformationMatrix * vec4(position, 1.0);
+    // Select model matrix: per-instance attribute or per-draw uniform.
+    // useInstancing is a uniform (same value for all vertices), so all
+    // invocations in a draw call follow the same branch — no GPU divergence.
+    mat4 modelMatrix;
+    if (useInstancing) {
+        modelMatrix = mat4(instanceMatrix0, instanceMatrix1,
+                           instanceMatrix2, instanceMatrix3);
+    } else {
+        modelMatrix = transformationMatrix;
+    }
+
+    worldPosition = modelMatrix * vec4(position, 1.0);
     vec4 positionRelativeToCam = viewMatrix * worldPosition;
     gl_Position = projectionMatrix * positionRelativeToCam;
     pass_textureCoords = (textureCoords / numberOfRows) + offset;
 
-    mat3 normalMatrix = transpose(inverse(mat3(transformationMatrix)));
+    mat3 normalMatrix = transpose(inverse(mat3(modelMatrix)));
 
     vec3 actualNormal = normal;
     if (useFakeLighting > 0.5) {

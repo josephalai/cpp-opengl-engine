@@ -51,6 +51,7 @@ private:
     const std::string useSpecularMap = "useSpecularMap";
     const std::string normalMapSampler = "normalMapSampler";
     const std::string specularMapSampler = "specularMapSampler";
+    const std::string useInstancing = "useInstancing";
 
     GLint location_transformationMatrix;
     GLint location_projectionMatrix;
@@ -81,6 +82,7 @@ private:
     GLint location_useSpecularMap;
     GLint location_normalMapSampler;
     GLint location_specularMapSampler;
+    GLint location_useInstancing;
 public:
     GLuint attribute;
 
@@ -105,6 +107,9 @@ public:
     void loadUseSpecularMap(bool use);
     void loadNormalMapSampler(int unit);
     void loadSpecularMapSampler(int unit);
+
+    /// Enable/disable per-instance matrix mode (used by EntityRenderer::renderInstanced).
+    void loadUseInstancing(bool use);
 
     void loadFakeLightingVariable(bool useFakeLighting);
 

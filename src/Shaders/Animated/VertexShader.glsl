@@ -1,7 +1,9 @@
 #version 410 core
 
 // Skeletal animation vertex shader.
-// Supports up to MAX_BONES bone influences per vertex (max 4).
+// Bone matrices are read from a Uniform Buffer Object (UBO) — BoneBlock.
+// This replaces per-bone glUniformMatrix4fv calls and is more efficient
+// for large skeletons.
 
 #define MAX_BONES 100
 
@@ -32,7 +34,12 @@ out float visibility;
 uniform mat4 transformationMatrix;
 uniform mat4 viewMatrix;
 uniform mat4 projectionMatrix;
-uniform mat4 boneMatrices[MAX_BONES];
+
+// UBO for bone matrix palette — bound by BoneBuffer::bind(kBindingPoint).
+// Using std140 layout ensures predictable memory layout across drivers.
+layout(std140) uniform BoneBlock {
+    mat4 boneMatrices[MAX_BONES];
+};
 
 const float density  = 0.007;
 const float gradient = 1.5;
