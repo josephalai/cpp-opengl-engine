@@ -55,8 +55,8 @@ void main() {
 vec3 CalcPointLight(Light l, vec3 lightVec, vec3 unitNorm, vec3 toCam, vec4 color) {
     vec3 unitLight = normalize(lightVec);
     float diff     = max(dot(unitNorm, unitLight), 0.0);
-    vec3  half     = normalize(unitLight + toCam);
-    float spec     = pow(max(dot(unitNorm, half), 0.0), material.shininess);
+    vec3  halfVec  = normalize(unitLight + toCam);
+    float spec     = pow(max(dot(unitNorm, halfVec), 0.0), material.shininess);
     float dist     = length(lightVec);
     float atten    = 1.0 / (l.constant + l.linear * dist + l.quadratic * dist * dist);
     vec3 ambient   = l.ambient  * color.rgb * atten;
@@ -68,8 +68,8 @@ vec3 CalcPointLight(Light l, vec3 lightVec, vec3 unitNorm, vec3 toCam, vec4 colo
 vec3 CalcDirLight(Light l, vec3 unitNorm, vec3 toCam, vec4 color) {
     vec3 lightDir = normalize(-l.position);
     float diff    = max(dot(unitNorm, lightDir), 0.0);
-    vec3  half    = normalize(lightDir + toCam);
-    float spec    = pow(max(dot(unitNorm, half), 0.0), material.shininess);
+    vec3  halfVec = normalize(lightDir + toCam);
+    float spec    = pow(max(dot(unitNorm, halfVec), 0.0), material.shininess);
     return l.ambient * color.rgb
          + l.diffuse * diff * color.rgb
          + l.specular * spec * material.reflectivity;
