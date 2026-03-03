@@ -78,12 +78,15 @@ void MainGuiLoop::main() {
     /**
      * Load scene from scene.cfg (falls back to minimal defaults if file missing)
      */
+    std::vector<SceneLoader::PhysicsBodyCfg>   physicsBodyCfgs;
+    std::vector<SceneLoader::PhysicsGroundCfg> physicsGroundCfgs;
     bool sceneLoaded = SceneLoader::load(
         FileSystem::Scene("scene.cfg"),
         loader,
         entities, assimpEntities, lights, allTerrains, guis, texts, waterTiles,
         primaryTerrain, player, playerCamera,
-        animatedEntities);
+        animatedEntities,
+        physicsBodyCfgs, physicsGroundCfgs);
 
     if (!sceneLoaded || !player || !playerCamera) {
         std::cerr << "[MainGuiLoop] SceneLoader failed or missing player — using minimal defaults\n";

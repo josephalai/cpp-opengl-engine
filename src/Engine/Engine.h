@@ -21,6 +21,7 @@
 #include "../RenderEngine/AnimatedRenderer.h"
 #include "../Shaders/AnimatedShader.h"
 #include "ISystem.h"
+#include "../Physics/PhysicsSystem.h"
 
 class Engine {
 public:
@@ -98,6 +99,9 @@ private:
     AnimatedShader*   animShader   = nullptr;
     AnimatedRenderer* animRenderer = nullptr;
     std::vector<AnimatedEntity*> animatedEntities;
+
+    // --- Physics ---
+    PhysicsSystem* physicsSystem = nullptr;
 
     // --- ISystem ordered pipeline (owned) ---
     std::vector<std::unique_ptr<ISystem>> systems;

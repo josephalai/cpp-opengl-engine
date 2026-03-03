@@ -135,7 +135,9 @@ bool SceneLoader::load(
     Terrain*&                   primaryTerrain,
     Player*&                    player,
     PlayerCamera*&              playerCamera,
-    std::vector<AnimatedEntity*>& animatedEntities)
+    std::vector<AnimatedEntity*>& animatedEntities,
+    std::vector<PhysicsBodyCfg>&  physicsBodyCfgs,
+    std::vector<PhysicsGroundCfg>& physicsGroundCfgs)
 {
     std::ifstream file(configPath);
     if (!file.is_open()) {
@@ -160,6 +162,22 @@ bool SceneLoader::load(
     std::vector<TextDef>       textDefs;
     std::vector<WaterDef>      waterDefs;
     std::vector<AnimCharDef>   animCharDefs;
+
+    // Physics defs — filled in by physics_body / physics_ground commands
+    // PhysicsBodyRawDef stores alias + options before entity indices are resolved
+    struct PhysicsBodyRawDef {
+        std::string   alias;
+        BodyType      type        = BodyType::Dynamic;
+        ColliderShape shape       = ColliderShape::Box;
+        float         mass        = 1.0f;
+        glm::vec3     halfExtents = glm::vec3(0.5f);
+        float         radius      = 0.5f;
+        float         height      = 1.8f;
+        float         friction    = 0.5f;
+        float         restitution = 0.3f;
+    };
+    std::vector<PhysicsBodyRawDef> physicsBodyRawDefs;
+    std::vector<float>             physicsGroundHeights;
 
     std::string line;
     int lineNo = 0;
@@ -441,8 +459,59 @@ bool SceneLoader::load(
             }
         }
         else if (cmd != "#") {
-            std::cerr << "[SceneLoader] Unknown command '" << cmd
-                      << "' at line " << lineNo << std::endl;
+            // ----------------------------------------------------------------
+            // physics_body <entity_alias> <type: static|dynamic|kinematic>
+            //              <shape: box|sphere|capsule>
+            //              [mass=F] [friction=F] [restitution=F]
+            //              [halfExtents=X,Y,Z] [radius=F] [height=F]
+            if (cmd == "physics_body") {
+                if (tokens.size() >= 4) {
+                    PhysicsBodyRawDef pd;
+                    pd.alias = tokens[1];
+                    // type
+                    if      (tokens[2] == "static")    pd.type = BodyType::Static;
+                    else if (tokens[2] == "kinematic") pd.type = BodyType::Kinematic;
+                    else                               pd.type = BodyType::Dynamic;
+                    // shape
+                    if      (tokens[3] == "sphere")  pd.shape = ColliderShape::Sphere;
+                    else if (tokens[3] == "capsule") pd.shape = ColliderShape::Capsule;
+                    else                             pd.shape = ColliderShape::Box;
+                    // options
+                    for (size_t i = 4; i < tokens.size(); ++i) {
+                        auto v = optVal(tokens[i], "mass");
+                        if (!v.empty()) { pd.mass = std::stof(v); continue; }
+                        v = optVal(tokens[i], "friction");
+                        if (!v.empty()) { pd.friction = std::stof(v); continue; }
+                        v = optVal(tokens[i], "restitution");
+                        if (!v.empty()) { pd.restitution = std::stof(v); continue; }
+                        v = optVal(tokens[i], "radius");
+                        if (!v.empty()) { pd.radius = std::stof(v); continue; }
+                        v = optVal(tokens[i], "height");
+                        if (!v.empty()) { pd.height = std::stof(v); continue; }
+                        v = optVal(tokens[i], "halfExtents");
+                        if (!v.empty()) {
+                            std::istringstream hs(v);
+                            std::string comp;
+                            float* dst[3] = {&pd.halfExtents.x, &pd.halfExtents.y, &pd.halfExtents.z};
+                            int ci = 0;
+                            while (std::getline(hs, comp, ',') && ci < 3)
+                                try { *dst[ci++] = std::stof(comp); } catch (...) {}
+                        }
+                    }
+                    physicsBodyRawDefs.push_back(pd);
+                }
+            }
+            // ----------------------------------------------------------------
+            // physics_ground <y_height>
+            else if (cmd == "physics_ground") {
+                if (tokens.size() >= 2) {
+                    try { physicsGroundHeights.push_back(std::stof(tokens[1])); } catch (...) {}
+                }
+            }
+            else {
+                std::cerr << "[SceneLoader] Unknown command '" << cmd
+                          << "' at line " << lineNo << std::endl;
+            }
         }
     }
     file.close();
@@ -560,6 +629,9 @@ bool SceneLoader::load(
     // -----------------------------------------------------------------------
     // Pass 5: fixed entities
     // -----------------------------------------------------------------------
+    // Track which entity index each alias first appears at (for physics_body
+    // lookup).
+    std::map<std::string, int> entityAliasFirstIndex;
     for (auto& ed : entityDefs) {
         auto it = modelMap.find(ed.alias);
         if (it == modelMap.end()) {
@@ -571,6 +643,10 @@ bool SceneLoader::load(
         float yVal = ed.y;
         if (ed.snapY && primaryTerrain)
             yVal = primaryTerrain->getHeightOfTerrain(ed.x, ed.z);
+
+        // Record first index for this alias before pushing
+        if (entityAliasFirstIndex.find(ed.alias) == entityAliasFirstIndex.end())
+            entityAliasFirstIndex[ed.alias] = static_cast<int>(entities.size());
 
         entities.push_back(new Entity(
             lm.model,
@@ -810,6 +886,34 @@ bool SceneLoader::load(
             std::cout << "[SceneLoader]   clip '" << clip.name
                       << "' → state '" << sn << "'\n";
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Pass 13: resolve physics body definitions → PhysicsBodyCfg
+    // -----------------------------------------------------------------------
+    for (const auto& pd : physicsBodyRawDefs) {
+        auto it = entityAliasFirstIndex.find(pd.alias);
+        if (it == entityAliasFirstIndex.end()) {
+            std::cerr << "[SceneLoader] physics_body references unknown entity alias '"
+                      << pd.alias << "'\n";
+            continue;
+        }
+        PhysicsBodyCfg cfg;
+        cfg.entityIndex = it->second;
+        cfg.type        = pd.type;
+        cfg.shape       = pd.shape;
+        cfg.mass        = pd.mass;
+        cfg.halfExtents = pd.halfExtents;
+        cfg.radius      = pd.radius;
+        cfg.height      = pd.height;
+        cfg.friction    = pd.friction;
+        cfg.restitution = pd.restitution;
+        physicsBodyCfgs.push_back(cfg);
+    }
+    for (float h : physicsGroundHeights) {
+        PhysicsGroundCfg gcfg;
+        gcfg.yHeight = h;
+        physicsGroundCfgs.push_back(gcfg);
     }
 
     // -----------------------------------------------------------------------

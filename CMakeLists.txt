@@ -45,6 +45,10 @@ add_subdirectory(deps/quill)
 # GLM — header-only; just add the include path, no add_subdirectory needed.
 target_include_directories(engine PRIVATE deps/glm)
 
+# Bullet Physics — system dependency (brew install bullet)
+find_package(Bullet REQUIRED)
+target_include_directories(engine PRIVATE ${BULLET_INCLUDE_DIRS})
+
 # Link all
 target_link_libraries(engine PRIVATE
     glfw
@@ -53,4 +57,7 @@ target_link_libraries(engine PRIVATE
     ${PNG_LIBRARY}
     assimp::assimp
     quill
+    BulletDynamics
+    BulletCollision
+    LinearMath
 )
