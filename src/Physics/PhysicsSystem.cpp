@@ -314,6 +314,8 @@ void PhysicsSystem::syncCharacterToPlayer() {
 
 void PhysicsSystem::setPlayerWalkDirection(float vx, float vz, bool wantsJump) {
     if (!characterController_) return;
+    // setWalkDirection(0,0,0) must be called even when idle — Bullet persists
+    // the previous walk direction otherwise and the character keeps moving.
     characterController_->setWalkDirection(btVector3(vx, 0.0f, vz));
     if (wantsJump && characterController_->canJump()) {
         characterController_->jump();

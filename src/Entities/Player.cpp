@@ -17,22 +17,22 @@ void Player::move(Terrain *terrain) {
     checkInputs();
     rotate(glm::vec3(0.0f, currentTurnSpeed * DisplayManager::getFrameTimeSeconds(), 0.0f));
 
+    float sinY = sin(glm::radians(getRotation().y));
+    float cosY = cos(glm::radians(getRotation().y));
+
     if (physicsSystem_) {
         // Physics path: feed velocity to btKinematicCharacterController.
         // Bullet handles gravity, jumping, and collision detection.
-        float vx = currentSpeed * sin(glm::radians(getRotation().y));
-        float vz = currentSpeed * cos(glm::radians(getRotation().y));
-        bool  wantsJump = InputMaster::isKeyDown(Space);
-        physicsSystem_->setPlayerWalkDirection(vx, vz, wantsJump);
+        physicsSystem_->setPlayerWalkDirection(
+            currentSpeed * sinY, currentSpeed * cosY,
+            InputMaster::isKeyDown(Space));
         // Position sync (ghost → player) happens in PhysicsSystem::update()
         return;
     }
 
     // Legacy path: manual gravity + terrain-height collision (no Bullet).
     float distance = currentSpeed * DisplayManager::getFrameTimeSeconds();
-    float dx = distance * sin(glm::radians(getRotation().y));
-    float dz = distance * cos(glm::radians(getRotation().y));
-    increasePosition(glm::vec3(dx, 0.0f, dz));
+    increasePosition(glm::vec3(distance * sinY, 0.0f, distance * cosY));
     upwardsSpeed += kGravity * DisplayManager::getFrameTimeSeconds();
     increasePosition(glm::vec3(0, upwardsSpeed * DisplayManager::getFrameTimeSeconds(), 0.0f));
 
