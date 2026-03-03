@@ -214,7 +214,7 @@ AnimatedModel* AnimationLoader::load(const std::string& path) {
                                         ch->mScalingKeys[k].mValue.z },
                                       static_cast<float>(ch->mScalingKeys[k].mTime) });
 
-            clip.channels[ch->mName.C_Str()] = std::move(ba);
+            clip.channels[ch->mNodeName.C_Str()] = std::move(ba);
         }
 
         model->clips.push_back(std::move(clip));
