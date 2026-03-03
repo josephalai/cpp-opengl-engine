@@ -219,6 +219,16 @@ void Engine::processFrame() {
     playerCamera->move(primaryTerrain);
     picker->update();
 
+    // Sync every animated character to the player's world position so the
+    // character follows the player and the camera always frames it correctly.
+    if (player && !animatedEntities.empty()) {
+        for (auto* ae : animatedEntities) {
+            if (!ae) continue;
+            ae->position = player->getPosition();
+            ae->rotation = player->getRotation();
+        }
+    }
+
     handleObjectPicking();
 
     sampleModifiedGui->getPosition() += glm::vec2(0.001f, 0.001f);

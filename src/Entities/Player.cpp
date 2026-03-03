@@ -39,17 +39,17 @@ void Player::jump() {
 
 void Player::checkInputs() {
 
-    if (InputMaster::isKeyDown(Up)) {
+    if (InputMaster::isKeyDown(W)) {
         currentSpeed = kRunSpeed * SPEED_HACK;
-    } else if (InputMaster::isKeyDown(Down)) {
+    } else if (InputMaster::isKeyDown(S)) {
         currentSpeed = -kRunSpeed * SPEED_HACK;
     } else {
         currentSpeed = 0.0f;
     }
 
-    if (InputMaster::isKeyDown(Right)) {
+    if (InputMaster::isKeyDown(D)) {
         currentTurnSpeed = -kTurnSpeed * SPEED_HACK / 2;
-    } else if (InputMaster::isKeyDown(Left)) {
+    } else if (InputMaster::isKeyDown(A)) {
         currentTurnSpeed = kTurnSpeed * SPEED_HACK / 2;
     } else {
         currentTurnSpeed = 0.0f;

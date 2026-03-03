@@ -343,6 +343,16 @@ void MainGuiLoop::main() {
         playerCamera->move(pickerTerrain);
         picker->update();
 
+        // Sync every animated character to the player's world position so the
+        // character follows the player and the camera always frames it correctly.
+        if (player && !animatedEntities.empty()) {
+            for (auto* ae : animatedEntities) {
+                if (!ae) continue;
+                ae->position = player->getPosition();
+                ae->rotation = player->getRotation();
+            }
+        }
+
         // --- Shadow pass (1.4) ---
         renderer->renderShadowPass(entities, lights);
 
