@@ -23,24 +23,69 @@ static glm::mat4 toGlm(const aiMatrix4x4& m) {
     return glm::transpose(glm::make_mat4(&m.a1));
 }
 
-static unsigned int loadTextureFromFile(const std::string& path, const std::string& directory) {
-    std::string filename = directory + '/' + path;
+static unsigned int loadTextureFromFile(const std::string& path,
+                                        const std::string& directory,
+                                        const aiScene*     scene) {
     unsigned int texID = 0;
     glGenTextures(1, &texID);
     int w, h, ch;
-    unsigned char* data = stbi_load(filename.c_str(), &w, &h, &ch, 0);
-    if (data) {
-        GLenum fmt = (ch == 1) ? GL_RED : (ch == 3) ? GL_RGB : GL_RGBA;
-        glBindTexture(GL_TEXTURE_2D, texID);
-        glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(fmt), w, h, 0, fmt, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        stbi_image_free(data);
+    unsigned char* data       = nullptr;
+    bool           isManuallyAllocated = false; // true when we used new[] to allocate data
+
+    // GLB / embedded texture: Assimp uses paths like "*0", "*1", …
+    if (!path.empty() && path[0] == '*') {
+        const aiTexture* embTex = scene ? scene->GetEmbeddedTexture(path.c_str()) : nullptr;
+        if (embTex) {
+            if (embTex->mHeight == 0) {
+                // Compressed data (PNG, JPEG, …) stored as a raw byte array
+                data = stbi_load_from_memory(
+                    reinterpret_cast<const stbi_uc*>(embTex->pcData),
+                    static_cast<int>(embTex->mWidth),
+                    &w, &h, &ch, 0);
+            } else {
+                // Uncompressed ARGB8888 pixel data — re-order to RGBA for OpenGL
+                w  = static_cast<int>(embTex->mWidth);
+                h  = static_cast<int>(embTex->mHeight);
+                ch = 4;
+                auto* src  = reinterpret_cast<const unsigned char*>(embTex->pcData);
+                auto* rgba = new unsigned char[w * h * 4];
+                for (int i = 0; i < w * h; ++i) {
+                    rgba[i * 4 + 0] = src[i * 4 + 2]; // R
+                    rgba[i * 4 + 1] = src[i * 4 + 1]; // G
+                    rgba[i * 4 + 2] = src[i * 4 + 0]; // B
+                    rgba[i * 4 + 3] = src[i * 4 + 3]; // A
+                }
+                data         = rgba;
+                isManuallyAllocated = true;
+            }
+        }
+        if (!data) {
+            std::cerr << "[AnimationLoader] Embedded texture failed: " << path << "\n";
+            glDeleteTextures(1, &texID);
+            return 0;
+        }
     } else {
-        std::cerr << "[AnimationLoader] Texture failed: " << filename << "\n";
+        // External texture file on disk
+        std::string filename = directory + '/' + path;
+        data = stbi_load(filename.c_str(), &w, &h, &ch, 0);
+        if (!data) {
+            std::cerr << "[AnimationLoader] Texture failed: " << filename << "\n";
+            return texID;
+        }
+    }
+
+    GLenum fmt = (ch == 1) ? GL_RED : (ch == 3) ? GL_RGB : GL_RGBA;
+    glBindTexture(GL_TEXTURE_2D, texID);
+    glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(fmt), w, h, 0, fmt, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    if (isManuallyAllocated) {
+        delete[] data;
+    } else {
         stbi_image_free(data);
     }
     return texID;
@@ -128,7 +173,7 @@ static AnimatedMesh processMesh(aiMesh* mesh, const aiScene* scene,
         if (mat->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
             aiString texPath;
             mat->GetTexture(aiTextureType_DIFFUSE, 0, &texPath);
-            result.textureID = loadTextureFromFile(texPath.C_Str(), directory);
+            result.textureID = loadTextureFromFile(texPath.C_Str(), directory, scene);
         }
     }
 
