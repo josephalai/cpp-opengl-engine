@@ -21,10 +21,16 @@ void Player::move(Terrain *terrain) {
     float cosY = cos(glm::radians(getRotation().y));
 
     if (physicsSystem_) {
-        // Physics path: feed velocity to btKinematicCharacterController.
-        // Bullet handles gravity, jumping, and collision detection.
+        // Physics path: feed per-frame displacement to btKinematicCharacterController.
+        // btKinematicCharacterController::setWalkDirection() (Bullet 3.x) takes a
+        // displacement vector applied directly each physics tick — it does NOT
+        // multiply internally by dt.  Scale by frame time here so movement speed
+        // matches the legacy path (distance = currentSpeed * dt).
+        // Bullet handles gravity, jumping, and collision response.
+        float frameDt = DisplayManager::getFrameTimeSeconds();
         physicsSystem_->setPlayerWalkDirection(
-            currentSpeed * sinY, currentSpeed * cosY,
+            currentSpeed * sinY * frameDt,
+            currentSpeed * cosY * frameDt,
             InputMaster::isKeyDown(Space));
         // Position sync (ghost → player) happens in PhysicsSystem::update()
         return;

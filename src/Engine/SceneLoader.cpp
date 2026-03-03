@@ -671,6 +671,8 @@ bool SceneLoader::load(
             glm::vec3 pos = randomPosition(primaryTerrain);
             glm::vec3 rot = randomRotation();
             float     sc  = randomScale(rd.scaleMin, rd.scaleMax);
+            // Record index before push so physics_body can cover random entities
+            entityAliasByIndex[rd.alias].push_back(static_cast<int>(entities.size()));
             if (rd.useAtlas) {
                 int idx = (rand() % 4) + 1;   // atlas row 1-4
                 entities.push_back(new Entity(lm.model,

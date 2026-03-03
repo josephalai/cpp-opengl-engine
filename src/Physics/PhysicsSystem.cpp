@@ -314,8 +314,12 @@ void PhysicsSystem::syncCharacterToPlayer() {
 
 void PhysicsSystem::setPlayerWalkDirection(float vx, float vz, bool wantsJump) {
     if (!characterController_) return;
-    // setWalkDirection(0,0,0) must be called even when idle — Bullet persists
-    // the previous walk direction otherwise and the character keeps moving.
+    // vx/vz are per-frame displacements (velocity × dt) supplied by Player::move().
+    // btKinematicCharacterController::setWalkDirection in Bullet 3.x applies the
+    // vector directly each tick without internal dt scaling, so the caller must
+    // supply an appropriately-scaled value.  Calling with (0,0,0) when idle is
+    // required — Bullet persists the previous walk direction otherwise and the
+    // character keeps drifting.
     characterController_->setWalkDirection(btVector3(vx, 0.0f, vz));
     if (wantsJump && characterController_->canJump()) {
         characterController_->jump();
