@@ -50,7 +50,7 @@ void EntityRenderer::renderInstanced(TexturedModel* model, const std::vector<Ent
     // Build a flat array of mat4 transforms for all instances
     std::vector<glm::mat4> matrices;
     matrices.reserve(batch.size());
-    for (const Entity* e : batch) {
+    for (Entity* e : batch) {
         matrices.push_back(
             Maths::createTransformationMatrix(e->getPosition(), e->getRotation(), e->getScale()));
     }
