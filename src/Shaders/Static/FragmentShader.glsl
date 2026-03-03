@@ -30,10 +30,16 @@ in vec3 toLightVector[4];
 
 in vec4 worldPosition;
 in float visibility;
+in mat3 TBN;
 
 out vec4 out_color;
 
 uniform sampler2D textureSampler;
+uniform sampler2D normalMapSampler;   // normal map (optional)
+uniform sampler2D specularMapSampler; // specular map (optional)
+
+uniform bool useNormalMap;
+uniform bool useSpecularMap;
 
 uniform vec3 lightColor;
 uniform vec3 viewPosition;
@@ -53,8 +59,20 @@ void main() {
         discard;
     }
 
-    vec3 unitNormal = normalize(surfaceNormal);
+    vec3 unitNormal;
+    if (useNormalMap) {
+        vec3 n = texture(normalMapSampler, pass_textureCoords).rgb * 2.0 - 1.0;
+        unitNormal = normalize(TBN * n);
+    } else {
+        unitNormal = normalize(surfaceNormal);
+    }
+
     vec3 unitVectorToCamera = normalize(viewPosition - vec3(worldPosition));
+
+    // Specular factor from map (or constant material.reflectivity)
+    float specMapFactor = useSpecularMap
+        ? texture(specularMapSampler, pass_textureCoords).r
+        : material.reflectivity;
 
     vec3 runningResult = vec3(0.0f);
 

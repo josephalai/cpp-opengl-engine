@@ -1,8 +1,7 @@
 //
 // SceneLoader.cpp — parses scene.cfg and loads the described scene objects.
 //
-// Config format (see src/Resources/Tutorial/scene.cfg for a fully-commented
-// example):
+// Config format (see src/Resources/scene.cfg for a fully-commented example):
 //
 //   # comment
 //   terrain <heightmapFile> <blendmapFile>
@@ -16,13 +15,19 @@
 //   player <alias> <x> <y> <z> [rx ry rz] [scale=F]
 //   assimp <path> [random[+offset]|<x> <y> <z>] [scaleMin=F scaleMax=F]
 //   gui <textureFile> <x> <y> <w> <h>
+//   text <font> <size> <x> <y> [maxWidth=F] [color=R,G,B] [centered] "message"
+//   animated_character <path> <x> <y|terrain[+N]> <z> [scale=F] [rot=RX,RY,RZ]
 //
 
 #include "SceneLoader.h"
 #include "../Util/FileSystem.h"
+#include "../RenderEngine/DisplayManager.h"
 #include "../Util/LightUtil.h"
 #include "../Textures/TerrainTexture.h"
 #include "../Interaction/InteractiveModel.h"
+#include "../Guis/Text/FontMeshCreator/TextMeshData.h"
+#include "../Toolbox/Color.h"
+#include "../Animation/AnimationLoader.h"
 
 #include <fstream>
 #include <sstream>
@@ -30,6 +35,7 @@
 #include <thread>
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <cmath>
 
 // ---------------------------------------------------------------------------
@@ -38,11 +44,27 @@
 
 std::vector<std::string> SceneLoader::tokenize(const std::string& line) {
     std::vector<std::string> tokens;
-    std::istringstream iss(line);
-    std::string tok;
-    while (iss >> tok) {
-        if (!tok.empty() && tok[0] == '#') break;   // rest is comment
-        tokens.push_back(tok);
+    const size_t n = line.size();
+    size_t i = 0;
+    while (i < n) {
+        // skip whitespace
+        if (std::isspace(static_cast<unsigned char>(line[i]))) { ++i; continue; }
+        // comment — stop here
+        if (line[i] == '#') break;
+        // quoted string — collect everything between the quotes as one token
+        if (line[i] == '"') {
+            ++i;
+            std::string tok;
+            while (i < n && line[i] != '"') tok += line[i++];
+            if (i < n) ++i;  // consume closing "
+            tokens.push_back(tok);
+            continue;
+        }
+        // plain token — stop at whitespace or '#'
+        std::string tok;
+        while (i < n && !std::isspace(static_cast<unsigned char>(line[i])) && line[i] != '#')
+            tok += line[i++];
+        if (!tok.empty()) tokens.push_back(tok);
     }
     return tokens;
 }
@@ -108,9 +130,12 @@ bool SceneLoader::load(
     std::vector<Light*>&        lights,
     std::vector<Terrain*>&      allTerrains,
     std::vector<GuiTexture*>&   guis,
+    std::vector<GUIText*>&      texts,
+    std::vector<WaterTile>&     waterTiles,
     Terrain*&                   primaryTerrain,
     Player*&                    player,
-    PlayerCamera*&              playerCamera)
+    PlayerCamera*&              playerCamera,
+    std::vector<AnimatedEntity*>& animatedEntities)
 {
     std::ifstream file(configPath);
     if (!file.is_open()) {
@@ -132,6 +157,9 @@ bool SceneLoader::load(
     PlayerDef                  playerDef;
     bool                       hasPlayer = false;
     std::vector<GuiDef>        guiDefs;
+    std::vector<TextDef>       textDefs;
+    std::vector<WaterDef>      waterDefs;
+    std::vector<AnimCharDef>   animCharDefs;
 
     std::string line;
     int lineNo = 0;
@@ -326,6 +354,90 @@ bool SceneLoader::load(
                 gd.w = std::stof(tokens[4]);
                 gd.h = std::stof(tokens[5]);
                 guiDefs.push_back(gd);
+            }
+        }
+        // ----------------------------------------------------------------
+        // text <font> <size> <x> <y> [maxWidth=F] [color=R,G,B] [centered] "message"
+        //
+        // font    — font name (maps to Resources/Tutorial/Fonts/<name>.ttf)
+        // size    — FreeType pixel size (e.g. 24, 36, 48)
+        // x, y    — NDC position (-1..+1), top-left of text block
+        // maxWidth— optional; max line width as fraction of screen width (0..1)
+        // color   — optional; float RGB components 0..1 (e.g. color=1.0,0.84,0.0)
+        // centered— optional keyword; centers the text within maxWidth
+        // "message"— quoted text string (required, must be last)
+        else if (cmd == "text") {
+            // minimum: text <font> <size> <x> <y> "message" = 6 tokens
+            if (tokens.size() >= 6) {
+                TextDef td;
+                td.fontName = tokens[1];
+                try { td.fontSize = std::stoi(tokens[2]); } catch (...) {}
+                try { td.x = std::stof(tokens[3]); } catch (...) {}
+                try { td.y = std::stof(tokens[4]); } catch (...) {}
+                // message is always the last token (quoted string)
+                td.message = tokens.back();
+                // parse optional tokens between position and message
+                for (size_t i = 5; i + 1 < tokens.size(); ++i) {
+                    if (tokens[i] == "centered") { td.centered = true; continue; }
+                    auto v = optVal(tokens[i], "maxWidth");
+                    if (!v.empty()) { td.maxWidth = std::stof(v); continue; }
+                    v = optVal(tokens[i], "color");
+                    if (!v.empty()) {
+                        // parse "R,G,B"
+                        std::istringstream cs(v);
+                        std::string comp;
+                        float* dst[3] = {&td.r, &td.g, &td.b};
+                        int ci = 0;
+                        while (std::getline(cs, comp, ',') && ci < 3) {
+                            try { *dst[ci++] = std::stof(comp); } catch (...) {}
+                        }
+                    }
+                }
+                if (!td.message.empty()) textDefs.push_back(td);
+            }
+        }
+        // ----------------------------------------------------------------
+        // water <x> <height> <z>
+        else if (cmd == "water") {
+            if (tokens.size() >= 4) {
+                WaterDef wd;
+                wd.x      = std::stof(tokens[1]);
+                wd.height = std::stof(tokens[2]);
+                wd.z      = std::stof(tokens[3]);
+                waterDefs.push_back(wd);
+            }
+        }
+        // ----------------------------------------------------------------
+        // animated_character <path> <x> <y|terrain[+N]> <z> [scale=F] [rot=RX,RY,RZ]
+        //   path  — file path relative to src/Resources/Tutorial/ (incl. extension)
+        //   x y z — world position (y supports "terrain[+N]" snap)
+        //   scale — optional uniform scale (default 1.0)
+        //   rot   — optional Euler rotation in degrees, comma-separated (default 0,0,0)
+        //           Use rot=-90,0,0 to stand up a model that loads on its belly (Z-up FBX).
+        else if (cmd == "animated_character") {
+            if (tokens.size() >= 5) {
+                AnimCharDef ac;
+                ac.path = tokens[1];
+                ac.x = std::stof(tokens[2]);
+                float yo = 0.0f;
+                ac.y = parseY(tokens[3], yo);
+                if (ac.y == kSnapY) { ac.snapY = true; ac.yOffset = yo; }
+                ac.z = std::stof(tokens[4]);
+                for (size_t i = 5; i < tokens.size(); ++i) {
+                    auto v = optVal(tokens[i], "scale");
+                    if (!v.empty()) { ac.scale = std::stof(v); continue; }
+                    v = optVal(tokens[i], "rot");
+                    if (!v.empty()) {
+                        // parse "RX,RY,RZ"
+                        std::istringstream rs(v);
+                        std::string comp;
+                        float* dst[3] = {&ac.rx, &ac.ry, &ac.rz};
+                        int ci = 0;
+                        while (std::getline(rs, comp, ',') && ci < 3)
+                            try { *dst[ci++] = std::stof(comp); } catch (...) {}
+                    }
+                }
+                animCharDefs.push_back(ac);
             }
         }
         else if (cmd != "#") {
@@ -544,12 +656,174 @@ bool SceneLoader::load(
                                       glm::vec2(gd.w, gd.h)));
     }
 
+    // -----------------------------------------------------------------------
+    // Pass 10: water tiles
+    // -----------------------------------------------------------------------
+    for (auto& wd : waterDefs) {
+        waterTiles.emplace_back(wd.x, wd.height, wd.z);
+    }
+
+    // -----------------------------------------------------------------------
+    // Pass 11: text overlays
+    //
+    // Requires TextMaster::init(loader) to have been called by the caller
+    // before SceneLoader::load() so that GUIText constructors can register
+    // themselves into TextMaster's batch map.
+    // -----------------------------------------------------------------------
+    if (!textDefs.empty()) {
+        // A single FontModel (dynamic VAO/VBO) is shared by all texts.
+        FontModel* sharedFontModel = loader->loadFontVAO();
+
+        // Cache loaded FontType objects by (name, size) to avoid re-loading
+        // the same FreeType face multiple times.  Stored as heap-allocated
+        // pointers so they outlive this function and remain valid for the
+        // lifetime of the GUIText objects that reference them.
+        std::map<std::pair<std::string,int>, FontType*> fontCache;
+
+        for (auto& td : textDefs) {
+            auto key = std::make_pair(td.fontName, td.fontSize);
+            auto it = fontCache.find(key);
+            if (it == fontCache.end()) {
+                fontCache.emplace(key, new FontType(TextMeshData::loadFont(td.fontName, td.fontSize)));
+                it = fontCache.find(key);
+            }
+            FontType* ft = it->second;
+
+            // Font is loaded at td.fontSize pixels, so scale=1.0 renders at native size.
+            // maxWidth is a screen-width fraction; convert to pixels for Line comparison.
+            auto* guiText = new GUIText(
+                td.message,
+                1.0f,
+                sharedFontModel,
+                ft,
+                glm::vec2(td.x, td.y),
+                Color(td.r, td.g, td.b),
+                td.maxWidth * static_cast<float>(DisplayManager::Width()),
+                td.centered);
+            texts.push_back(guiText);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Pass 12: animated characters
+    // -----------------------------------------------------------------------
+
+    // Helper: normalize clip name to a known state name for common variants.
+    // Exact case-insensitive match for the four canonical names is tried first,
+    // then substring match to handle "Walking"→"Walk", "Running"→"Run", etc.
+    auto normalizeClipName = [](const std::string& raw) -> std::string {
+        static const char* known[] = {"Idle", "Walk", "Run", "Jump", nullptr};
+
+        // 1) Exact case-insensitive match
+        for (int i = 0; known[i]; ++i) {
+            if (raw.size() == std::strlen(known[i])) {
+                bool same = true;
+                for (size_t k = 0; k < raw.size(); ++k)
+                    same = same && (std::tolower((unsigned char)raw[k]) ==
+                                    std::tolower((unsigned char)known[i][k]));
+                if (same) return known[i];
+            }
+        }
+
+        // 2) Substring match — handles "Walking"→"Walk", "Running"→"Run",
+        //    "Idle_02"→"Idle", "Jump_Start"→"Jump", "Armature|walk"→"Walk", etc.
+        std::string lower(raw);
+        for (auto& c : lower)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (lower.find("idle") != std::string::npos) return "Idle";
+        if (lower.find("walk") != std::string::npos) return "Walk";
+        if (lower.find("run")  != std::string::npos) return "Run";
+        if (lower.find("jump") != std::string::npos) return "Jump";
+
+        // 3) Unknown clip: capitalize the first letter and keep the rest.
+        std::string out = raw;
+        if (!out.empty()) out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+        return out;
+    };
+
+    for (auto& ac : animCharDefs) {
+        std::string absPath = FileSystem::Path("/src/Resources/Tutorial/" + ac.path);
+        AnimatedModel* animModel = AnimationLoader::load(absPath);
+        if (!animModel) {
+            std::cerr << "[SceneLoader] Failed to load animated_character: " << absPath << "\n";
+            continue;
+        }
+
+        float yVal = ac.y;
+        if (ac.snapY && primaryTerrain)
+            yVal = primaryTerrain->getHeightOfTerrain(ac.x, ac.z) + ac.yOffset;
+
+        auto* controller = new AnimationController();
+
+        // Register each clip under its normalized state name.
+        for (auto& clip : animModel->clips) {
+            std::string stateName = normalizeClipName(clip.name);
+            controller->addState(stateName, &clip);
+        }
+
+        // Set up default transitions only when the known states exist.
+        auto hasState = [&](const std::string& s) -> bool {
+            for (const auto& clip : animModel->clips)
+                if (normalizeClipName(clip.name) == s) return true;
+            return false;
+        };
+
+        // NOTE: transitions are wired with real keyboard conditions by
+        // MainGuiLoop::main() after load.  Do not add no-op placeholders here
+        // to avoid accumulating duplicate transition entries.
+
+        // Start playback on the first available state (prefer "Idle").
+        // If there is no Idle clip, leave the controller with no active state so the
+        // character stands in bind-pose until the player provides movement input.
+        // The MainGuiLoop's setupDefaultTransitions call will add the "" → Walk/Run
+        // transitions that allow animation to start on the first key press.
+        if (hasState("Idle"))
+            controller->setState("Idle");
+
+        auto* ae       = new AnimatedEntity();
+        ae->model      = animModel;
+        ae->controller = controller;
+        ae->position   = glm::vec3(ac.x, yVal, ac.z);
+        ae->scale      = ac.scale;
+
+        // Bake the user-specified rot= correction into coordinateCorrection so it
+        // persists even when the game loop overwrites ae->rotation with the player's
+        // facing direction each frame.  The correction is applied in model space
+        // (right-multiplied) independent of gameplay rotation.
+        if (ac.rx != 0.0f || ac.ry != 0.0f || ac.rz != 0.0f) {
+            glm::mat4 userRot = glm::mat4(1.0f);
+            userRot = glm::rotate(userRot, glm::radians(ac.rx), glm::vec3(1.0f, 0.0f, 0.0f));
+            userRot = glm::rotate(userRot, glm::radians(ac.ry), glm::vec3(0.0f, 1.0f, 0.0f));
+            userRot = glm::rotate(userRot, glm::radians(ac.rz), glm::vec3(0.0f, 0.0f, 1.0f));
+            animModel->coordinateCorrection = userRot * animModel->coordinateCorrection;
+        }
+
+        animatedEntities.push_back(ae);
+
+        // Log clip names so users can see exactly what animations the model contains
+        // and which state name each clip was mapped to.
+        std::cout << "[SceneLoader] Loaded animated_character '" << ac.path
+                  << "': " << animModel->clips.size() << " clip(s), "
+                  << animModel->skeleton.getBoneCount() << " bone(s).\n";
+        for (const auto& clip : animModel->clips) {
+            std::string sn = normalizeClipName(clip.name);
+            std::cout << "[SceneLoader]   clip '" << clip.name
+                      << "' → state '" << sn << "'\n";
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Final status log
+    // -----------------------------------------------------------------------
     std::cout << "[SceneLoader] Scene loaded: "
-              << entities.size()  << " entities, "
-              << scenes.size()    << " assimp scenes, "
-              << lights.size()    << " lights, "
-              << allTerrains.size()<< " terrain tiles, "
-              << guis.size()      << " GUI textures." << std::endl;
+              << entities.size()        << " entities, "
+              << scenes.size()          << " assimp scenes, "
+              << lights.size()          << " lights, "
+              << allTerrains.size()     << " terrain tiles, "
+              << guis.size()            << " GUI textures, "
+              << texts.size()           << " text overlays, "
+              << waterTiles.size()      << " water tiles, "
+              << animatedEntities.size()<< " animated characters." << std::endl;
 
     return true;
 }

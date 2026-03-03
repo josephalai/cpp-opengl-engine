@@ -13,8 +13,13 @@
 #include "../Entities/PlayerCamera.h"
 #include "../RenderEngine/FrameBuffers.h"
 #include "../Toolbox/TerrainPicker.h"
+#include "../Water/WaterRenderer.h"
+#include "../Water/WaterShader.h"
+#include "../Water/WaterTile.h"
 #include "../Interaction/InteractiveModel.h"
 #include "../Guis/Text/FontMeshCreator/TextMeshData.h"
+#include "../RenderEngine/AnimatedRenderer.h"
+#include "../Shaders/AnimatedShader.h"
 
 class Engine {
 public:
@@ -61,11 +66,15 @@ private:
     FontRenderer* fontRenderer = nullptr;
     FrameBuffers* reflectFbo = nullptr;
     TerrainPicker* picker = nullptr;
+    WaterRenderer* waterRenderer = nullptr;
+    WaterShader* waterShader = nullptr;
 
     // --- Scene data ---
     Player* player = nullptr;
     PlayerCamera* playerCamera = nullptr;
     Terrain* primaryTerrain = nullptr;
+
+    std::vector<WaterTile> waterTiles;
 
     std::vector<Terrain*> allTerrains;
     std::vector<Light*> lights;
@@ -86,6 +95,11 @@ private:
     // GUI components updated per-frame
     GuiTexture* sampleModifiedGui = nullptr;
     GuiComponent* masterContainer = nullptr;
+
+    // --- Animation ---
+    AnimatedShader*   animShader   = nullptr;
+    AnimatedRenderer* animRenderer = nullptr;
+    std::vector<AnimatedEntity*> animatedEntities;
 };
 
 #endif // ENGINE_ENGINE_H

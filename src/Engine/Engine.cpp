@@ -73,14 +73,19 @@ void Engine::loadScene() {
     const std::string configPath = FileSystem::Scene("scene.cfg");
     SceneLoader::load(configPath, loader,
                       entities, scenes, lights,
-                      allTerrains, guis,
-                      primaryTerrain, player, playerCamera);
+                      allTerrains, guis, texts, waterTiles,
+                      primaryTerrain, player, playerCamera,
+                      animatedEntities);
 }
 
 void Engine::initRenderers() {
     renderer    = new MasterRenderer(playerCamera, loader);
     guiRenderer = new GuiRenderer(loader);
     rectRenderer = new RectRenderer(loader);
+
+    // Animation renderer
+    animShader   = new AnimatedShader();
+    animRenderer = new AnimatedRenderer(animShader);
 
     UiMaster::initialize(loader, guiRenderer, fontRenderer, rectRenderer);
 }
@@ -147,6 +152,36 @@ void Engine::initFramebuffersAndPickers() {
     auto gui   = new GuiTexture(reflectFbo->getReflectionTexture(), glm::vec2(0.75f, 0.75f), glm::vec2(0.2f));
     guis.push_back(gui);
 
+    // Water renderer — loads optional DuDv / normal textures, falls back to neutral 1×1 textures
+    if (!waterTiles.empty()) {
+        GLuint dudvTex   = 0;
+        GLuint waterNorm = 0;
+        auto* t = loader->loadTexture("waterDUDV");
+        if (t) dudvTex = t->getId();
+        t = loader->loadTexture("waterNormal");
+        if (t) waterNorm = t->getId();
+
+        auto createFallbackTex = [](GLuint& id, unsigned char r, unsigned char g, unsigned char b) {
+            if (id == 0) {
+                glGenTextures(1, &id);
+                glBindTexture(GL_TEXTURE_2D, id);
+                unsigned char data[4] = {r, g, b, 255};
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            }
+        };
+        createFallbackTex(dudvTex,   128, 128, 255);
+        createFallbackTex(waterNorm, 128, 128, 255);
+
+        waterShader   = new WaterShader();
+        waterRenderer = new WaterRenderer(loader, waterShader, renderer->getProjectionMatrix(),
+                                          reflectFbo, dudvTex, waterNorm);
+        renderer->setWaterRenderer(waterRenderer);
+        for (const auto& tile : waterTiles)
+            renderer->addWaterTile(tile);
+    }
+
     picker = new TerrainPicker(playerCamera, renderer->getProjectionMatrix(), primaryTerrain);
 
     for (auto e : entities) {
@@ -157,6 +192,19 @@ void Engine::initFramebuffersAndPickers() {
     allBoxes.reserve(entities.size() + scenes.size());
     allBoxes.insert(allBoxes.end(), entities.begin(), entities.end());
     allBoxes.insert(allBoxes.end(), scenes.begin(), scenes.end());
+
+    // Wire keyboard-driven animation transitions for every animated character.
+    // SceneLoader registered no-op lambdas; replace with real input-driven ones.
+    // setupDefaultTransitions is safe to call when not all clip states exist —
+    // the controller silently ignores transitions to unregistered states.
+    for (auto* ae : animatedEntities) {
+        if (ae && ae->controller) {
+            ae->controller->setupDefaultTransitions(
+                []() { return InputMaster::isKeyDown(W) && !InputMaster::isKeyDown(LeftShift); },
+                []() { return InputMaster::isKeyDown(W) &&  InputMaster::isKeyDown(LeftShift); },
+                []() { return InputMaster::isKeyDown(Space); });
+        }
+    }
 }
 
 void Engine::run() {
@@ -170,6 +218,16 @@ void Engine::run() {
 void Engine::processFrame() {
     playerCamera->move(primaryTerrain);
     picker->update();
+
+    // Sync every animated character to the player's world position so the
+    // character follows the player and the camera always frames it correctly.
+    if (player && !animatedEntities.empty()) {
+        for (auto* ae : animatedEntities) {
+            if (!ae) continue;
+            ae->position = player->getPosition();
+            ae->rotation = player->getRotation();
+        }
+    }
 
     handleObjectPicking();
 
@@ -185,6 +243,14 @@ void Engine::processFrame() {
     // Main scene render
     {
         renderer->renderScene(entities, scenes, allTerrains, lights);
+    }
+
+    // Animated characters
+    if (!animatedEntities.empty()) {
+        animRenderer->render(animatedEntities,
+                             DisplayManager::getFrameTimeSeconds(),
+                             lights, playerCamera,
+                             renderer->getProjectionMatrix());
     }
 
     pNameText->getPosition() += glm::vec2(.1f);
@@ -234,7 +300,18 @@ void Engine::shutdown() {
     fontRenderer->cleanUp();
     guiRenderer->cleanUp();
     rectRenderer->cleanUp();
-    renderer->cleanUp();
+    renderer->cleanUp();   // also cleans up waterRenderer if set
+    if (waterShader) waterShader->cleanUp();
+    if (animShader)  animShader->cleanUp();
+    for (auto* ae : animatedEntities) {
+        if (ae) {
+            if (ae->model) { ae->model->cleanUp(); delete ae->model; }
+            delete ae->controller;
+            delete ae;
+        }
+    }
+    animatedEntities.clear();
+    delete animRenderer;
     loader->cleanUp();
     DisplayManager::closeDisplay();
 }

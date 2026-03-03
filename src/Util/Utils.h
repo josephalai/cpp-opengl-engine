@@ -12,7 +12,7 @@ public:
 
     static int roll(int min, int max) {
         // x is in [0,1[
-        long x = rand() / static_cast<double>(RAND_MAX + 1);
+        double x = rand() / (static_cast<double>(RAND_MAX) + 1.0);
 
         // [0,1[ * (max - min) + min is in [min,max[
         int that = min + static_cast<int>( x * (max - min));

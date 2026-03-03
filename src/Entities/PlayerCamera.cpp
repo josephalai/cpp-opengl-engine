@@ -27,7 +27,7 @@ void PlayerCamera::calculateCameraPosition(float horizDistance, float verticDist
     float offsetZ = horizDistance * cos(glm::radians(theta));
     Position.x = player->getPosition().x - offsetX;
     Position.z = player->getPosition().z - offsetZ;
-    Position.y = player->getPosition().y - verticDistance + 4;
+    Position.y = player->getPosition().y - verticDistance + kOrbitPivotY;
 
     if (glfwGetMouseButton(DisplayManager::window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS || cursorInvisible) {
         Yaw = static_cast<int>(180 - player->getRotation().y + angleAroundPlayer - 90) % 360;
@@ -40,7 +40,7 @@ glm::mat4 PlayerCamera::getViewMatrix() {
     front.x = cos(glm::radians(Yaw)) * cos(glm::radians(Pitch));
     front.y = sin(glm::radians(Pitch));
     front.z = sin(glm::radians(Yaw)) * cos(glm::radians(Pitch));
-    return glm::lookAt(PlayerCamera::Position, player->getPosition(), PlayerCamera::Up);
+    return glm::lookAt(PlayerCamera::Position, player->getPosition() + glm::vec3(0, kOrbitPivotY, 0), PlayerCamera::Up);
 }
 
 void PlayerCamera::calculateAngleAroundPlayer() {
