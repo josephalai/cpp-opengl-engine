@@ -272,7 +272,28 @@ AnimatedModel* AnimationLoader::load(const std::string& path) {
         model->clips.push_back(std::move(clip));
     }
 
-    // 5) Upload to GPU
+    // 5) Detect coordinate system and set corrective rotation if needed.
+    // Assimp FBX metadata reports UpAxis: 0=X, 1=Y, 2=Z.
+    // glTF/GLB files are always Y-up (UpAxis=1) so no correction is needed.
+    // For Z-up models (e.g. FBX exported from Blender without axis conversion)
+    // we rotate -90° around X so the mesh's +Z maps to OpenGL's +Y.
+    {
+        int32_t upAxis     = 1; // default: Y-up
+        int32_t upAxisSign = 1;
+        if (scene->mMetaData) {
+            scene->mMetaData->Get("UpAxis",     upAxis);
+            scene->mMetaData->Get("UpAxisSign", upAxisSign);
+        }
+        if (upAxis == 2) {
+            // Z-up → rotate by sign * (-90°) around X
+            float angle = static_cast<float>(upAxisSign) * glm::radians(-90.0f);
+            model->coordinateCorrection =
+                glm::rotate(glm::mat4(1.0f), angle, glm::vec3(1.0f, 0.0f, 0.0f));
+            std::cout << "[AnimationLoader] Z-up model detected — applying coordinate correction.\n";
+        }
+    }
+
+    // 6) Upload to GPU
     model->setupMeshes();
 
     return model;

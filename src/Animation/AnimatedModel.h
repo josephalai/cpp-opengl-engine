@@ -38,6 +38,11 @@ public:
     std::vector<AnimationClip> clips;
     std::string               directory;
 
+    /// Applied in model space before the entity's world transform.
+    /// Set automatically from Assimp metadata when the file uses a
+    /// non-Y-up coordinate system (e.g. Z-up FBX from Blender).
+    glm::mat4 coordinateCorrection = glm::mat4(1.0f);
+
     /// Returns the index of the named clip, or -1 if not found.
     int getClipIndex(const std::string& name) const;
 

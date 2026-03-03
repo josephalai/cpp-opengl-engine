@@ -748,10 +748,12 @@ bool SceneLoader::load(
         }
 
         // Start playback on the first available state (prefer "Idle").
+        // If there is no Idle clip, leave the controller with no active state so the
+        // character stands in bind-pose until the player provides movement input.
+        // The MainGuiLoop's setupDefaultTransitions call will add the "" → Walk/Run
+        // transitions that allow animation to start on the first key press.
         if (hasState("Idle"))
             controller->setState("Idle");
-        else if (!animModel->clips.empty())
-            controller->setState(normalizeClipName(animModel->clips[0].name));
 
         auto* ae       = new AnimatedEntity();
         ae->model      = animModel;

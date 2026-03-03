@@ -15,6 +15,15 @@ void AnimationController::addTransition(const std::string& from, const std::stri
 }
 
 void AnimationController::setState(const std::string& name) {
+    // Empty name → return to bind-pose (no active clip).
+    if (name.empty()) {
+        previousStateName = currentStateName;
+        currentStateName  = "";
+        blending          = false;   // no crossfade when dropping to bind pose
+        blendElapsed      = 0.0f;
+        return;
+    }
+
     if (states.find(name) == states.end()) {
         std::cerr << "[AnimationController] Unknown state: " << name << "\n";
         return;
@@ -39,16 +48,18 @@ void AnimationController::setState(const std::string& name) {
 }
 
 std::vector<glm::mat4> AnimationController::update(float deltaTime, Skeleton& skeleton) {
-    if (currentStateName.empty()) {
-        return skeleton.computeBoneMatrices();
-    }
-
-    // Check automatic transitions
+    // Check automatic transitions first — this handles the bind-pose ("") → movement
+    // case as well as the normal state-to-state transitions.
     for (const auto& t : transitions) {
         if (t.from == currentStateName && t.condition && t.condition()) {
             setState(t.to);
             break;
         }
+    }
+
+    if (currentStateName.empty()) {
+        // No active clip — return bind-pose matrices.
+        return skeleton.computeBoneMatrices();
     }
 
     if (blending && !previousStateName.empty()) {
@@ -91,12 +102,38 @@ void AnimationController::setupDefaultTransitions(std::function<bool()> walkCond
     auto notWalkNotRun = [walkCond, runCond]() { return !walkCond() && !runCond(); };
     auto walkOnly      = [walkCond]()          { return walkCond(); };
 
-    addTransition("Idle", "Walk", walkCond,      0.2f);
-    addTransition("Walk", "Idle", notWalkNotRun, 0.2f);
-    addTransition("Walk", "Run",  runCond,       0.15f);
-    addTransition("Run",  "Walk", walkOnly,      0.15f);
-    addTransition("Idle", "Jump", jumpCond,      0.1f);
-    addTransition("Walk", "Jump", jumpCond,      0.1f);
-    addTransition("Run",  "Jump", jumpCond,      0.1f);
-    addTransition("Jump", "Idle", nullptr,       0.2f);
+    bool hasIdle = states.count("Idle") > 0;
+    bool hasWalk = states.count("Walk") > 0;
+    bool hasRun  = states.count("Run")  > 0;
+    bool hasJump = states.count("Jump") > 0;
+
+    // Standard transitions: only add when both endpoint states exist.
+    if (hasIdle && hasWalk) {
+        addTransition("Idle", "Walk", walkCond,      0.2f);
+        addTransition("Walk", "Idle", notWalkNotRun, 0.2f);
+    }
+    if (hasWalk && hasRun) {
+        addTransition("Walk", "Run",  runCond,  0.15f);
+        addTransition("Run",  "Walk", walkOnly, 0.15f);
+    }
+    if (hasIdle && hasJump) addTransition("Idle", "Jump", jumpCond, 0.1f);
+    if (hasWalk && hasJump) addTransition("Walk", "Jump", jumpCond, 0.1f);
+    if (hasRun  && hasJump) addTransition("Run",  "Jump", jumpCond, 0.1f);
+    if (hasJump && hasIdle) addTransition("Jump", "Idle", nullptr,  0.2f);
+
+    // For models with no Idle clip: add bind-pose ("") ↔ movement transitions so
+    // the character stands still in T-pose until the player provides input.
+    if (!hasIdle) {
+        if (hasWalk) {
+            addTransition("",     "Walk", walkCond,      0.0f);
+            addTransition("Walk", "",     notWalkNotRun, 0.0f);
+        }
+        if (hasRun) {
+            addTransition("", "Run", runCond, 0.0f);
+        }
+        if (hasJump) {
+            addTransition("",     "Jump", jumpCond, 0.0f);
+            addTransition("Jump", "",     nullptr,  0.0f);
+        }
+    }
 }
