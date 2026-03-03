@@ -784,8 +784,19 @@ bool SceneLoader::load(
         ae->model      = animModel;
         ae->controller = controller;
         ae->position   = glm::vec3(ac.x, yVal, ac.z);
-        ae->rotation   = glm::vec3(ac.rx, ac.ry, ac.rz);
         ae->scale      = ac.scale;
+
+        // Bake the user-specified rot= correction into coordinateCorrection so it
+        // persists even when the game loop overwrites ae->rotation with the player's
+        // facing direction each frame.  The correction is applied in model space
+        // (right-multiplied) independent of gameplay rotation.
+        if (ac.rx != 0.0f || ac.ry != 0.0f || ac.rz != 0.0f) {
+            glm::mat4 userRot = glm::mat4(1.0f);
+            userRot = glm::rotate(userRot, glm::radians(ac.rx), glm::vec3(1.0f, 0.0f, 0.0f));
+            userRot = glm::rotate(userRot, glm::radians(ac.ry), glm::vec3(0.0f, 1.0f, 0.0f));
+            userRot = glm::rotate(userRot, glm::radians(ac.rz), glm::vec3(0.0f, 0.0f, 1.0f));
+            animModel->coordinateCorrection = userRot * animModel->coordinateCorrection;
+        }
 
         animatedEntities.push_back(ae);
 
