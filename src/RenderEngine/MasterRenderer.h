@@ -27,6 +27,9 @@
 #include "../Water/WaterTile.h"
 #include "../Shaders/PBRShader.h"
 #include "../Shaders/PBRMaterial.h"
+#include "InstancedRenderer.h"
+#include "InstancedModel.h"
+#include "../Shaders/InstancedShader.h"
 
 static const float FOVY = 45.0f;
 static const float NEAR_PLANE = 0.1f;
@@ -67,6 +70,10 @@ private:
 
     // PBR shader (optional)
     PBRShader *pbrShader = nullptr;
+
+    // Instanced rendering
+    InstancedShader   *instancedShader   = nullptr;
+    InstancedRenderer *instancedRenderer = nullptr;
 
 public:
     explicit MasterRenderer(PlayerCamera *cameraInput, Loader *loader);
@@ -129,6 +136,10 @@ public:
 
     // --- PBR ---
     PBRShader* getPBRShader() { return pbrShader; }
+
+    // --- Instanced Rendering ---
+    void processInstancedEntity(InstancedModel* model, const std::vector<glm::mat4>& transforms);
+    void renderInstanced(const std::vector<Light*>& lights);
 };
 
 #endif //ENGINE_MASTERRENDERER_H

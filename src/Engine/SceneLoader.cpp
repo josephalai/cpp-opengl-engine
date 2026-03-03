@@ -16,6 +16,7 @@
 //   assimp <path> [random[+offset]|<x> <y> <z>] [scaleMin=F scaleMax=F]
 //   gui <textureFile> <x> <y> <w> <h>
 //   text <font> <size> <x> <y> [maxWidth=F] [color=R,G,B] [centered] "message"
+//   animated_character <path> <x> <y|terrain[+N]> <z> [scale=F] [rot=RX,RY,RZ]
 //
 
 #include "SceneLoader.h"
@@ -26,6 +27,7 @@
 #include "../Interaction/InteractiveModel.h"
 #include "../Guis/Text/FontMeshCreator/TextMeshData.h"
 #include "../Toolbox/Color.h"
+#include "../Animation/AnimationLoader.h"
 
 #include <fstream>
 #include <sstream>
@@ -33,6 +35,7 @@
 #include <thread>
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <cmath>
 
 // ---------------------------------------------------------------------------
@@ -131,7 +134,8 @@ bool SceneLoader::load(
     std::vector<WaterTile>&     waterTiles,
     Terrain*&                   primaryTerrain,
     Player*&                    player,
-    PlayerCamera*&              playerCamera)
+    PlayerCamera*&              playerCamera,
+    std::vector<AnimatedEntity*>& animatedEntities)
 {
     std::ifstream file(configPath);
     if (!file.is_open()) {
@@ -155,6 +159,7 @@ bool SceneLoader::load(
     std::vector<GuiDef>        guiDefs;
     std::vector<TextDef>       textDefs;
     std::vector<WaterDef>      waterDefs;
+    std::vector<AnimCharDef>   animCharDefs;
 
     std::string line;
     int lineNo = 0;
@@ -400,6 +405,39 @@ bool SceneLoader::load(
                 wd.height = std::stof(tokens[2]);
                 wd.z      = std::stof(tokens[3]);
                 waterDefs.push_back(wd);
+            }
+        }
+        // ----------------------------------------------------------------
+        // animated_character <path> <x> <y|terrain[+N]> <z> [scale=F] [rot=RX,RY,RZ]
+        //   path  — file path relative to src/Resources/Tutorial/ (incl. extension)
+        //   x y z — world position (y supports "terrain[+N]" snap)
+        //   scale — optional uniform scale (default 1.0)
+        //   rot   — optional Euler rotation in degrees, comma-separated (default 0,0,0)
+        //           Use rot=-90,0,0 to stand up a model that loads on its belly (Z-up FBX).
+        else if (cmd == "animated_character") {
+            if (tokens.size() >= 5) {
+                AnimCharDef ac;
+                ac.path = tokens[1];
+                ac.x = std::stof(tokens[2]);
+                float yo = 0.0f;
+                ac.y = parseY(tokens[3], yo);
+                if (ac.y == kSnapY) { ac.snapY = true; ac.yOffset = yo; }
+                ac.z = std::stof(tokens[4]);
+                for (size_t i = 5; i < tokens.size(); ++i) {
+                    auto v = optVal(tokens[i], "scale");
+                    if (!v.empty()) { ac.scale = std::stof(v); continue; }
+                    v = optVal(tokens[i], "rot");
+                    if (!v.empty()) {
+                        // parse "RX,RY,RZ"
+                        std::istringstream rs(v);
+                        std::string comp;
+                        float* dst[3] = {&ac.rx, &ac.ry, &ac.rz};
+                        int ci = 0;
+                        while (std::getline(rs, comp, ',') && ci < 3)
+                            try { *dst[ci++] = std::stof(comp); } catch (...) {}
+                    }
+                }
+                animCharDefs.push_back(ac);
             }
         }
         else if (cmd != "#") {
@@ -666,14 +704,126 @@ bool SceneLoader::load(
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Pass 12: animated characters
+    // -----------------------------------------------------------------------
+
+    // Helper: normalize clip name to a known state name for common variants.
+    // Exact case-insensitive match for the four canonical names is tried first,
+    // then substring match to handle "Walking"→"Walk", "Running"→"Run", etc.
+    auto normalizeClipName = [](const std::string& raw) -> std::string {
+        static const char* known[] = {"Idle", "Walk", "Run", "Jump", nullptr};
+
+        // 1) Exact case-insensitive match
+        for (int i = 0; known[i]; ++i) {
+            if (raw.size() == std::strlen(known[i])) {
+                bool same = true;
+                for (size_t k = 0; k < raw.size(); ++k)
+                    same = same && (std::tolower((unsigned char)raw[k]) ==
+                                    std::tolower((unsigned char)known[i][k]));
+                if (same) return known[i];
+            }
+        }
+
+        // 2) Substring match — handles "Walking"→"Walk", "Running"→"Run",
+        //    "Idle_02"→"Idle", "Jump_Start"→"Jump", "Armature|walk"→"Walk", etc.
+        std::string lower(raw);
+        for (auto& c : lower)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (lower.find("idle") != std::string::npos) return "Idle";
+        if (lower.find("walk") != std::string::npos) return "Walk";
+        if (lower.find("run")  != std::string::npos) return "Run";
+        if (lower.find("jump") != std::string::npos) return "Jump";
+
+        // 3) Unknown clip: capitalize the first letter and keep the rest.
+        std::string out = raw;
+        if (!out.empty()) out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+        return out;
+    };
+
+    for (auto& ac : animCharDefs) {
+        std::string absPath = FileSystem::Path("/src/Resources/Tutorial/" + ac.path);
+        AnimatedModel* animModel = AnimationLoader::load(absPath);
+        if (!animModel) {
+            std::cerr << "[SceneLoader] Failed to load animated_character: " << absPath << "\n";
+            continue;
+        }
+
+        float yVal = ac.y;
+        if (ac.snapY && primaryTerrain)
+            yVal = primaryTerrain->getHeightOfTerrain(ac.x, ac.z) + ac.yOffset;
+
+        auto* controller = new AnimationController();
+
+        // Register each clip under its normalized state name.
+        for (auto& clip : animModel->clips) {
+            std::string stateName = normalizeClipName(clip.name);
+            controller->addState(stateName, &clip);
+        }
+
+        // Set up default transitions only when the known states exist.
+        auto hasState = [&](const std::string& s) -> bool {
+            for (const auto& clip : animModel->clips)
+                if (normalizeClipName(clip.name) == s) return true;
+            return false;
+        };
+
+        // NOTE: transitions are wired with real keyboard conditions by
+        // MainGuiLoop::main() after load.  Do not add no-op placeholders here
+        // to avoid accumulating duplicate transition entries.
+
+        // Start playback on the first available state (prefer "Idle").
+        // If there is no Idle clip, leave the controller with no active state so the
+        // character stands in bind-pose until the player provides movement input.
+        // The MainGuiLoop's setupDefaultTransitions call will add the "" → Walk/Run
+        // transitions that allow animation to start on the first key press.
+        if (hasState("Idle"))
+            controller->setState("Idle");
+
+        auto* ae       = new AnimatedEntity();
+        ae->model      = animModel;
+        ae->controller = controller;
+        ae->position   = glm::vec3(ac.x, yVal, ac.z);
+        ae->scale      = ac.scale;
+
+        // Bake the user-specified rot= correction into coordinateCorrection so it
+        // persists even when the game loop overwrites ae->rotation with the player's
+        // facing direction each frame.  The correction is applied in model space
+        // (right-multiplied) independent of gameplay rotation.
+        if (ac.rx != 0.0f || ac.ry != 0.0f || ac.rz != 0.0f) {
+            glm::mat4 userRot = glm::mat4(1.0f);
+            userRot = glm::rotate(userRot, glm::radians(ac.rx), glm::vec3(1.0f, 0.0f, 0.0f));
+            userRot = glm::rotate(userRot, glm::radians(ac.ry), glm::vec3(0.0f, 1.0f, 0.0f));
+            userRot = glm::rotate(userRot, glm::radians(ac.rz), glm::vec3(0.0f, 0.0f, 1.0f));
+            animModel->coordinateCorrection = userRot * animModel->coordinateCorrection;
+        }
+
+        animatedEntities.push_back(ae);
+
+        // Log clip names so users can see exactly what animations the model contains
+        // and which state name each clip was mapped to.
+        std::cout << "[SceneLoader] Loaded animated_character '" << ac.path
+                  << "': " << animModel->clips.size() << " clip(s), "
+                  << animModel->skeleton.getBoneCount() << " bone(s).\n";
+        for (const auto& clip : animModel->clips) {
+            std::string sn = normalizeClipName(clip.name);
+            std::cout << "[SceneLoader]   clip '" << clip.name
+                      << "' → state '" << sn << "'\n";
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Final status log
+    // -----------------------------------------------------------------------
     std::cout << "[SceneLoader] Scene loaded: "
-              << entities.size()   << " entities, "
-              << scenes.size()     << " assimp scenes, "
-              << lights.size()     << " lights, "
-              << allTerrains.size()<< " terrain tiles, "
-              << guis.size()       << " GUI textures, "
-              << texts.size()      << " text overlays, "
-              << waterTiles.size() << " water tiles." << std::endl;
+              << entities.size()        << " entities, "
+              << scenes.size()          << " assimp scenes, "
+              << lights.size()          << " lights, "
+              << allTerrains.size()     << " terrain tiles, "
+              << guis.size()            << " GUI textures, "
+              << texts.size()           << " text overlays, "
+              << waterTiles.size()      << " water tiles, "
+              << animatedEntities.size()<< " animated characters." << std::endl;
 
     return true;
 }

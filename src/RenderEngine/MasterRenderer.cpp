@@ -29,6 +29,10 @@ MasterRenderer::MasterRenderer(PlayerCamera *cameraInput, Loader *loader) : shad
 
     // PBR shader — initialise lazily so OpenGL context is guaranteed
     pbrShader = new PBRShader();
+
+    // Instanced rendering
+    instancedShader   = new InstancedShader();
+    instancedRenderer = new InstancedRenderer(instancedShader);
 }
 
 void MasterRenderer::cleanUp() {
@@ -36,9 +40,10 @@ void MasterRenderer::cleanUp() {
     terrainShader->cleanUp();
     sceneShader->cleanUp();
     bShader->cleanUp();
-    if (pbrShader)    pbrShader->cleanUp();
-    if (shadowShader) shadowShader->cleanUp();
-    if (waterRenderer) waterRenderer->cleanUp();
+    if (pbrShader)         pbrShader->cleanUp();
+    if (shadowShader)      shadowShader->cleanUp();
+    if (waterRenderer)     waterRenderer->cleanUp();
+    if (instancedShader)   instancedShader->cleanUp();
 }
 
 Color MasterRenderer::skyColor = const_cast<Color &>(ColorName::Skyblue);
@@ -254,4 +259,20 @@ void MasterRenderer::renderSceneGraph(SceneGraph& graph, std::vector<AssimpEntit
     graph.update();
     std::vector<Entity*> sgEntities = graph.collectEntities();
     renderScene(sgEntities, aEntities, terrains, lights);
+}
+
+// ---------------------------------------------------------------------------
+// Instanced Rendering
+// ---------------------------------------------------------------------------
+
+void MasterRenderer::processInstancedEntity(InstancedModel* model,
+                                              const std::vector<glm::mat4>& transforms) {
+    for (const auto& t : transforms) {
+        instancedRenderer->addInstance(model, t);
+    }
+}
+
+void MasterRenderer::renderInstanced(const std::vector<Light*>& lights) {
+    instancedRenderer->render(lights, camera, createProjectionMatrix(),
+                               skyColor.getColorRGB());
 }

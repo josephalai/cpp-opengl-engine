@@ -74,13 +74,18 @@ void Engine::loadScene() {
     SceneLoader::load(configPath, loader,
                       entities, scenes, lights,
                       allTerrains, guis, texts, waterTiles,
-                      primaryTerrain, player, playerCamera);
+                      primaryTerrain, player, playerCamera,
+                      animatedEntities);
 }
 
 void Engine::initRenderers() {
     renderer    = new MasterRenderer(playerCamera, loader);
     guiRenderer = new GuiRenderer(loader);
     rectRenderer = new RectRenderer(loader);
+
+    // Animation renderer
+    animShader   = new AnimatedShader();
+    animRenderer = new AnimatedRenderer(animShader);
 
     UiMaster::initialize(loader, guiRenderer, fontRenderer, rectRenderer);
 }
@@ -187,6 +192,19 @@ void Engine::initFramebuffersAndPickers() {
     allBoxes.reserve(entities.size() + scenes.size());
     allBoxes.insert(allBoxes.end(), entities.begin(), entities.end());
     allBoxes.insert(allBoxes.end(), scenes.begin(), scenes.end());
+
+    // Wire keyboard-driven animation transitions for every animated character.
+    // SceneLoader registered no-op lambdas; replace with real input-driven ones.
+    // setupDefaultTransitions is safe to call when not all clip states exist —
+    // the controller silently ignores transitions to unregistered states.
+    for (auto* ae : animatedEntities) {
+        if (ae && ae->controller) {
+            ae->controller->setupDefaultTransitions(
+                []() { return InputMaster::isKeyDown(W) && !InputMaster::isKeyDown(LeftShift); },
+                []() { return InputMaster::isKeyDown(W) &&  InputMaster::isKeyDown(LeftShift); },
+                []() { return InputMaster::isKeyDown(Space); });
+        }
+    }
 }
 
 void Engine::run() {
@@ -200,6 +218,16 @@ void Engine::run() {
 void Engine::processFrame() {
     playerCamera->move(primaryTerrain);
     picker->update();
+
+    // Sync every animated character to the player's world position so the
+    // character follows the player and the camera always frames it correctly.
+    if (player && !animatedEntities.empty()) {
+        for (auto* ae : animatedEntities) {
+            if (!ae) continue;
+            ae->position = player->getPosition();
+            ae->rotation = player->getRotation();
+        }
+    }
 
     handleObjectPicking();
 
@@ -215,6 +243,14 @@ void Engine::processFrame() {
     // Main scene render
     {
         renderer->renderScene(entities, scenes, allTerrains, lights);
+    }
+
+    // Animated characters
+    if (!animatedEntities.empty()) {
+        animRenderer->render(animatedEntities,
+                             DisplayManager::getFrameTimeSeconds(),
+                             lights, playerCamera,
+                             renderer->getProjectionMatrix());
     }
 
     pNameText->getPosition() += glm::vec2(.1f);
@@ -266,6 +302,16 @@ void Engine::shutdown() {
     rectRenderer->cleanUp();
     renderer->cleanUp();   // also cleans up waterRenderer if set
     if (waterShader) waterShader->cleanUp();
+    if (animShader)  animShader->cleanUp();
+    for (auto* ae : animatedEntities) {
+        if (ae) {
+            if (ae->model) { ae->model->cleanUp(); delete ae->model; }
+            delete ae->controller;
+            delete ae;
+        }
+    }
+    animatedEntities.clear();
+    delete animRenderer;
     loader->cleanUp();
     DisplayManager::closeDisplay();
 }

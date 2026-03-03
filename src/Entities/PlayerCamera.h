@@ -15,6 +15,12 @@ public:
     float distanceFromPlayer = 55.0f;
     float angleAroundPlayer = 0.0f;
 
+    // Vertical offset of the orbit pivot above the player's origin.
+    // Must be consistent between calculateCameraPosition() and getViewMatrix().
+    // Set to approximately the character's chest height so the camera centers
+    // on the body rather than above the head when zoomed in close.
+    constexpr static const float kOrbitPivotY = 1.5f;
+
     /**
      * @brief PlayerCamera (extending CameraInput), is modified based on the player's movements.
      *        This in turn updates vectors and matrices in CameraInput, which then modifies the
