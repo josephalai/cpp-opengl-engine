@@ -312,6 +312,14 @@ void PhysicsSystem::syncCharacterToPlayer() {
     playerPtr_->setPosition(pos);
 }
 
+void PhysicsSystem::setPlayerWalkDirection(float vx, float vz, bool wantsJump) {
+    if (!characterController_) return;
+    characterController_->setWalkDirection(btVector3(vx, 0.0f, vz));
+    if (wantsJump && characterController_->canJump()) {
+        characterController_->jump();
+    }
+}
+
 void PhysicsSystem::renderDebug(const glm::mat4& view, const glm::mat4& projection) {
     if (debugDrawEnabled_ && debugDrawer_) {
         debugDrawer_->flushLines(view, projection);

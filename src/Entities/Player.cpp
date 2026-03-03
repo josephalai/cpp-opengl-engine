@@ -1,5 +1,6 @@
 #include "Player.h"
 #include "../Input/InputMaster.h"
+#include "../Physics/PhysicsSystem.h"
 
 //
 // Created by Joseph Alai on 7/10/21.
@@ -15,6 +16,19 @@ float Player::SPEED_HACK = 1.0f;
 void Player::move(Terrain *terrain) {
     checkInputs();
     rotate(glm::vec3(0.0f, currentTurnSpeed * DisplayManager::getFrameTimeSeconds(), 0.0f));
+
+    if (physicsSystem_) {
+        // Physics path: feed velocity to btKinematicCharacterController.
+        // Bullet handles gravity, jumping, and collision detection.
+        float vx = currentSpeed * sin(glm::radians(getRotation().y));
+        float vz = currentSpeed * cos(glm::radians(getRotation().y));
+        bool  wantsJump = InputMaster::isKeyDown(Space);
+        physicsSystem_->setPlayerWalkDirection(vx, vz, wantsJump);
+        // Position sync (ghost → player) happens in PhysicsSystem::update()
+        return;
+    }
+
+    // Legacy path: manual gravity + terrain-height collision (no Bullet).
     float distance = currentSpeed * DisplayManager::getFrameTimeSeconds();
     float dx = distance * sin(glm::radians(getRotation().y));
     float dz = distance * cos(glm::radians(getRotation().y));

@@ -75,6 +75,11 @@ public:
                                 float capsuleRadius = 0.5f,
                                 float capsuleHeight = 1.8f);
 
+    /// Drive the character controller's walk direction (call from Player::move()).
+    /// vx/vz are world-space velocity in units/second; wantsJump triggers a jump
+    /// if the character is on the ground.
+    void setPlayerWalkDirection(float vx, float vz, bool wantsJump = false);
+
     /// Sync character controller ghost transform back to player after step.
     void syncCharacterToPlayer();
 
