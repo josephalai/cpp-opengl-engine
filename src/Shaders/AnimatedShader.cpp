@@ -6,6 +6,13 @@
 AnimatedShader::AnimatedShader()
     : ShaderProgram(VertexPath, FragmentPath, nullptr) {
     initialize();
+    // Initialise the UBO for bone matrices (GL context must be active)
+    boneBuffer_.init(MAX_BONES);
+    // Bind the shader's uniform block "BoneBlock" to binding point 0
+    GLuint blockIdx = glGetUniformBlockIndex(programID, "BoneBlock");
+    if (blockIdx != GL_INVALID_INDEX) {
+        glUniformBlockBinding(programID, blockIdx, BoneBuffer::kBindingPoint);
+    }
 }
 
 void AnimatedShader::bindAttributes() {
@@ -36,11 +43,7 @@ void AnimatedShader::getAllUniformLocations() {
         loc_lightLinear   [i] = getUniformLocation(Utils::shaderArray(lightArr, i, "linear"));
         loc_lightQuadratic[i] = getUniformLocation(Utils::shaderArray(lightArr, i, "quadratic"));
     }
-
-    for (int i = 0; i < MAX_BONES; ++i) {
-        loc_boneMatrices[i] = getUniformLocation(
-            "boneMatrices[" + std::to_string(i) + "]");
-    }
+    // Note: bone matrices are now in a UBO (BoneBlock), not individual uniforms.
 }
 
 void AnimatedShader::loadTransformationMatrix(const glm::mat4& m) {
@@ -82,8 +85,6 @@ void AnimatedShader::loadLight(const std::vector<Light*>& lights) {
 }
 
 void AnimatedShader::loadBoneMatrices(const std::vector<glm::mat4>& matrices) {
-    int count = std::min(static_cast<int>(matrices.size()), MAX_BONES);
-    for (int i = 0; i < count; ++i) {
-        setMat4(loc_boneMatrices[i], matrices[i]);
-    }
+    boneBuffer_.upload(matrices);
+    boneBuffer_.bind(BoneBuffer::kBindingPoint);
 }

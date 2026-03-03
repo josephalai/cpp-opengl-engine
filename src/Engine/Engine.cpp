@@ -1,10 +1,15 @@
 //
 // Created as part of Phase 0 engine refactoring.
 // Splits MainGameLoop::main() into a clean Engine class with lifecycle methods.
+// The game loop delegates all per-frame work to ordered ISystem instances.
 //
 
 #include "Engine.h"
 #include "SceneLoader.h"
+#include "InputSystem.h"
+#include "AnimationSystem.h"
+#include "RenderSystem.h"
+#include "UISystem.h"
 #include "../Util/FileSystem.h"
 #include "../Util/Utils.h"
 #include "../Util/LightUtil.h"
@@ -37,6 +42,7 @@ void Engine::init() {
     initRenderers();
     initGui();
     initFramebuffersAndPickers();
+    buildSystems();
 }
 
 void Engine::initFonts() {
@@ -207,94 +213,39 @@ void Engine::initFramebuffersAndPickers() {
     }
 }
 
+void Engine::buildSystems() {
+    // Systems are updated in this order each frame:
+    //   1. InputSystem  — camera movement, picker, GUI animations
+    //   2. RenderSystem — FBO + main scene render
+    //   3. AnimationSystem — sync positions + animated character render
+    //   4. UISystem     — object picking + UiMaster render + constraints
+    systems.push_back(std::make_unique<InputSystem>(
+        playerCamera, primaryTerrain, picker, sampleModifiedGui, pNameText));
+
+    systems.push_back(std::make_unique<RenderSystem>(
+        renderer, reflectFbo, entities, scenes, allTerrains, lights, allBoxes));
+
+    systems.push_back(std::make_unique<AnimationSystem>(
+        animRenderer, animatedEntities, player, lights,
+        playerCamera, renderer->getProjectionMatrix()));
+
+    systems.push_back(std::make_unique<UISystem>(
+        renderer, allBoxes, clickColorText, fontModel, noodleFont, masterContainer));
+}
+
 void Engine::run() {
-    // All game logic uses delta-time via DisplayManager::getFrameTimeSeconds()
     while (DisplayManager::stayOpen()) {
-        processFrame();
+        float dt = DisplayManager::getFrameTimeSeconds();
+        for (auto& sys : systems) {
+            sys->update(dt);
+        }
         DisplayManager::updateDisplay();
     }
 }
 
-void Engine::processFrame() {
-    playerCamera->move(primaryTerrain);
-    picker->update();
-
-    // Sync every animated character to the player's world position so the
-    // character follows the player and the camera always frames it correctly.
-    if (player && !animatedEntities.empty()) {
-        for (auto* ae : animatedEntities) {
-            if (!ae) continue;
-            ae->position = player->getPosition();
-            ae->rotation = player->getRotation();
-        }
-    }
-
-    handleObjectPicking();
-
-    sampleModifiedGui->getPosition() += glm::vec2(0.001f, 0.001f);
-
-    // Render to reflection framebuffer
-    reflectFbo->bindReflectionFrameBuffer();
-    {
-        renderer->renderBoundingBoxes(allBoxes);
-    }
-    reflectFbo->unbindCurrentFrameBuffer();
-
-    // Main scene render
-    {
-        renderer->renderScene(entities, scenes, allTerrains, lights);
-    }
-
-    // Animated characters
-    if (!animatedEntities.empty()) {
-        animRenderer->render(animatedEntities,
-                             DisplayManager::getFrameTimeSeconds(),
-                             lights, playerCamera,
-                             renderer->getProjectionMatrix());
-    }
-
-    pNameText->getPosition() += glm::vec2(.1f);
-
-    UiMaster::render();
-    UiMaster::getMasterComponent()->getConstraints()->getPosition() += glm::vec2(0.001f, 0.0f);
-    UiMaster::applyConstraints(masterContainer);
-}
-
-void Engine::handleObjectPicking() {
-    if (InputMaster::hasPendingClick()) {
-        if (InputMaster::mouseClicked(LeftClick)) {
-            renderer->renderBoundingBoxes(allBoxes);
-            Color clickColor = Picker::getColor();
-            int element      = BoundingBoxIndex::getIndexByColor(clickColor);
-
-            *clickColorText = GUIText(
-                ColorName::toString(clickColor) + ", Element: " + std::to_string(element),
-                0.5f, fontModel, noodleFont, glm::vec2(10.0f, 20.0f), clickColor,
-                0.75f * static_cast<float>(DisplayManager::Width()), false);
-
-            Interactive *pClickedModel = InteractiveModel::getInteractiveBox(
-                BoundingBoxIndex::getIndexByColor(clickColor));
-
-            if (pClickedModel != nullptr) {
-                if (auto a = dynamic_cast<Player *>(pClickedModel)) {
-                    if (!a->hasMaterial()) {
-                        a->setMaterial({500.0f, 500.0f});
-                        a->activateMaterial();
-                    } else {
-                        a->disableMaterial();
-                    }
-                }
-                printf("position: x, y, z: (%f, %f, %f)\n",
-                       pClickedModel->getPosition().x,
-                       pClickedModel->getPosition().y,
-                       pClickedModel->getPosition().z);
-            }
-            InputMaster::resetClick();
-        }
-    }
-}
-
 void Engine::shutdown() {
+    systems.clear();  // ISystem destructors release per-system resources
+
     reflectFbo->cleanUp();
     TextMaster::cleanUp();
     fontRenderer->cleanUp();
@@ -302,7 +253,10 @@ void Engine::shutdown() {
     rectRenderer->cleanUp();
     renderer->cleanUp();   // also cleans up waterRenderer if set
     if (waterShader) waterShader->cleanUp();
-    if (animShader)  animShader->cleanUp();
+    if (animShader)  {
+        animShader->getBoneBuffer().cleanup();
+        animShader->cleanUp();
+    }
     for (auto* ae : animatedEntities) {
         if (ae) {
             if (ae->model) { ae->model->cleanUp(); delete ae->model; }

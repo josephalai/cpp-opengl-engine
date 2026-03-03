@@ -20,6 +20,7 @@
 #include "../Guis/Text/FontMeshCreator/TextMeshData.h"
 #include "../RenderEngine/AnimatedRenderer.h"
 #include "../Shaders/AnimatedShader.h"
+#include "ISystem.h"
 
 class Engine {
 public:
@@ -29,7 +30,7 @@ public:
     /// Initialize the display, loader, and all subsystems
     void init();
 
-    /// Run the main game loop
+    /// Run the main game loop — thin coordinator that updates each ISystem in order
     void run();
 
     /// Clean up all resources and close display
@@ -52,11 +53,8 @@ private:
     /// Initialize framebuffers and pickers
     void initFramebuffersAndPickers();
 
-    /// Process a single frame (called inside the game loop)
-    void processFrame();
-
-    /// Handle click-based object picking
-    void handleObjectPicking();
+    /// Build the ordered list of ISystem instances that drive the game loop
+    void buildSystems();
 
     // --- Subsystems (owned) ---
     Loader* loader = nullptr;
@@ -100,6 +98,9 @@ private:
     AnimatedShader*   animShader   = nullptr;
     AnimatedRenderer* animRenderer = nullptr;
     std::vector<AnimatedEntity*> animatedEntities;
+
+    // --- ISystem ordered pipeline (owned) ---
+    std::vector<std::unique_ptr<ISystem>> systems;
 };
 
 #endif // ENGINE_ENGINE_H

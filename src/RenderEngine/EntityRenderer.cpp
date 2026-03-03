@@ -10,6 +10,13 @@ EntityRenderer::EntityRenderer(StaticShader *shader) {
     this->shader = shader;
 }
 
+EntityRenderer::~EntityRenderer() {
+    if (instanceVBO_) {
+        glDeleteBuffers(1, &instanceVBO_);
+        instanceVBO_ = 0;
+    }
+}
+
 /**
  * @brief accepts a map[model]std::vector<Entity *>, and traverses through
  *        it, and draws them -- so as not to copy objects.
@@ -31,6 +38,62 @@ void EntityRenderer::render(std::map<TexturedModel *, std::vector<Entity *>> *en
         unbindTexturedModel();
         it++;
     }
+}
+
+/**
+ * @brief Instanced rendering: uploads per-instance model matrices as vertex
+ *        attributes (locations 4–7) and issues glDrawElementsInstanced.
+ */
+void EntityRenderer::renderInstanced(TexturedModel* model, const std::vector<Entity*>& batch) {
+    if (batch.empty()) return;
+
+    // Build a flat array of mat4 transforms for all instances
+    std::vector<glm::mat4> matrices;
+    matrices.reserve(batch.size());
+    for (const Entity* e : batch) {
+        matrices.push_back(
+            Maths::createTransformationMatrix(e->getPosition(), e->getRotation(), e->getScale()));
+    }
+
+    prepareTexturedModel(model);
+    shader->loadUseInstancing(true);
+
+    GLuint vbo = getOrCreateInstanceVBO();
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER,
+                 static_cast<GLsizeiptr>(matrices.size() * sizeof(glm::mat4)),
+                 matrices.data(),
+                 GL_DYNAMIC_DRAW);
+
+    // A mat4 occupies 4 consecutive vec4 attribute slots (locations 4–7)
+    for (int col = 0; col < 4; ++col) {
+        GLuint loc = static_cast<GLuint>(4 + col);
+        glEnableVertexAttribArray(loc);
+        glVertexAttribPointer(loc,
+                              4,
+                              GL_FLOAT,
+                              GL_FALSE,
+                              sizeof(glm::mat4),
+                              reinterpret_cast<const void*>(col * sizeof(glm::vec4)));
+        glVertexAttribDivisor(loc, 1);  // advance once per instance, not per vertex
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glDrawElementsInstanced(GL_TRIANGLES,
+                            model->getRawModel()->getVertexCount(),
+                            GL_UNSIGNED_INT,
+                            nullptr,
+                            static_cast<GLsizei>(batch.size()));
+
+    // Reset instance divisors so regular rendering still works
+    for (int col = 0; col < 4; ++col) {
+        GLuint loc = static_cast<GLuint>(4 + col);
+        glVertexAttribDivisor(loc, 0);
+        glDisableVertexAttribArray(loc);
+    }
+
+    shader->loadUseInstancing(false);
+    unbindTexturedModel();
 }
 
 /**
@@ -85,4 +148,11 @@ void EntityRenderer::prepareInstance(Entity *entity) {
     shader->loadTransformationMatrix(transformationMatrix);
     shader->loadMaterial(entity->getMaterial());
     shader->loadOffset(entity->getTextureXOffset(), entity->getTextureYOffset());
+}
+
+GLuint EntityRenderer::getOrCreateInstanceVBO() {
+    if (instanceVBO_ == 0) {
+        glGenBuffers(1, &instanceVBO_);
+    }
+    return instanceVBO_;
 }
