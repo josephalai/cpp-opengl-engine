@@ -12,9 +12,6 @@
 #define ENGINE_CHARACTERCONTROLLER_H
 
 #include <glm/glm.hpp>
-#include <btBulletDynamicsCommon.h>
-#include <BulletCollision/CollisionDispatch/btGhostObject.h>
-#include <BulletDynamics/Character/btKinematicCharacterController.h>
 
 class Player;
 class Terrain;
@@ -30,14 +27,9 @@ public:
     /// Reads player input and feeds walk direction + jump to Bullet.
     void update(float deltaTime, Terrain* terrain);
 
-    btKinematicCharacterController* getBulletController() const {
-        return controller_;
-    }
-
 private:
-    PhysicsSystem*                  physicsSystem_ = nullptr;
-    Player*                         player_        = nullptr;
-    btKinematicCharacterController* controller_    = nullptr;  ///< owned by PhysicsSystem
+    PhysicsSystem* physicsSystem_ = nullptr;
+    Player*        player_        = nullptr;
 };
 
 #endif // ENGINE_CHARACTERCONTROLLER_H

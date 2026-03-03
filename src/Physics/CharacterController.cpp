@@ -6,19 +6,11 @@
 #include "PhysicsSystem.h"
 #include "../Entities/Player.h"
 #include "../Terrain/Terrain.h"
-#include "../Input/InputMaster.h"
-#include "../RenderEngine/DisplayManager.h"
-
-#include <glm/gtc/constants.hpp>
-#include <cmath>
 
 CharacterController::CharacterController(PhysicsSystem* physicsSystem, Player* player,
                                           float capsuleRadius, float capsuleHeight)
     : physicsSystem_(physicsSystem), player_(player) {
     physicsSystem_->setCharacterController(player, capsuleRadius, capsuleHeight);
-    controller_ = physicsSystem_->getWorld()
-        ? nullptr  // Bullet controller is managed inside PhysicsSystem
-        : nullptr;
 }
 
 CharacterController::~CharacterController() = default;
