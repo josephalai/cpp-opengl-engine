@@ -1,5 +1,6 @@
 #include "Player.h"
 #include "../Input/InputMaster.h"
+#include "../Physics/PhysicsSystem.h"
 
 //
 // Created by Joseph Alai on 7/10/21.
@@ -15,10 +16,29 @@ float Player::SPEED_HACK = 1.0f;
 void Player::move(Terrain *terrain) {
     checkInputs();
     rotate(glm::vec3(0.0f, currentTurnSpeed * DisplayManager::getFrameTimeSeconds(), 0.0f));
+
+    float sinY = sin(glm::radians(getRotation().y));
+    float cosY = cos(glm::radians(getRotation().y));
+
+    if (physicsSystem_) {
+        // Physics path: feed per-frame displacement to btKinematicCharacterController.
+        // btKinematicCharacterController::setWalkDirection() (Bullet 3.x) takes a
+        // displacement vector applied directly each physics tick — it does NOT
+        // multiply internally by dt.  Scale by frame time here so movement speed
+        // matches the legacy path (distance = currentSpeed * dt).
+        // Bullet handles gravity, jumping, and collision response.
+        float frameDt = DisplayManager::getFrameTimeSeconds();
+        physicsSystem_->setPlayerWalkDirection(
+            currentSpeed * sinY * frameDt,
+            currentSpeed * cosY * frameDt,
+            InputMaster::isKeyDown(Space));
+        // Position sync (ghost → player) happens in PhysicsSystem::update()
+        return;
+    }
+
+    // Legacy path: manual gravity + terrain-height collision (no Bullet).
     float distance = currentSpeed * DisplayManager::getFrameTimeSeconds();
-    float dx = distance * sin(glm::radians(getRotation().y));
-    float dz = distance * cos(glm::radians(getRotation().y));
-    increasePosition(glm::vec3(dx, 0.0f, dz));
+    increasePosition(glm::vec3(distance * sinY, 0.0f, distance * cosY));
     upwardsSpeed += kGravity * DisplayManager::getFrameTimeSeconds();
     increasePosition(glm::vec3(0, upwardsSpeed * DisplayManager::getFrameTimeSeconds(), 0.0f));
 

@@ -27,6 +27,7 @@
 #include "../BoundingBox/BoundingBoxIndex.h"
 #include "../Water/WaterTile.h"
 #include "../RenderEngine/AnimatedRenderer.h"
+#include "../Physics/PhysicsComponents.h"
 
 /// Reads src/Resources/Tutorial/scene.cfg and loads the described 3-D scene
 /// content into the vectors/pointers passed by reference.  Returns true on
@@ -34,6 +35,24 @@
 /// in which case the caller should fall back to hard-coded defaults.
 class SceneLoader {
 public:
+    /// Physics body configuration parsed from a `physics_body` line.
+    struct PhysicsBodyCfg {
+        int           entityIndex = -1;   ///< index into the entities vector
+        BodyType      type        = BodyType::Dynamic;
+        ColliderShape shape       = ColliderShape::Box;
+        float         mass        = 1.0f;
+        glm::vec3     halfExtents = glm::vec3(0.5f);
+        float         radius      = 0.5f;
+        float         height      = 1.8f;
+        float         friction    = 0.5f;
+        float         restitution = 0.3f;
+    };
+
+    /// Ground plane configuration parsed from a `physics_ground` line.
+    struct PhysicsGroundCfg {
+        float yHeight = 0.0f;
+    };
+
     static bool load(
         const std::string&          configPath,
         Loader*                     loader,
@@ -47,7 +66,9 @@ public:
         Terrain*&                   primaryTerrain,
         Player*&                    player,
         PlayerCamera*&              playerCamera,
-        std::vector<AnimatedEntity*>& animatedEntities
+        std::vector<AnimatedEntity*>& animatedEntities,
+        std::vector<PhysicsBodyCfg>&  physicsBodyCfgs,
+        std::vector<PhysicsGroundCfg>& physicsGroundCfgs
     );
 
     // Sentinel: when y == kSnapY the entity's y is resolved from terrain height.

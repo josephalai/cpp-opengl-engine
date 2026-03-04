@@ -1,0 +1,124 @@
+//
+// PhysicsSystem.h — Bullet Physics integration as an ISystem subsystem.
+// Manages the Bullet dynamics world, rigid body registration, and
+// physics-to-renderer transform synchronisation.
+//
+
+#ifndef ENGINE_PHYSICSSYSTEM_H
+#define ENGINE_PHYSICSSYSTEM_H
+
+#include "../Engine/ISystem.h"
+#include "../Entities/Entity.h"
+#include "../Entities/AssimpEntity.h"
+#include "PhysicsComponents.h"
+
+#include <btBulletDynamicsCommon.h>
+#include <BulletCollision/CollisionDispatch/btGhostObject.h>
+#include <BulletDynamics/Character/btKinematicCharacterController.h>
+
+#include <unordered_map>
+#include <vector>
+
+// Forward declaration
+class PhysicsDebugDrawer;
+class Player;
+class Terrain;
+
+/// One record kept per registered entity.
+struct PhysicsEntry {
+    Entity*       entity   = nullptr;  ///< null for non-Entity registrations
+    AssimpEntity* aEntity  = nullptr;  ///< null for non-AssimpEntity registrations
+    btRigidBody*  body     = nullptr;
+    BodyType      bodyType = BodyType::Dynamic;
+};
+
+class PhysicsSystem : public ISystem {
+public:
+    PhysicsSystem();
+    ~PhysicsSystem() override;
+
+    // ISystem
+    void init()                  override;
+    void update(float deltaTime) override;
+    void shutdown()              override;
+
+    /// World accessor so other systems can query/rayCast.
+    btDiscreteDynamicsWorld* getWorld() { return dynamicsWorld_; }
+
+    // --- Entity registration helpers ---
+
+    /// Register an Entity with a static (mass=0) rigid body.
+    void addStaticBody(Entity* entity, ColliderShape shape,
+                       glm::vec3 halfExtents = glm::vec3(0.5f),
+                       float friction = 0.5f, float restitution = 0.3f);
+
+    /// Register an Entity with a dynamic rigid body.
+    void addDynamicBody(Entity* entity, const PhysicsBodyDef& def);
+
+    /// Register an Entity with a kinematic rigid body.
+    void addKinematicBody(Entity* entity, const PhysicsBodyDef& def);
+
+    /// Unregister an entity's rigid body.
+    void removeRigidBody(Entity* entity);
+
+    /// Add an infinite static ground plane at the given y height.
+    void addGroundPlane(float yHeight = 0.0f);
+
+    /// Add a static heightfield collider for a Terrain tile.
+    /// The player's btKinematicCharacterController will walk on the real
+    /// terrain surface instead of the flat fallback ground plane.
+    void addTerrainCollider(Terrain* terrain);
+
+    /// Enable/disable the debug drawer.
+    void setDebugDrawEnabled(bool enabled) { debugDrawEnabled_ = enabled; }
+    bool isDebugDrawEnabled() const        { return debugDrawEnabled_; }
+
+    /// Render accumulated debug lines.  Call after render systems have run.
+    void renderDebug(const glm::mat4& view, const glm::mat4& projection);
+
+    /// Set up a kinematic character controller for the player.
+    void setCharacterController(Player* player,
+                                float capsuleRadius = 0.5f,
+                                float capsuleHeight = 1.8f);
+
+    /// Drive the character controller's walk direction (call from Player::move()).
+    /// vx/vz are per-frame displacement in world space (velocity × dt); they are
+    /// applied directly each physics tick via btKinematicCharacterController::setWalkDirection.
+    /// wantsJump triggers a single jump when the character is on the ground.
+    void setPlayerWalkDirection(float vx, float vz, bool wantsJump = false);
+
+    /// Sync character controller ghost transform back to player after step.
+    void syncCharacterToPlayer();
+
+    /// Distance from capsule centre to its bottom (height/2 + radius).
+    float getCapsuleHalfHeight() const { return capsuleHalfHeight_; }
+
+private:
+    btDefaultCollisionConfiguration*     collisionConfig_    = nullptr;
+    btCollisionDispatcher*               dispatcher_         = nullptr;
+    btDbvtBroadphase*                    broadphase_         = nullptr;
+    btSequentialImpulseConstraintSolver* solver_             = nullptr;
+    btDiscreteDynamicsWorld*             dynamicsWorld_      = nullptr;
+
+    PhysicsDebugDrawer*                  debugDrawer_        = nullptr;
+    bool                                 debugDrawEnabled_   = false;
+
+    std::vector<PhysicsEntry>                     entries_;
+    std::vector<btCollisionShape*>                shapes_;         ///< owned base (child) shapes
+    std::vector<btCompoundShape*>                 compoundShapes_; ///< wrapper shapes (deleted before children)
+    std::vector<btRigidBody*>                     groundBodies_;   ///< ground planes + terrain tiles
+    std::vector<btCollisionShape*>                groundShapes_;
+    std::vector<std::vector<float>>               terrainHeightBuffers_; ///< keeps height data alive for terrain shapes
+
+    // Character controller
+    Player*                            playerPtr_           = nullptr;
+    btPairCachingGhostObject*          ghostObject_         = nullptr;
+    btKinematicCharacterController*    characterController_ = nullptr;
+    btCapsuleShape*                    capsuleShape_        = nullptr;
+    float                              capsuleHalfHeight_   = 0.0f;  ///< height/2 + radius
+
+    /// Build a btCollisionShape from a PhysicsBodyDef.
+    btCollisionShape* createShape(const PhysicsBodyDef& def);
+};
+
+#endif // ENGINE_PHYSICSSYSTEM_H

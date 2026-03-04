@@ -27,6 +27,8 @@ public:
 
     std::vector<std::vector<float>> heights;
 
+    float getSize() const { return kTerrainSize; }
+
     float getX() const {
         return x;
     }

@@ -10,6 +10,7 @@
 #include "AnimationSystem.h"
 #include "RenderSystem.h"
 #include "UISystem.h"
+#include "../Physics/PhysicsSystem.h"
 #include "../Util/FileSystem.h"
 #include "../Util/Utils.h"
 #include "../Util/LightUtil.h"
@@ -77,11 +78,64 @@ void Engine::loadScene() {
     // Developers can edit scene.cfg to add/remove/modify models, entities,
     // lights, terrain tiles, and GUI textures at runtime without recompiling.
     const std::string configPath = FileSystem::Scene("scene.cfg");
+
+    std::vector<SceneLoader::PhysicsBodyCfg>   physicsBodyCfgs;
+    std::vector<SceneLoader::PhysicsGroundCfg> physicsGroundCfgs;
+
     SceneLoader::load(configPath, loader,
                       entities, scenes, lights,
                       allTerrains, guis, texts, waterTiles,
                       primaryTerrain, player, playerCamera,
-                      animatedEntities);
+                      animatedEntities,
+                      physicsBodyCfgs, physicsGroundCfgs);
+
+    // Set up physics world and register bodies from config
+    physicsSystem = new PhysicsSystem();
+    physicsSystem->init();
+
+    // Add ground planes
+    for (const auto& g : physicsGroundCfgs) {
+        physicsSystem->addGroundPlane(g.yHeight);
+    }
+
+    // Add rigid bodies for named entities
+    for (const auto& cfg : physicsBodyCfgs) {
+        // entityIndex was resolved by SceneLoader against the entities vector
+        if (cfg.entityIndex < 0 || cfg.entityIndex >= static_cast<int>(entities.size()))
+            continue;
+        Entity* ent = entities[static_cast<size_t>(cfg.entityIndex)];
+
+        PhysicsBodyDef def;
+        def.type        = cfg.type;
+        def.shape       = cfg.shape;
+        def.mass        = cfg.mass;
+        def.halfExtents = cfg.halfExtents;
+        def.radius      = cfg.radius;
+        def.height      = cfg.height;
+        def.friction    = cfg.friction;
+        def.restitution = cfg.restitution;
+
+        switch (def.type) {
+            case BodyType::Static:
+                physicsSystem->addStaticBody(ent, def.shape, def.halfExtents,
+                                             def.friction, def.restitution);
+                break;
+            case BodyType::Kinematic:
+                physicsSystem->addKinematicBody(ent, def);
+                break;
+            case BodyType::Dynamic:
+            default:
+                physicsSystem->addDynamicBody(ent, def);
+                break;
+        }
+    }
+
+    // Set up a kinematic character controller for the player so Bullet handles
+    // gravity and collision instead of the manual terrain-height fallback.
+    if (player) {
+        physicsSystem->setCharacterController(player, 1.0f, 3.0f);
+        player->setPhysicsSystem(physicsSystem);
+    }
 }
 
 void Engine::initRenderers() {
@@ -215,10 +269,15 @@ void Engine::initFramebuffersAndPickers() {
 
 void Engine::buildSystems() {
     // Systems are updated in this order each frame:
-    //   1. InputSystem  — camera movement, picker, GUI animations
-    //   2. RenderSystem — FBO + main scene render
-    //   3. AnimationSystem — sync positions + animated character render
-    //   4. UISystem     — object picking + UiMaster render + constraints
+    //   1. PhysicsSystem — step simulation, sync transforms
+    //   2. InputSystem   — camera movement, picker, GUI animations
+    //   3. RenderSystem  — FBO + main scene render
+    //   4. AnimationSystem — sync positions + animated character render
+    //   5. UISystem      — object picking + UiMaster render + constraints
+    if (physicsSystem) {
+        systems.push_back(std::unique_ptr<ISystem>(physicsSystem));
+    }
+
     systems.push_back(std::make_unique<InputSystem>(
         playerCamera, primaryTerrain, picker, sampleModifiedGui, pNameText));
 
@@ -239,12 +298,19 @@ void Engine::run() {
         for (auto& sys : systems) {
             sys->update(dt);
         }
+        // Render physics debug lines after all render systems have drawn
+        if (physicsSystem && playerCamera) {
+            physicsSystem->renderDebug(
+                playerCamera->getViewMatrix(),
+                renderer->getProjectionMatrix());
+        }
         DisplayManager::updateDisplay();
     }
 }
 
 void Engine::shutdown() {
     systems.clear();  // ISystem destructors release per-system resources
+                      // (PhysicsSystem is the first entry; it cleans up Bullet)
 
     reflectFbo->cleanUp();
     TextMaster::cleanUp();

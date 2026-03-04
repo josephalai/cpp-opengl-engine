@@ -40,6 +40,8 @@
 #include "../../Shaders/PBRMaterial.h"
 // Phase 2 — Animation & Instanced Rendering
 #include "../../Animation/AnimationController.h"
+// Phase 3 — Bullet Physics
+#include "../../Physics/PhysicsSystem.h"
 #include "../../RenderEngine/AnimatedRenderer.h"
 #include "../../Shaders/AnimatedShader.h"
 #include "../../RenderEngine/InstancedModel.h"
@@ -78,12 +80,56 @@ void MainGuiLoop::main() {
     /**
      * Load scene from scene.cfg (falls back to minimal defaults if file missing)
      */
+    std::vector<SceneLoader::PhysicsBodyCfg>   physicsBodyCfgs;
+    std::vector<SceneLoader::PhysicsGroundCfg> physicsGroundCfgs;
     bool sceneLoaded = SceneLoader::load(
         FileSystem::Scene("scene.cfg"),
         loader,
         entities, assimpEntities, lights, allTerrains, guis, texts, waterTiles,
         primaryTerrain, player, playerCamera,
-        animatedEntities);
+        animatedEntities,
+        physicsBodyCfgs, physicsGroundCfgs);
+
+    // --- Phase 3: Physics world ------------------------------------------------
+    // Always create the physics system, even when the fallback player is used.
+    auto physicsSystem = new PhysicsSystem();
+    physicsSystem->init();
+
+    // Register ground planes from scene.cfg
+    for (const auto& g : physicsGroundCfgs) {
+        physicsSystem->addGroundPlane(g.yHeight);
+    }
+
+    // Register static/dynamic/kinematic rigid bodies from scene.cfg
+    for (const auto& cfg : physicsBodyCfgs) {
+        if (cfg.entityIndex < 0 || cfg.entityIndex >= static_cast<int>(entities.size()))
+            continue;
+        Entity* ent = entities[static_cast<size_t>(cfg.entityIndex)];
+        if (!ent) continue;
+        PhysicsBodyDef def;
+        def.type        = cfg.type;
+        def.shape       = cfg.shape;
+        def.mass        = cfg.mass;
+        def.halfExtents = cfg.halfExtents;
+        def.radius      = cfg.radius;
+        def.height      = cfg.height;
+        def.friction    = cfg.friction;
+        def.restitution = cfg.restitution;
+        switch (def.type) {
+            case BodyType::Static:
+                physicsSystem->addStaticBody(ent, def.shape, def.halfExtents,
+                                             def.friction, def.restitution);
+                break;
+            case BodyType::Kinematic:
+                physicsSystem->addKinematicBody(ent, def);
+                break;
+            case BodyType::Dynamic:
+            default:
+                physicsSystem->addDynamicBody(ent, def);
+                break;
+        }
+    }
+    // ---------------------------------------------------------------------------
 
     if (!sceneLoaded || !player || !playerCamera) {
         std::cerr << "[MainGuiLoop] SceneLoader failed or missing player — using minimal defaults\n";
@@ -119,6 +165,18 @@ void MainGuiLoop::main() {
         } else {
             std::cerr << "[MainGuiLoop] Could not load Stall model — resources path may be wrong\n";
         }
+    }
+
+    // Wire the player to the physics system (works whether it came from SceneLoader
+    // or the fallback block above).
+    // Register heightfield colliders for all terrain tiles (after the fallback block
+    // so that any fallback terrain is also included).
+    for (auto* t : allTerrains) {
+        physicsSystem->addTerrainCollider(t);
+    }
+    if (player) {
+        physicsSystem->setCharacterController(player, 1.0f, 3.0f);
+        player->setPhysicsSystem(physicsSystem);
     }
 
     /**
@@ -340,11 +398,18 @@ void MainGuiLoop::main() {
      * -----------------------------------------------------------------------
      */
     while (DisplayManager::stayOpen()) {
+        // Step the physics simulation first so the player's position is
+        // up-to-date before the camera and input systems read it.
+        physicsSystem->update(DisplayManager::getFrameTimeSeconds());
+
         playerCamera->move(pickerTerrain);
         picker->update();
 
         // Sync every animated character to the player's world position so the
         // character follows the player and the camera always frames it correctly.
+        // player->getPosition() is the physics foot position (capsule bottom),
+        // which matches the model's natural origin (at the feet), so no offset
+        // is needed.
         if (player && !animatedEntities.empty()) {
             for (auto* ae : animatedEntities) {
                 if (!ae) continue;
@@ -408,6 +473,11 @@ void MainGuiLoop::main() {
         // --- Water rendering after opaque geometry (1.5) ---
         renderer->renderWater(playerCamera, lights.empty() ? nullptr : lights[0]);
 
+        // --- Phase 3: Physics debug wireframes (toggled with F3) ---
+        if (playerCamera)
+            physicsSystem->renderDebug(playerCamera->getViewMatrix(),
+                                       renderer->getProjectionMatrix());
+
         // --- Render scene.cfg GUI texture overlays, then UiMaster components ---
         guiRenderer->render(guis);
         UiMaster::render();
@@ -439,6 +509,10 @@ void MainGuiLoop::main() {
         }
     }
     delete instancedTreeModel;
+
+    // Phase 3: physics shutdown
+    physicsSystem->shutdown();
+    delete physicsSystem;
 
     DisplayManager::closeDisplay();
 }

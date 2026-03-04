@@ -7,6 +7,9 @@
 #include "Entity.h"
 #include "../RenderEngine/DisplayManager.h"
 #include "../Terrain/Terrain.h"
+
+class PhysicsSystem;  ///< forward declaration — avoids circular include
+
 class Player : public Entity {
 private:
     static float SPEED_HACK;
@@ -21,6 +24,9 @@ private:
     float currentTurnSpeed = 0.0f;
     float upwardsSpeed = 0;
     bool isInAir = false;
+
+    /// When non-null, Player::move() delegates gravity and collision to Bullet.
+    PhysicsSystem* physicsSystem_ = nullptr;
 
     void jump();
 
@@ -38,6 +44,10 @@ public:
             float scale = 1.0f) : Entity(model, box, position, rotation, scale){}
 
     void move(Terrain *terrain);
+
+    /// Wire the player to a live PhysicsSystem so Bullet handles gravity and
+    /// collision instead of the manual terrain-height fallback in move().
+    void setPhysicsSystem(PhysicsSystem* ps) { physicsSystem_ = ps; }
 
 private:
     void checkInputs();
