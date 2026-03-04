@@ -7,7 +7,9 @@
 #include "Engine.h"
 #include "SceneLoader.h"
 #include "InputSystem.h"
+#include "InputDispatcher.h"
 #include "AnimationSystem.h"
+#include "../Events/EventBus.h"
 #include "RenderSystem.h"
 #include "UISystem.h"
 #include "GLUploadQueue.h"
@@ -272,12 +274,24 @@ void Engine::initFramebuffersAndPickers() {
 
 void Engine::buildSystems() {
     // Systems are updated in this order each frame:
-    //   1. PhysicsSystem   — step simulation, sync transforms
-    //   2. InputSystem     — camera movement, picker, GUI animations
-    //   3. StreamingSystem — update chunk loading, refresh entity/terrain lists
-    //   4. RenderSystem    — FBO + main scene render (frustum-culled)
-    //   5. AnimationSystem — sync positions + animated character render
-    //   6. UISystem        — object picking + UiMaster render + constraints
+    //   1. InputDispatcher — translate raw InputMaster state into EventBus events
+    //   2. PhysicsSystem   — step simulation, sync transforms
+    //   3. InputSystem     — camera movement, picker, GUI animations
+    //   4. StreamingSystem — update chunk loading, refresh entity/terrain lists
+    //   5. RenderSystem    — FBO + main scene render (frustum-culled)
+    //   6. AnimationSystem — sync positions + animated character render
+    //   7. UISystem        — object picking + UiMaster render + constraints
+
+    // InputDispatcher must run first so that PlayerMoveCommandEvent subscribers
+    // (e.g. Player) have up-to-date speed values before any other system runs.
+    systems.push_back(std::make_unique<InputDispatcher>(picker));
+
+    // Subscribe the player to receive movement commands via the EventBus
+    // instead of polling InputMaster::isKeyDown() directly in checkInputs().
+    if (player) {
+        player->subscribeToEvents();
+    }
+
     if (physicsSystem) {
         systems.push_back(std::unique_ptr<ISystem>(physicsSystem));
     }
@@ -340,6 +354,10 @@ void Engine::run() {
 void Engine::shutdown() {
     systems.clear();  // ISystem destructors release per-system resources
                       // (PhysicsSystem is the first entry; it cleans up Bullet)
+
+    // Clear all EventBus subscriptions before entity/player are destroyed.
+    // This prevents any late event delivery from reaching freed objects.
+    EventBus::instance().clear();
 
     reflectFbo->cleanUp();
     TextMaster::cleanUp();

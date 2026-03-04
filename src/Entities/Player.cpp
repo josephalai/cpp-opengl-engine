@@ -1,6 +1,8 @@
 #include "Player.h"
 #include "../Input/InputMaster.h"
 #include "../Physics/PhysicsSystem.h"
+#include "../Events/Event.h"
+#include "../Events/EventBus.h"
 
 //
 // Created by Joseph Alai on 7/10/21.
@@ -57,33 +59,49 @@ void Player::jump() {
     }
 }
 
+void Player::subscribeToEvents() {
+    useEventBus_ = true;
+    // NOTE: the lambda captures `this`.  The Engine calls
+    // EventBus::instance().clear() in Engine::shutdown() before any Player
+    // is destroyed, so this pointer remains valid for the handler's lifetime.
+    EventBus::instance().subscribe<PlayerMoveCommandEvent>(
+        [this](const PlayerMoveCommandEvent& cmd) {
+            applyMovementCommand(cmd.forward, cmd.turn,
+                                 cmd.jump, cmd.sprint, cmd.sprintReset);
+        });
+}
+
+void Player::applyMovementCommand(float forward, float turn,
+                                  bool jump, bool sprint, bool sprintReset) {
+    if      (forward > 0.0f) currentSpeed =  kRunSpeed * SPEED_HACK;
+    else if (forward < 0.0f) currentSpeed = -kRunSpeed * SPEED_HACK;
+    else                     currentSpeed = 0.0f;
+
+    if      (turn > 0.0f) currentTurnSpeed =  kTurnSpeed * SPEED_HACK / 2;
+    else if (turn < 0.0f) currentTurnSpeed = -kTurnSpeed * SPEED_HACK / 2;
+    else                  currentTurnSpeed = 0.0f;
+
+    if (sprint)      SPEED_HACK = 4.5f;
+    if (sprintReset) SPEED_HACK = 1.0f;
+
+    if (jump) this->jump();
+}
+
 void Player::checkInputs() {
-
-    if (InputMaster::isKeyDown(W)) {
-        currentSpeed = kRunSpeed * SPEED_HACK;
-    } else if (InputMaster::isKeyDown(S)) {
-        currentSpeed = -kRunSpeed * SPEED_HACK;
-    } else {
-        currentSpeed = 0.0f;
+    if (useEventBus_) {
+        // Movement state is already applied by the PlayerMoveCommandEvent
+        // handler registered in subscribeToEvents(). Skip direct polling.
+        return;
     }
 
-    if (InputMaster::isKeyDown(D)) {
-        currentTurnSpeed = -kTurnSpeed * SPEED_HACK / 2;
-    } else if (InputMaster::isKeyDown(A)) {
-        currentTurnSpeed = kTurnSpeed * SPEED_HACK / 2;
-    } else {
-        currentTurnSpeed = 0.0f;
-    }
-
-    if (InputMaster::isKeyDown(Space)) {
-        jump();
-    }
-
-
-    if (InputMaster::isKeyDown(Tab)) {
-        SPEED_HACK = 4.5f;
-    }
-    if (InputMaster::isKeyDown(Backslash)) {
-        SPEED_HACK = 1.0f;
-    }
+    // Legacy direct-poll path (active when subscribeToEvents() has not been
+    // called, e.g. in unit tests or alternative entry points).
+    float fwd  = InputMaster::isKeyDown(W) ?  1.0f
+               : InputMaster::isKeyDown(S) ? -1.0f : 0.0f;
+    float turn = InputMaster::isKeyDown(A) ?  1.0f
+               : InputMaster::isKeyDown(D) ? -1.0f : 0.0f;
+    applyMovementCommand(fwd, turn,
+                         InputMaster::isKeyDown(Space),
+                         InputMaster::isKeyDown(Tab),
+                         InputMaster::isKeyDown(Backslash));
 }
