@@ -426,12 +426,15 @@ bool SceneLoader::load(
             }
         }
         // ----------------------------------------------------------------
-        // animated_character <path> <x> <y|terrain[+N]> <z> [scale=F] [rot=RX,RY,RZ]
-        //   path  — file path relative to src/Resources/Tutorial/ (incl. extension)
-        //   x y z — world position (y supports "terrain[+N]" snap)
-        //   scale — optional uniform scale (default 1.0)
-        //   rot   — optional Euler rotation in degrees, comma-separated (default 0,0,0)
-        //           Use rot=-90,0,0 to stand up a model that loads on its belly (Z-up FBX).
+        // animated_character <path> <x> <y|terrain[+N]> <z> [scale=F] [rot=RX,RY,RZ] [offset=OX,OY,OZ]
+        //   path   — file path relative to src/Resources/Tutorial/ (incl. extension)
+        //   x y z  — world position (y supports "terrain[+N]" snap)
+        //   scale  — optional uniform scale (default 1.0)
+        //   rot    — optional Euler rotation in degrees, comma-separated (default 0,0,0)
+        //            Use rot=-90,0,0 to stand up a model that loads on its belly (Z-up FBX).
+        //   offset — optional visual-only offset in world units, comma-separated (default 0,0,0)
+        //            Shifts the rendered mesh relative to the physics capsule without
+        //            touching the physics body.  Use to correct skeleton/armature offsets.
         else if (cmd == "animated_character") {
             if (tokens.size() >= 5) {
                 AnimCharDef ac;
@@ -452,6 +455,17 @@ bool SceneLoader::load(
                         float* dst[3] = {&ac.rx, &ac.ry, &ac.rz};
                         int ci = 0;
                         while (std::getline(rs, comp, ',') && ci < 3)
+                            try { *dst[ci++] = std::stof(comp); } catch (...) {}
+                        continue;
+                    }
+                    v = optVal(tokens[i], "offset");
+                    if (!v.empty()) {
+                        // parse "OX,OY,OZ"
+                        std::istringstream os(v);
+                        std::string comp;
+                        float* dst[3] = {&ac.ox, &ac.oy, &ac.oz};
+                        int ci = 0;
+                        while (std::getline(os, comp, ',') && ci < 3)
                             try { *dst[ci++] = std::stof(comp); } catch (...) {}
                     }
                 }
@@ -863,6 +877,7 @@ bool SceneLoader::load(
         ae->controller = controller;
         ae->position   = glm::vec3(ac.x, yVal, ac.z);
         ae->scale      = ac.scale;
+        ae->modelOffset = glm::vec3(ac.ox, ac.oy, ac.oz);
 
         // Bake the user-specified rot= correction into coordinateCorrection so it
         // persists even when the game loop overwrites ae->rotation with the player's
