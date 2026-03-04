@@ -90,6 +90,11 @@ public:
     /// Sync character controller ghost transform back to player after step.
     void syncCharacterToPlayer();
 
+    /// Distance from capsule centre to its bottom (height/2 + radius).
+    /// Used externally to lift the visual model's origin so the rendered
+    /// character stands with its feet at terrain level.
+    float getCapsuleHalfHeight() const { return capsuleHalfHeight_; }
+
 private:
     btDefaultCollisionConfiguration*     collisionConfig_    = nullptr;
     btCollisionDispatcher*               dispatcher_         = nullptr;
