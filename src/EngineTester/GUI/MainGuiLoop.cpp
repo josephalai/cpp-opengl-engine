@@ -407,15 +407,13 @@ void MainGuiLoop::main() {
 
         // Sync every animated character to the player's world position so the
         // character follows the player and the camera always frames it correctly.
-        // player->getPosition() is the physics foot position (capsule bottom).
-        // The character model's natural origin is at its centre, so lift by
-        // capsuleHalfHeight so the visual feet land exactly on the terrain.
+        // player->getPosition() is the physics foot position (capsule bottom),
+        // which matches the model's natural origin (at the feet), so no offset
+        // is needed.
         if (player && !animatedEntities.empty()) {
-            glm::vec3 renderPos = player->getPosition()
-                + glm::vec3(0.0f, physicsSystem->getCapsuleHalfHeight(), 0.0f);
             for (auto* ae : animatedEntities) {
                 if (!ae) continue;
-                ae->position = renderPos;
+                ae->position = player->getPosition();
                 ae->rotation = player->getRotation();
             }
         }
