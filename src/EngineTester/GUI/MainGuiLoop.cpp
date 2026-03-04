@@ -407,14 +407,51 @@ void MainGuiLoop::main() {
 
         // Sync every animated character to the player's world position so the
         // character follows the player and the camera always frames it correctly.
-        // player->getPosition() is the physics foot position (capsule bottom),
-        // which matches the model's natural origin (at the feet), so no offset
-        // is needed.
+        // player->getPosition() is the physics foot position (capsule bottom).
+        // modelOffset (see below) shifts the visual mesh relative to this without
+        // touching the physics body.
         if (player && !animatedEntities.empty()) {
             for (auto* ae : animatedEntities) {
                 if (!ae) continue;
                 ae->position = player->getPosition();
                 ae->rotation = player->getRotation();
+            }
+        }
+
+        // --- Model-offset tuning (Up/Down arrows nudge the visual mesh along Y) ---
+        // Physics position is untouched; only the skin is shifted.
+        // Hold Up to raise the mesh, Down to lower it.  The current offset is
+        // printed to stdout so you can read the exact value and bake it permanently.
+        // NOTE: all animated entities are stepped by the same amount and share the
+        //       same player-driven position, so entity[0] is representative for logging.
+        if (!animatedEntities.empty()) {
+            // Game loop is single-threaded; static local is safe here.
+            static float offsetLogCooldown = 0.0f;
+            offsetLogCooldown -= DisplayManager::delta;
+
+            const float kOffsetSpeed = 0.5f;
+            bool adjusted = false;
+
+            if (InputMaster::isKeyDown(Up)) {
+                for (auto* ae : animatedEntities)
+                    if (ae) ae->modelOffset.y += kOffsetSpeed * DisplayManager::delta;
+                adjusted = true;
+            } else if (InputMaster::isKeyDown(Down)) {
+                for (auto* ae : animatedEntities)
+                    if (ae) ae->modelOffset.y -= kOffsetSpeed * DisplayManager::delta;
+                adjusted = true;
+            }
+
+            if (adjusted && offsetLogCooldown <= 0.0f) {
+                offsetLogCooldown = 0.1f; // throttle: print at most 10 times/second
+                if (animatedEntities[0]) {
+                    std::cout << "[ModelOffset] Y = "
+                              << animatedEntities[0]->modelOffset.y;
+                    if (animatedEntities.size() > 1)
+                        std::cout << "  (applied to all "
+                                  << animatedEntities.size() << " entities)";
+                    std::cout << "\n";
+                }
             }
         }
 
