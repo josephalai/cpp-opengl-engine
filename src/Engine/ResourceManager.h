@@ -15,6 +15,7 @@
 #include <string>
 #include <unordered_map>
 #include <functional>
+#include <mutex>
 
 // Forward declarations for the managed types
 class AnimatedModel;
@@ -44,8 +45,14 @@ private:
 // ---------------------------------------------------------------------------
 class ResourceManager {
 public:
-    /// Load (or return cached) animated model from path.
+    /// Load (or return cached) animated model from path (synchronous).
     ResourceHandle<AnimatedModel> loadAnimatedModel(const std::string& path);
+
+    /// Load an animated model asynchronously.
+    /// Parsing happens on a background thread; GL upload and callback are
+    /// invoked on the main thread via GLUploadQueue.
+    void loadAnimatedModelAsync(const std::string& path,
+                                std::function<void(ResourceHandle<AnimatedModel>)> callback);
 
     /// Resolve a handle to a raw pointer (nullptr if not found / unloaded).
     AnimatedModel* resolve(ResourceHandle<AnimatedModel> handle);
@@ -55,6 +62,7 @@ public:
 
 private:
     uint32_t nextId_ = 1;
+    std::mutex mutex_;
 
     std::unordered_map<uint32_t, AnimatedModel*> animatedModels_;
     std::unordered_map<std::string, uint32_t>    animatedModelPaths_;

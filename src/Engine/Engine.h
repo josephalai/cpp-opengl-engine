@@ -23,6 +23,8 @@
 #include "ISystem.h"
 #include "../Physics/PhysicsSystem.h"
 
+class ChunkManager;
+
 class Engine {
 public:
     Engine();
@@ -102,6 +104,10 @@ private:
 
     // --- Physics ---
     PhysicsSystem* physicsSystem = nullptr;
+
+    // --- Streaming ---
+    ChunkManager* chunkManager = nullptr;
+    std::string   terrainHeightmapFile = "heightMap"; ///< passed to ChunkManager
 
     // --- ISystem ordered pipeline (owned) ---
     std::vector<std::unique_ptr<ISystem>> systems;

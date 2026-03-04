@@ -10,6 +10,9 @@
 #include "AnimationSystem.h"
 #include "RenderSystem.h"
 #include "UISystem.h"
+#include "GLUploadQueue.h"
+#include "StreamingSystem.h"
+#include "../Streaming/ChunkManager.h"
 #include "../Physics/PhysicsSystem.h"
 #include "../Util/FileSystem.h"
 #include "../Util/Utils.h"
@@ -269,11 +272,12 @@ void Engine::initFramebuffersAndPickers() {
 
 void Engine::buildSystems() {
     // Systems are updated in this order each frame:
-    //   1. PhysicsSystem — step simulation, sync transforms
-    //   2. InputSystem   — camera movement, picker, GUI animations
-    //   3. RenderSystem  — FBO + main scene render
-    //   4. AnimationSystem — sync positions + animated character render
-    //   5. UISystem      — object picking + UiMaster render + constraints
+    //   1. PhysicsSystem   — step simulation, sync transforms
+    //   2. InputSystem     — camera movement, picker, GUI animations
+    //   3. StreamingSystem — update chunk loading, refresh entity/terrain lists
+    //   4. RenderSystem    — FBO + main scene render (frustum-culled)
+    //   5. AnimationSystem — sync positions + animated character render
+    //   6. UISystem        — object picking + UiMaster render + constraints
     if (physicsSystem) {
         systems.push_back(std::unique_ptr<ISystem>(physicsSystem));
     }
@@ -281,8 +285,31 @@ void Engine::buildSystems() {
     systems.push_back(std::make_unique<InputSystem>(
         playerCamera, primaryTerrain, picker, sampleModifiedGui, pNameText));
 
+    // Build the chunk manager from the first loaded terrain's texture config.
+    // Initial scene entities are registered so they appear inside their chunk.
+    if (primaryTerrain) {
+        chunkManager = new ChunkManager(loader,
+                                        primaryTerrain->getTexturePack(),
+                                        primaryTerrain->getBlendMap(),
+                                        terrainHeightmapFile);
+        // Register existing terrain tiles so ChunkManager tracks them.
+        for (auto* t : allTerrains) {
+            if (t) chunkManager->registerTerrain(t);
+        }
+        // Register entities into the chunk grid.
+        for (auto* e : entities) {
+            if (e) chunkManager->registerEntity(e, e->getPosition());
+        }
+        for (auto* s : scenes) {
+            if (s) chunkManager->registerAssimpEntity(s, s->getPosition());
+        }
+        systems.push_back(std::make_unique<StreamingSystem>(
+            chunkManager, player, allTerrains, entities, scenes));
+    }
+
     systems.push_back(std::make_unique<RenderSystem>(
-        renderer, reflectFbo, entities, scenes, allTerrains, lights, allBoxes));
+        renderer, reflectFbo, entities, scenes, allTerrains, lights, allBoxes,
+        playerCamera, renderer->getProjectionMatrix()));
 
     systems.push_back(std::make_unique<AnimationSystem>(
         animRenderer, animatedEntities, player, lights,
@@ -305,6 +332,8 @@ void Engine::run() {
                 renderer->getProjectionMatrix());
         }
         DisplayManager::updateDisplay();
+        // Process any pending GL upload tasks (from async resource loading).
+        GLUploadQueue::instance().processAll(/*maxPerFrame=*/10);
     }
 }
 
