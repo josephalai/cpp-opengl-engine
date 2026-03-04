@@ -84,7 +84,14 @@ void PhysicsDebugDrawer::flushLines(const glm::mat4& view,
                         vertices_.data());
     }
 
+    // Disable depth test so debug wireframes are always visible, even when occluded
+    // by scene geometry. Save and restore the previous state rather than
+    // unconditionally re-enabling, in case the caller had depth testing off.
+    GLboolean depthTestWasEnabled = GL_FALSE;
+    glGetBooleanv(GL_DEPTH_TEST, &depthTestWasEnabled);
+    glDisable(GL_DEPTH_TEST);
     glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(vertices_.size()));
+    if (depthTestWasEnabled) glEnable(GL_DEPTH_TEST);
 
     glBindVertexArray(0);
     shader_->stop();

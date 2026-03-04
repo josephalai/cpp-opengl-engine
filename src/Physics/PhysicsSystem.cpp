@@ -143,9 +143,14 @@ void PhysicsSystem::shutdown() {
     entries_.clear();
     groundBodies_.clear();
 
-    for (auto* s : shapes_)      delete s;
-    for (auto* s : groundShapes_) delete s;
+    // compoundShapes_ must be deleted before shapes_ (their children).
+    // btCompoundShape does not own its children; deleting children first
+    // would leave the compound holding dangling pointers.
+    for (auto* s : compoundShapes_)  delete s;
+    for (auto* s : shapes_)          delete s;
+    for (auto* s : groundShapes_)    delete s;
     shapes_.clear();
+    compoundShapes_.clear();
     groundShapes_.clear();
 
     delete characterController_; characterController_ = nullptr;
@@ -199,8 +204,29 @@ void PhysicsSystem::addStaticBody(Entity* entity, ColliderShape shape,
 void PhysicsSystem::addDynamicBody(Entity* entity, const PhysicsBodyDef& def) {
     if (!dynamicsWorld_ || !entity) return;
 
-    btCollisionShape* shape = createShape(def);
-    shapes_.push_back(shape);
+    // Build the primitive base shape.
+    btCollisionShape* baseShape = createShape(def);
+
+    // Visual models pivot at their feet; Bullet primitives pivot at their centre.
+    // Wrap in a btCompoundShape that shifts the primitive up so the compound
+    // origin sits at the entity's foot position, eliminating the visual gap.
+    float yOffset = 0.0f;
+    switch (def.shape) {
+        case ColliderShape::Sphere:  yOffset = def.radius;                       break;
+        case ColliderShape::Capsule: yOffset = def.height * 0.5f + def.radius;  break;
+        case ColliderShape::Box:
+        default:                     yOffset = def.halfExtents.y;                break;
+    }
+    auto* compound = new btCompoundShape();
+    btTransform childT;
+    childT.setIdentity();
+    childT.setOrigin(btVector3(0.0f, yOffset, 0.0f));
+    compound->addChildShape(childT, baseShape);
+
+    // Store in separate lists: compoundShapes_ are deleted before shapes_ (children)
+    // in shutdown(), ensuring btCompoundShape is destroyed before its child shapes.
+    compoundShapes_.push_back(compound);
+    shapes_.push_back(baseShape);
 
     glm::vec3 pos = entity->getPosition();
     glm::vec3 rot = entity->getRotation();
@@ -213,10 +239,10 @@ void PhysicsSystem::addDynamicBody(Entity* entity, const PhysicsBodyDef& def) {
 
     btScalar mass = (def.type == BodyType::Static) ? 0.0f : def.mass;
     btVector3 localInertia(0, 0, 0);
-    if (mass > 0.0f) shape->calculateLocalInertia(mass, localInertia);
+    if (mass > 0.0f) compound->calculateLocalInertia(mass, localInertia);
 
     auto* motionState = new btDefaultMotionState(startTransform);
-    btRigidBody::btRigidBodyConstructionInfo ci(mass, motionState, shape, localInertia);
+    btRigidBody::btRigidBodyConstructionInfo ci(mass, motionState, compound, localInertia);
     ci.m_friction    = def.friction;
     ci.m_restitution = def.restitution;
 
@@ -284,12 +310,16 @@ void PhysicsSystem::setCharacterController(Player* player,
     playerPtr_ = player;
 
     capsuleShape_ = new btCapsuleShape(capsuleRadius, capsuleHeight);
+    // Half total height = cylinder half-height + hemisphere radius on each end.
+    // Used to shift the capsule's centre up from the entity's foot origin.
+    capsuleHalfHeight_ = capsuleHeight * 0.5f + capsuleRadius;
 
     ghostObject_ = new btPairCachingGhostObject();
     btTransform t;
     t.setIdentity();
     glm::vec3 pos = player->getPosition();
-    t.setOrigin(btVector3(pos.x, pos.y, pos.z));
+    // Shift the ghost up so the bottom of the capsule rests at the player's feet.
+    t.setOrigin(btVector3(pos.x, pos.y + capsuleHalfHeight_, pos.z));
     ghostObject_->setWorldTransform(t);
     ghostObject_->setCollisionShape(capsuleShape_);
     ghostObject_->setCollisionFlags(btCollisionObject::CF_CHARACTER_OBJECT);
@@ -309,6 +339,8 @@ void PhysicsSystem::syncCharacterToPlayer() {
     if (!ghostObject_ || !playerPtr_) return;
     const btTransform& t = ghostObject_->getWorldTransform();
     glm::vec3 pos = btToGlm(t.getOrigin());
+    // Subtract the foot-to-centre offset to recover the entity's foot position.
+    pos.y -= capsuleHalfHeight_;
     playerPtr_->setPosition(pos);
 }
 

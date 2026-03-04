@@ -133,7 +133,7 @@ void Engine::loadScene() {
     // Set up a kinematic character controller for the player so Bullet handles
     // gravity and collision instead of the manual terrain-height fallback.
     if (player) {
-        physicsSystem->setCharacterController(player);
+        physicsSystem->setCharacterController(player, 1.0f, 3.0f);
         player->setPhysicsSystem(physicsSystem);
     }
 }

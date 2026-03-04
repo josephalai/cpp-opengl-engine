@@ -95,8 +95,9 @@ private:
     bool                                 debugDrawEnabled_   = false;
 
     std::vector<PhysicsEntry>                     entries_;
-    std::vector<btCollisionShape*>                shapes_;        ///< owned shapes
-    std::vector<btRigidBody*>                     groundBodies_;  ///< ground planes
+    std::vector<btCollisionShape*>                shapes_;         ///< owned base (child) shapes
+    std::vector<btCompoundShape*>                 compoundShapes_; ///< wrapper shapes (deleted before children)
+    std::vector<btRigidBody*>                     groundBodies_;   ///< ground planes
     std::vector<btCollisionShape*>                groundShapes_;
 
     // Character controller
@@ -104,6 +105,7 @@ private:
     btPairCachingGhostObject*          ghostObject_         = nullptr;
     btKinematicCharacterController*    characterController_ = nullptr;
     btCapsuleShape*                    capsuleShape_        = nullptr;
+    float                              capsuleHalfHeight_   = 0.0f;  ///< height/2 + radius
 
     /// Build a btCollisionShape from a PhysicsBodyDef.
     btCollisionShape* createShape(const PhysicsBodyDef& def);
