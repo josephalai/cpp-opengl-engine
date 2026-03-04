@@ -5,11 +5,15 @@
 #include "PhysicsSystem.h"
 #include "PhysicsDebugDrawer.h"
 #include "../Entities/Player.h"
+#include "../Terrain/Terrain.h"
 #include "../Input/InputMaster.h"
+
+#include <BulletCollision/CollisionShapes/btHeightfieldTerrainShape.h>
 
 #include <glm/gtc/quaternion.hpp>
 #include <cmath>
 #include <iostream>
+#include <limits>
 
 // ---------------------------------------------------------------------------
 // Helpers: convert between Bullet and GLM
@@ -163,6 +167,8 @@ void PhysicsSystem::shutdown() {
     delete broadphase_;    broadphase_    = nullptr;
     delete dispatcher_;    dispatcher_    = nullptr;
     delete collisionConfig_; collisionConfig_ = nullptr;
+
+    terrainHeightBuffers_.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +303,67 @@ void PhysicsSystem::addGroundPlane(float yHeight) {
     btRigidBody::btRigidBodyConstructionInfo ci(0.0f, motionState, shape);
     ci.m_friction    = 0.5f;
     ci.m_restitution = 0.3f;
+
+    auto* body = new btRigidBody(ci);
+    dynamicsWorld_->addRigidBody(body);
+    groundBodies_.push_back(body);
+}
+
+void PhysicsSystem::addTerrainCollider(Terrain* terrain) {
+    if (!dynamicsWorld_ || !terrain) return;
+
+    const auto& h2d = terrain->heights;
+    int vertexCount = static_cast<int>(h2d.size());
+    if (vertexCount < 2) return;  // guards against division by zero below (stickScale = terrainSize / (vertexCount-1))
+
+    // Flatten the 2D heights[x][z] grid into a 1D row-major buffer.
+    // Bullet's btHeightfieldTerrainShape indexes as data[stickZ * stickWidth + stickX].
+    terrainHeightBuffers_.emplace_back(vertexCount * vertexCount);
+    auto& buf = terrainHeightBuffers_.back();
+
+    float minH =  std::numeric_limits<float>::max();
+    float maxH =  std::numeric_limits<float>::lowest();
+    for (int x = 0; x < vertexCount; ++x) {
+        for (int z = 0; z < vertexCount; ++z) {
+            float hv = h2d[x][z];
+            buf[z * vertexCount + x] = hv;
+            if (hv < minH) minH = hv;
+            if (hv > maxH) maxH = hv;
+        }
+    }
+
+    // Create the heightfield shape.  heightScale=1.0 because the buffer already
+    // contains world-space Y values (not normalised pixel values).
+    auto* shape = new btHeightfieldTerrainShape(
+        vertexCount, vertexCount,
+        buf.data(),
+        /*heightScale=*/1.0f,
+        minH, maxH,
+        /*upAxis=*/1,   // Y-up
+        PHY_FLOAT,
+        /*flipQuadEdges=*/false);
+
+    // Scale each heightfield "stick" to span kTerrainSize / (vertexCount-1) world units
+    // so the shape covers exactly the same world area as the visual terrain mesh.
+    float terrainSize = terrain->getSize();
+    float stickScale  = terrainSize / static_cast<float>(vertexCount - 1);
+    shape->setLocalScaling(btVector3(stickScale, 1.0f, stickScale));
+
+    groundShapes_.push_back(shape);
+
+    // Bullet automatically centres the shape at localOrigin Y = (minH + maxH) / 2.
+    // Place the rigid body so the tile covers [terrainX, terrainX + terrainSize].
+    btTransform t;
+    t.setIdentity();
+    t.setOrigin(btVector3(
+        terrain->getX() + terrainSize * 0.5f,
+        (minH + maxH) * 0.5f,
+        terrain->getZ() + terrainSize * 0.5f));
+
+    auto* motionState = new btDefaultMotionState(t);
+    btRigidBody::btRigidBodyConstructionInfo ci(0.0f, motionState, shape);
+    ci.m_friction    = 0.8f;
+    ci.m_restitution = 0.1f;
 
     auto* body = new btRigidBody(ci);
     dynamicsWorld_->addRigidBody(body);

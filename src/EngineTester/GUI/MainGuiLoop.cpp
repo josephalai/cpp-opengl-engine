@@ -169,6 +169,11 @@ void MainGuiLoop::main() {
 
     // Wire the player to the physics system (works whether it came from SceneLoader
     // or the fallback block above).
+    // Register heightfield colliders for all terrain tiles (after the fallback block
+    // so that any fallback terrain is also included).
+    for (auto* t : allTerrains) {
+        physicsSystem->addTerrainCollider(t);
+    }
     if (player) {
         physicsSystem->setCharacterController(player, 1.0f, 3.0f);
         player->setPhysicsSystem(physicsSystem);

@@ -22,6 +22,7 @@
 // Forward declaration
 class PhysicsDebugDrawer;
 class Player;
+class Terrain;
 
 /// One record kept per registered entity.
 struct PhysicsEntry {
@@ -63,6 +64,11 @@ public:
     /// Add an infinite static ground plane at the given y height.
     void addGroundPlane(float yHeight = 0.0f);
 
+    /// Add a static heightfield collider for a Terrain tile.
+    /// The player's btKinematicCharacterController will walk on the real
+    /// terrain surface instead of the flat fallback ground plane.
+    void addTerrainCollider(Terrain* terrain);
+
     /// Enable/disable the debug drawer.
     void setDebugDrawEnabled(bool enabled) { debugDrawEnabled_ = enabled; }
     bool isDebugDrawEnabled() const        { return debugDrawEnabled_; }
@@ -97,8 +103,9 @@ private:
     std::vector<PhysicsEntry>                     entries_;
     std::vector<btCollisionShape*>                shapes_;         ///< owned base (child) shapes
     std::vector<btCompoundShape*>                 compoundShapes_; ///< wrapper shapes (deleted before children)
-    std::vector<btRigidBody*>                     groundBodies_;   ///< ground planes
+    std::vector<btRigidBody*>                     groundBodies_;   ///< ground planes + terrain tiles
     std::vector<btCollisionShape*>                groundShapes_;
+    std::vector<std::vector<float>>               terrainHeightBuffers_; ///< keeps height data alive for terrain shapes
 
     // Character controller
     Player*                            playerPtr_           = nullptr;
