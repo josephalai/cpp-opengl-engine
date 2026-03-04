@@ -33,7 +33,7 @@ std::vector<Entity*> FrustumCuller::cull(const std::vector<Entity*>& entities) c
             continue;
         }
 
-        AABB aabb = box->getAABB();
+        BoundingAABB aabb = box->getAABB();
         if (!aabb.valid) {
             // AABB not set — always include.
             visible.push_back(e);
@@ -69,7 +69,7 @@ std::vector<AssimpEntity*> FrustumCuller::cull(const std::vector<AssimpEntity*>&
             continue;
         }
 
-        AABB aabb = box->getAABB();
+        BoundingAABB aabb = box->getAABB();
         if (!aabb.valid) {
             visible.push_back(e);
             continue;
