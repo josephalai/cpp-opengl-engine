@@ -35,7 +35,9 @@ void InputDispatcher::update(float /*deltaTime*/) {
         // getCurrentTerrainPoint() returns a zero-vector when no terrain
         // intersection was found; skip publishing in that case.
         if (pt != glm::vec3(0.0f)) {
-            EventBus::instance().publish(TargetLocationClickedEvent{pt});
+            TargetLocationClickedEvent evt{};
+            evt.worldPosition = pt;
+            EventBus::instance().publish(evt);
         }
     }
     prevRightClick_ = rightNow;
