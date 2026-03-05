@@ -156,20 +156,31 @@ int main() {
             snapshot.rotation       = generateRotation(serverTime);
 
             // Serialize and broadcast to all connected peers.
+            // flags=0 means unreliable delivery — acceptable for position
+            // snapshots that are continuously superseded by newer data.
             ENetPacket* packet = enet_packet_create(
                 &snapshot,
                 sizeof(snapshot),
-                0  // ENET_PACKET_FLAG_UNSEQUENCED not needed; channel 0 is
-                   // unreliable by default for non-reliable sends.
+                0  // Unreliable: no ENET_PACKET_FLAG_RELIABLE flag.
             );
 
             enet_host_broadcast(server, 0, packet);
             enet_host_flush(server);
         }
 
-        // Sleep briefly to avoid busy-waiting.  1 ms granularity is fine;
-        // the tick enforcement above handles precise timing.
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        // Sleep for roughly the remaining time until the next tick to reduce
+        // CPU usage.  We clamp the minimum sleep to 1 ms so we still wake up
+        // in time to process ENet events between ticks.
+        auto now2    = Clock::now();
+        float used   = std::chrono::duration<float>(now2 - lastTick).count();
+        float remain = kTickInterval - used;
+        if (remain > 0.001f) {
+            auto sleepMs = std::chrono::milliseconds(
+                static_cast<int>(remain * 1000.0f));
+            std::this_thread::sleep_for(sleepMs);
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
 
     // --- Cleanup ---
