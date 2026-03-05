@@ -26,7 +26,9 @@ struct TransformSnapshot {
     uint32_t  sequenceNumber = 0;     ///< Monotonically increasing packet counter.
     float     timestamp      = 0.0f;  ///< Server simulation time (seconds from start).
     glm::vec3 position       = {};    ///< World-space position.
-    glm::vec3 rotation       = {};    ///< Euler angles in degrees (matches Entity API).
+    glm::vec3 rotation       = {};    ///< Euler angles in degrees, XYZ order
+                                      ///< (pitch=X, yaw=Y, roll=Z), matching the
+                                      ///< Entity::setRotation / Entity::getRotation API.
 };
 
 } // namespace Network

@@ -157,8 +157,8 @@ glm::vec3 MockServer::generatePosition(float t) const {
 // Example: read from a waypoint list
 glm::vec3 MockServer::generatePosition(float t) const {
     static const std::vector<glm::vec3> waypoints = { ... };
-    int idx = (int)(t / 2.0f) % waypoints.size();
-    float frac = std::fmod(t / 2.0f, 1.0f);
+    int   idx  = (int)(t / 2.0f) % (int)waypoints.size();
+    float frac = std::fmod(t, 2.0f) / 2.0f;
     return glm::mix(waypoints[idx], waypoints[(idx+1) % waypoints.size()], frac);
 }
 ```

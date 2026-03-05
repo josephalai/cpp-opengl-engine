@@ -74,7 +74,7 @@ void NetworkSyncComponent::update(float deltaTime) {
                 // Rotation SLERP extrapolation.
                 const glm::quat q0 = glm::quat(glm::radians(s0.rotation));
                 const glm::quat q1 = glm::quat(glm::radians(s1.rotation));
-                const glm::quat qi = glm::slerp(q0, q1, glm::clamp(t, 0.0f, 2.0f));
+                const glm::quat qi = glm::slerp(q0, q1, t);
                 entity_->setRotation(glm::degrees(glm::eulerAngles(qi)));
             } else {
                 applySnapshot(s1);
@@ -122,7 +122,7 @@ void NetworkSyncComponent::update(float deltaTime) {
 void NetworkSyncComponent::pruneBuffer() {
     // Retain every snapshot whose timestamp is >= (targetTime - one extra tick)
     // so we always keep two snapshots available for extrapolation.
-    const float keepFrom = (renderTime_ - kInterpolationDelay) - 0.15f;
+    const float keepFrom = (renderTime_ - kInterpolationDelay) - kInterpolationDelay;
     while (buffer_.size() > 2 && buffer_.front().timestamp < keepFrom) {
         buffer_.pop_front();
     }
