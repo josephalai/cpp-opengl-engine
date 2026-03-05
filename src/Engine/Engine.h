@@ -20,6 +20,7 @@
 #include "../Guis/Text/FontMeshCreator/TextMeshData.h"
 #include "../RenderEngine/AnimatedRenderer.h"
 #include "../Shaders/AnimatedShader.h"
+#include "../RenderEngine/InstancedModel.h"
 #include "ISystem.h"
 #include "../Physics/PhysicsSystem.h"
 
@@ -104,6 +105,9 @@ private:
 
     // --- Physics ---
     PhysicsSystem* physicsSystem = nullptr;
+
+    // --- Instanced Rendering ---
+    InstancedModel* instancedTreeModel = nullptr;
 
     // --- Streaming ---
     ChunkManager* chunkManager = nullptr;

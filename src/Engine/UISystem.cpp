@@ -4,6 +4,9 @@
 #include "../RenderEngine/MasterRenderer.h"
 #include "../Guis/UiMaster.h"
 #include "../Guis/GuiComponent.h"
+#include "../Guis/Texture/Rendering/GuiRenderer.h"
+#include "../Guis/Texture/GuiTexture.h"
+#include "../Guis/Text/Rendering/TextMaster.h"
 #include "../Input/InputMaster.h"
 #include "../Toolbox/Picker.h"
 #include "../BoundingBox/BoundingBoxIndex.h"
@@ -20,13 +23,17 @@ UISystem::UISystem(MasterRenderer*            renderer,
                    GUIText*                   clickColorText,
                    FontModel*                 fontModel,
                    FontType*                  noodleFont,
-                   GuiComponent*              masterContainer)
+                   GuiComponent*              masterContainer,
+                   GuiRenderer*               guiRenderer,
+                   std::vector<GuiTexture*>&  guis)
     : renderer_(renderer)
     , allBoxes_(allBoxes)
     , clickColorText_(clickColorText)
     , fontModel_(fontModel)
     , noodleFont_(noodleFont)
     , masterContainer_(masterContainer)
+    , guiRenderer_(guiRenderer)
+    , guis_(guis)
 {}
 
 void UISystem::update(float /*deltaTime*/) {
@@ -61,7 +68,16 @@ void UISystem::update(float /*deltaTime*/) {
         InputMaster::resetClick();
     }
 
+    // Render GUI texture overlays (lifebar, icons, FBO debug, etc.)
+    if (guiRenderer_) guiRenderer_->render(guis_);
+
+    // Render UiMaster components (constraints-based UI)
     UiMaster::render();
+
+    // Render text registered via TextMaster::loadText()
+    TextMaster::render();
+
+    // Slide the master container slightly each frame (animated UI demo)
     if (masterContainer_) {
         masterContainer_->getConstraints()->getPosition() += glm::vec2(0.001f, 0.0f);
         UiMaster::applyConstraints(masterContainer_);

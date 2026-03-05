@@ -1,6 +1,6 @@
 // src/Engine/RenderSystem.h
-// Subsystem that owns the primary rendering pass: scene, FBO (reflection),
-// bounding box picking, and water.  Wraps MasterRenderer.
+// Subsystem that owns the primary rendering pass: shadow map, scene, FBO (reflection),
+// bounding box picking, instanced geometry, and water.  Wraps MasterRenderer.
 // Applies view-frustum culling before submitting geometry to MasterRenderer.
 
 #ifndef ENGINE_RENDERSYSTEM_H
@@ -19,6 +19,7 @@ class Terrain;
 class Light;
 class Interactive;
 class Camera;
+class InstancedModel;
 
 class RenderSystem : public ISystem {
 public:
@@ -30,7 +31,8 @@ public:
                  std::vector<Light*>&      lights,
                  std::vector<Interactive*>& allBoxes,
                  Camera*                   camera,
-                 const glm::mat4&          projectionMatrix);
+                 const glm::mat4&          projectionMatrix,
+                 InstancedModel*           instancedModel = nullptr);
 
     void init()     override {}
     void update(float deltaTime) override;
@@ -45,9 +47,10 @@ private:
     std::vector<Light*>&       lights_;
     std::vector<Interactive*>& allBoxes_;
 
-    Camera*       camera_;
-    glm::mat4     projectionMatrix_;
-    FrustumCuller culler_;
+    Camera*         camera_;
+    glm::mat4       projectionMatrix_;
+    FrustumCuller   culler_;
+    InstancedModel* instancedModel_;
 };
 
 #endif // ENGINE_RENDERSYSTEM_H
