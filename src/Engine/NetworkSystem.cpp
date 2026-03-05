@@ -1,13 +1,18 @@
 // src/Engine/NetworkSystem.cpp
 //
-// Phase 2 — ENet client that receives TransformSnapshot packets from the
-// headless server and feeds them into NetworkSyncComponent buffers.
+// Phase 4 — Client-Side Prediction & Server Reconciliation.
+//
+// Each frame:
+//   1. Capture local input, predict movement instantly, push to history buffer,
+//      and send the input packet to the server.
+//   2. Poll ENet — when an authoritative TransformSnapshot arrives, snap to the
+//      server position, discard acknowledged inputs, and replay remaining ones.
 
 #include "NetworkSystem.h"
-#include "../Network/NetworkPackets.h"
 
 #include <iostream>
 #include <cstring>
+#include <cmath>
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -56,15 +61,46 @@ void NetworkSystem::init() {
 }
 
 // ---------------------------------------------------------------------------
-// update — poll ENet and push received snapshots into components
+// update — prediction, send input, poll ENet, reconcile
 // ---------------------------------------------------------------------------
 
 void NetworkSystem::update(float deltaTime) {
     if (!client_) return;
 
+    // -----------------------------------------------------------------
+    // 1. Capture local input and predict movement immediately
+    // -----------------------------------------------------------------
+    float forward = InputMaster::isKeyDown(W) ?  1.0f
+                  : InputMaster::isKeyDown(S) ? -1.0f : 0.0f;
+    float turn    = InputMaster::isKeyDown(A) ?  1.0f
+                  : InputMaster::isKeyDown(D) ? -1.0f : 0.0f;
+
+    if (forward != 0.0f || turn != 0.0f) {
+        Network::PlayerInputPacket input;
+        input.sequenceNumber = ++inputSequenceNumber_;
+        input.forward        = forward;
+        input.turn           = turn;
+        input.deltaTime      = deltaTime;
+
+        // Predict locally — apply the same math the server would.
+        applyInput(input, predictedPosition_, predictedRotation_);
+
+        // Store in history for potential replay after reconciliation.
+        pendingInputs_.push_back(input);
+
+        // Send to the server.
+        if (serverPeer_) {
+            ENetPacket* packet = enet_packet_create(
+                &input, sizeof(input), 0 /* unreliable */);
+            enet_peer_send(serverPeer_, 0, packet);
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // 2. Poll ENet for incoming events
+    // -----------------------------------------------------------------
     ENetEvent event;
 
-    // Process all pending ENet events (non-blocking: timeout = 0).
     while (enet_host_service(client_, &event, 0) > 0) {
         switch (event.type) {
             case ENET_EVENT_TYPE_CONNECT:
@@ -72,13 +108,33 @@ void NetworkSystem::update(float deltaTime) {
                 break;
 
             case ENET_EVENT_TYPE_RECEIVE: {
-                // Validate packet size before casting.
                 if (event.packet->dataLength == sizeof(Network::TransformSnapshot)) {
                     Network::TransformSnapshot snapshot;
                     std::memcpy(&snapshot, event.packet->data, sizeof(snapshot));
 
-                    // Push the snapshot into every registered entity's
-                    // NetworkSyncComponent (same interface as MockServer used).
+                    // --------------------------------------------------
+                    // Server Reconciliation
+                    // --------------------------------------------------
+
+                    // a) Hard-set predicted state to authoritative values.
+                    predictedPosition_ = snapshot.position;
+                    predictedRotation_ = snapshot.rotation;
+
+                    // b) Discard acknowledged inputs.
+                    while (!pendingInputs_.empty() &&
+                           pendingInputs_.front().sequenceNumber
+                               <= snapshot.lastProcessedInputSequence) {
+                        pendingInputs_.pop_front();
+                    }
+
+                    // c) Replay remaining unacknowledged inputs on top of
+                    //    the authoritative state.
+                    for (const auto& inp : pendingInputs_) {
+                        applyInput(inp, predictedPosition_, predictedRotation_);
+                    }
+
+                    // Push snapshot into NetworkSyncComponent buffers
+                    // (existing interpolation path for other entities).
                     for (Entity* e : netEntities_) {
                         if (!e) continue;
                         auto* sync = e->getComponent<NetworkSyncComponent>();
@@ -101,10 +157,18 @@ void NetworkSystem::update(float deltaTime) {
         }
     }
 
-    // Drive interpolation on every network-controlled entity.
-    for (Entity* e : netEntities_) {
-        if (e) {
-            e->updateComponents(deltaTime);
+    // -----------------------------------------------------------------
+    // 3. Apply predicted position to the first networked entity
+    // -----------------------------------------------------------------
+    if (!netEntities_.empty() && netEntities_[0]) {
+        netEntities_[0]->setPosition(predictedPosition_);
+        netEntities_[0]->setRotation(predictedRotation_);
+    }
+
+    // Drive interpolation on remaining entities.
+    for (size_t i = 1; i < netEntities_.size(); ++i) {
+        if (netEntities_[i]) {
+            netEntities_[i]->updateComponents(deltaTime);
         }
     }
 }
@@ -151,4 +215,30 @@ void NetworkSystem::addEntity(Entity* e) {
     if (e) {
         netEntities_.push_back(e);
     }
+}
+
+// ---------------------------------------------------------------------------
+// applyInput — shared prediction / replay math (mirrors InputComponent)
+// ---------------------------------------------------------------------------
+
+void NetworkSystem::applyInput(const Network::PlayerInputPacket& input,
+                               glm::vec3& pos, glm::vec3& rot) {
+    // Rotation: turn speed scaled by deltaTime (matches InputComponent).
+    float turnSpeed = 0.0f;
+    if      (input.turn > 0.0f) turnSpeed =  kTurnSpeed / 2.0f;
+    else if (input.turn < 0.0f) turnSpeed = -kTurnSpeed / 2.0f;
+
+    rot.y += turnSpeed * input.deltaTime;
+
+    // Translation: forward speed scaled by deltaTime.
+    float speed = 0.0f;
+    if      (input.forward > 0.0f) speed =  kRunSpeed;
+    else if (input.forward < 0.0f) speed = -kRunSpeed;
+
+    float distance = speed * input.deltaTime;
+    float sinY = std::sin(glm::radians(rot.y));
+    float cosY = std::cos(glm::radians(rot.y));
+
+    pos.x += distance * sinY;
+    pos.z += distance * cosY;
 }
