@@ -4,29 +4,53 @@ project(engine)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Gather all source files automatically.
-# Note: re-run cmake when adding/removing files (GLOB_RECURSE does not auto-detect changes).
-file(GLOB_RECURSE ENGINE_SOURCES
+# =============================================================================
+# ENet — Reliable UDP library (fetched automatically via FetchContent)
+# =============================================================================
+include(FetchContent)
+FetchContent_Declare(
+    enet
+    GIT_REPOSITORY https://github.com/lsalzman/enet.git
+    GIT_TAG        v1.3.18
+)
+FetchContent_MakeAvailable(enet)
+
+# =============================================================================
+# Source file collection
+# =============================================================================
+
+# Gather all engine source files automatically.
+# Note: re-run cmake when adding/removing files (GLOB_RECURSE does not auto-detect).
+file(GLOB_RECURSE ALL_SOURCES
     "${CMAKE_SOURCE_DIR}/src/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/*.h"
 )
 
-add_executable(engine ${ENGINE_SOURCES})
+# --- Separate the server entry point from the client/engine sources ---
+set(SERVER_MAIN "${CMAKE_SOURCE_DIR}/src/Server/ServerMain.cpp")
+set(CLIENT_SOURCES ${ALL_SOURCES})
+list(FILTER CLIENT_SOURCES EXCLUDE REGEX ".*/Server/.*")
 
-target_include_directories(engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
+# =============================================================================
+# Client Engine executable (OpenGL + GLFW + full rendering pipeline)
+# =============================================================================
+
+add_executable(client_engine ${CLIENT_SOURCES})
+
+target_include_directories(client_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 # Embed the source root so FileSystem can locate resources regardless of CWD.
-target_compile_definitions(engine PRIVATE RESOURCE_ROOT="${CMAKE_SOURCE_DIR}")
+target_compile_definitions(client_engine PRIVATE RESOURCE_ROOT="${CMAKE_SOURCE_DIR}")
 
-# --- Dependencies ---
+# --- Client Dependencies ---
 
-# OpenGL — always required for this engine
+# OpenGL — always required for the client engine
 find_package(OpenGL REQUIRED)
-target_link_libraries(engine PRIVATE OpenGL::GL)
+target_link_libraries(client_engine PRIVATE OpenGL::GL)
 
 # GLFW
 add_subdirectory(deps/glfw)
-target_include_directories(engine PRIVATE deps/glfw/include)
+target_include_directories(client_engine PRIVATE deps/glfw/include)
 
 # FreeType — use the system library (brew install freetype) to avoid
 # cmake_minimum_required VERSION < 3.5 errors from the bundled source tree.
@@ -34,7 +58,7 @@ find_package(Freetype REQUIRED)
 
 # PNG
 find_package(PNG REQUIRED)
-target_include_directories(engine PRIVATE ${PNG_INCLUDE_DIR})
+target_include_directories(client_engine PRIVATE ${PNG_INCLUDE_DIR})
 
 # Assimp — use the system library (brew install assimp) for the same reason.
 find_package(assimp REQUIRED)
@@ -43,14 +67,17 @@ find_package(assimp REQUIRED)
 add_subdirectory(deps/quill)
 
 # GLM — header-only; just add the include path, no add_subdirectory needed.
-target_include_directories(engine PRIVATE deps/glm)
+target_include_directories(client_engine PRIVATE deps/glm)
 
 # Bullet Physics — system dependency (brew install bullet)
 find_package(Bullet REQUIRED)
-target_include_directories(engine PRIVATE ${BULLET_INCLUDE_DIRS})
+target_include_directories(client_engine PRIVATE ${BULLET_INCLUDE_DIRS})
 
-# Link all
-target_link_libraries(engine PRIVATE
+# ENet include path (FetchContent populates enet_SOURCE_DIR)
+target_include_directories(client_engine PRIVATE ${enet_SOURCE_DIR}/include)
+
+# Link all client dependencies
+target_link_libraries(client_engine PRIVATE
     glfw
     ${GLFW_LIBRARIES}
     Freetype::Freetype
@@ -60,4 +87,19 @@ target_link_libraries(engine PRIVATE
     BulletDynamics
     BulletCollision
     LinearMath
+    enet
 )
+
+# =============================================================================
+# Headless Server executable (NO OpenGL, NO GLFW — only ENet + GLM)
+# =============================================================================
+
+add_executable(headless_server ${SERVER_MAIN})
+
+target_include_directories(headless_server PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/deps/glm
+    ${enet_SOURCE_DIR}/include
+)
+
+target_link_libraries(headless_server PRIVATE enet)
