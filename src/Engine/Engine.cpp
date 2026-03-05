@@ -14,8 +14,10 @@
 #include "UISystem.h"
 #include "GLUploadQueue.h"
 #include "StreamingSystem.h"
+#include "NetworkSystem.h"
 #include "../Streaming/ChunkManager.h"
 #include "../Physics/PhysicsSystem.h"
+#include "../Network/MockServer.h"
 #include "../Util/FileSystem.h"
 #include "../Util/Utils.h"
 #include "../Util/LightUtil.h"
@@ -386,15 +388,61 @@ void Engine::initFramebuffersAndPickers() {
     }
 }
 
+void Engine::initNetworkEntity() {
+    // Load a simple model to use as the visual representation of the
+    // network-driven demo entity.  We reuse the "lamp" asset that is already
+    // present in the project.  If the OBJ is missing the function returns
+    // safely without creating any entity.
+    ModelData lampData = OBJLoader::loadObjModel("lamp");
+    if (lampData.getIndices().empty()) {
+        std::cerr << "[Engine] NetworkEntity: could not load 'lamp' model — "
+                     "network demo entity will not appear.\n";
+        return;
+    }
+
+    auto* lampTex   = new ModelTexture("lamp", PNG, Material{1.0f, 0.0f});
+    auto* lampModel = new TexturedModel(loader->loadToVAO(lampData), lampTex);
+
+    // Spawn just outside the player's default spawn point so it is immediately
+    // visible.  MockServer will start orbiting it around kOrbitCentre.
+    networkEntity_ = new Entity(
+        lampModel,
+        /*box=*/nullptr,
+        glm::vec3(MockServer::kOrbitCentreX + MockServer::kOrbitRadius,
+                  MockServer::kOrbitCentreY,
+                  MockServer::kOrbitCentreZ),
+        glm::vec3(0.0f),
+        /*scale=*/1.0f);
+
+    // Attach the interpolation component.
+    auto* syncComp = networkEntity_->addComponent<NetworkSyncComponent>();
+
+    // Register with the mock server — an initial snapshot is dispatched
+    // immediately so the buffer is primed before the first tick fires.
+    MockServer::instance().registerComponent(syncComp);
+
+    // Push into the main entities list so SceneLoader / RenderSystem /
+    // StreamingSystem / ChunkManager see it like any other entity.
+    entities.push_back(networkEntity_);
+
+    std::cout << "[Engine] NetworkSyncComponent entity spawned — "
+                 "orbiting at ("
+              << MockServer::kOrbitCentreX << ", "
+              << MockServer::kOrbitCentreY << ", "
+              << MockServer::kOrbitCentreZ << ") r="
+              << MockServer::kOrbitRadius  << "\n";
+}
+
 void Engine::buildSystems() {
     // Systems are updated in this order each frame:
     //   1. InputDispatcher — translate raw InputMaster state into EventBus events
     //   2. PhysicsSystem   — step simulation, sync transforms
     //   3. InputSystem     — camera movement, picker, GUI animations
     //   4. StreamingSystem — update chunk loading, refresh entity/terrain lists
-    //   5. RenderSystem    — FBO + main scene render (frustum-culled)
-    //   6. AnimationSystem — sync positions + animated character render
-    //   7. UISystem        — object picking + UiMaster render + constraints
+    //   5. NetworkSystem   — MockServer ticks + NetworkSyncComponent interpolation
+    //   6. RenderSystem    — FBO + main scene render (frustum-culled)
+    //   7. AnimationSystem — sync positions + animated character render
+    //   8. UISystem        — object picking + UiMaster render + constraints
 
     // InputDispatcher must run first so that PlayerMoveCommandEvent subscribers
     // (e.g. Player) have up-to-date speed values before any other system runs.
@@ -415,6 +463,11 @@ void Engine::buildSystems() {
 
     // Build the chunk manager from the first loaded terrain's texture config.
     // Initial scene entities are registered so they appear inside their chunk.
+    // NOTE: initNetworkEntity() is called first so networkEntity_ is pushed
+    // into `entities` before the chunk-registration loop below, ensuring the
+    // streaming system always returns it in the active entity list.
+    initNetworkEntity();
+
     if (primaryTerrain) {
         chunkManager = new ChunkManager(loader,
                                         primaryTerrain->getTexturePack(),
@@ -424,7 +477,7 @@ void Engine::buildSystems() {
         for (auto* t : allTerrains) {
             if (t) chunkManager->registerTerrain(t);
         }
-        // Register entities into the chunk grid.
+        // Register entities into the chunk grid (includes networkEntity_).
         for (auto* e : entities) {
             if (e) chunkManager->registerEntity(e, e->getPosition());
         }
@@ -433,6 +486,14 @@ void Engine::buildSystems() {
         }
         systems.push_back(std::make_unique<StreamingSystem>(
             chunkManager, player, allTerrains, entities, scenes));
+    }
+
+    // NetworkSystem advances MockServer and interpolates all network entities.
+    // Runs after StreamingSystem (so active entities are current) but before
+    // RenderSystem (so updated positions are submitted to the renderer).
+    if (networkEntity_) {
+        systems.push_back(std::make_unique<NetworkSystem>(
+            std::vector<Entity*>{networkEntity_}));
     }
 
     systems.push_back(std::make_unique<RenderSystem>(
