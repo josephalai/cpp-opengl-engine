@@ -66,6 +66,13 @@ void GUIText::remove() {
     TextMaster::remove(this);
 }
 
+void GUIText::updateText(const std::string& newText, Color newColor) {
+    TextMaster::remove(this);
+    this->textString = newText;
+    this->color      = newColor;
+    TextMaster::loadText(this);
+}
+
 int GUIText::getNumberOfLines() const {
     return numberOfLines;
 }

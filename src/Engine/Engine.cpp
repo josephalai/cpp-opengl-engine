@@ -444,7 +444,7 @@ void Engine::buildSystems() {
         playerCamera, renderer->getProjectionMatrix()));
 
     systems.push_back(std::make_unique<UISystem>(
-        renderer, allBoxes, clickColorText, fontModel, noodleFont, masterContainer,
+        renderer, allBoxes, clickColorText, masterContainer,
         guiRenderer, guis));
 }
 

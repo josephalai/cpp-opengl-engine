@@ -47,7 +47,7 @@ void TextMaster::remove(GUIText *text) {
     }
     auto mapIterator = texts->find(font);
     if (mapIterator != texts->end()) {
-        auto guiVec = mapIterator->second;
+        auto& guiVec = mapIterator->second;
 
         // If element was found
         guiVec.erase(std::remove(guiVec.begin(), guiVec.end(), text), guiVec.end());
