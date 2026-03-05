@@ -35,7 +35,11 @@
 #include "../Input/InputMaster.h"
 #include "../Atmosphere/FogSettings.h"
 #include "../Shadows/ShadowMap.h"
+#include "NetworkSystem.h"
+#include "../Network/NetworkPackets.h"
+#include "../Entities/Components/NetworkSyncComponent.h"
 #include "../Toolbox/Maths.h"
+#include <enet/enet.h>
 #include <thread>
 
 // ---------------------------------------------------------------------------
@@ -44,6 +48,11 @@ Engine::Engine() = default;
 Engine::~Engine() = default;
 
 void Engine::init() {
+    // Initialize ENet before anything else that might use networking.
+    if (enet_initialize() != 0) {
+        std::cerr << "[Engine] Failed to initialize ENet.\n";
+    }
+
     DisplayManager::createDisplay();
     loader = new Loader();
 
@@ -386,15 +395,60 @@ void Engine::initFramebuffersAndPickers() {
     }
 }
 
+void Engine::initNetworkEntity() {
+    // Load a simple model to use as the visual representation of the
+    // network-driven demo entity.  We reuse the "lamp" asset that is already
+    // present in the project.  If the OBJ is missing the function returns
+    // safely without creating any entity.
+    ModelData lampData = OBJLoader::loadObjModel("lamp");
+    if (lampData.getIndices().empty()) {
+        std::cerr << "[Engine] NetworkEntity: could not load 'lamp' model — "
+                     "network demo entity will not appear.\n";
+        return;
+    }
+
+    auto* lampTex   = new ModelTexture("lamp", PNG, Material{1.0f, 0.0f});
+    auto* lampModel = new TexturedModel(loader->loadToVAO(lampData), lampTex);
+
+    // Spawn at the orbit starting position.
+    static constexpr float kOrbitRadius  = 20.0f;
+    static constexpr float kOrbitCentreX = 100.0f;
+    static constexpr float kOrbitCentreY =   3.0f;
+    static constexpr float kOrbitCentreZ = -80.0f;
+
+    networkEntity_ = new Entity(
+        lampModel,
+        /*box=*/nullptr,
+        glm::vec3(kOrbitCentreX + kOrbitRadius, kOrbitCentreY, kOrbitCentreZ),
+        glm::vec3(0.0f),
+        /*scale=*/1.0f);
+
+    // Attach the interpolation component.  The ENet-based NetworkSystem will
+    // push snapshots into this component's buffer when packets arrive.
+    networkEntity_->addComponent<NetworkSyncComponent>();
+
+    // Push into the main entities list so SceneLoader / RenderSystem /
+    // StreamingSystem / ChunkManager see it like any other entity.
+    entities.push_back(networkEntity_);
+
+    std::cout << "[Engine] NetworkSyncComponent entity spawned — "
+                 "orbiting at ("
+              << kOrbitCentreX << ", "
+              << kOrbitCentreY << ", "
+              << kOrbitCentreZ << ") r="
+              << kOrbitRadius  << "\n";
+}
+
 void Engine::buildSystems() {
     // Systems are updated in this order each frame:
     //   1. InputDispatcher — translate raw InputMaster state into EventBus events
     //   2. PhysicsSystem   — step simulation, sync transforms
     //   3. InputSystem     — camera movement, picker, GUI animations
     //   4. StreamingSystem — update chunk loading, refresh entity/terrain lists
-    //   5. RenderSystem    — FBO + main scene render (frustum-culled)
-    //   6. AnimationSystem — sync positions + animated character render
-    //   7. UISystem        — object picking + UiMaster render + constraints
+    //   5. NetworkSystem   — ENet packet polling + NetworkSyncComponent interpolation
+    //   6. RenderSystem    — FBO + main scene render (frustum-culled)
+    //   7. AnimationSystem — sync positions + animated character render
+    //   8. UISystem        — object picking + UiMaster render + constraints
 
     // InputDispatcher must run first so that PlayerMoveCommandEvent subscribers
     // (e.g. Player) have up-to-date speed values before any other system runs.
@@ -415,6 +469,11 @@ void Engine::buildSystems() {
 
     // Build the chunk manager from the first loaded terrain's texture config.
     // Initial scene entities are registered so they appear inside their chunk.
+    // NOTE: initNetworkEntity() is called first so networkEntity_ is pushed
+    // into `entities` before the chunk-registration loop below, ensuring the
+    // streaming system always returns it in the active entity list.
+    initNetworkEntity();
+
     if (primaryTerrain) {
         chunkManager = new ChunkManager(loader,
                                         primaryTerrain->getTexturePack(),
@@ -433,6 +492,21 @@ void Engine::buildSystems() {
         }
         systems.push_back(std::make_unique<StreamingSystem>(
             chunkManager, player, allTerrains, entities, scenes));
+    }
+
+    // NetworkSystem connects to the headless server via ENet and interpolates
+    // all network entities.  Runs after StreamingSystem (so active entities are
+    // current) but before RenderSystem (so updated positions are submitted).
+    if (networkEntity_) {
+        // 1. Create the system and store it in a local variable
+        auto netSys = std::make_unique<NetworkSystem>(
+            std::vector<Entity*>{networkEntity_});
+        
+        // 2. Initialize ENet so the client actually connects
+        netSys->init();
+        
+        // 3. Move it into the engine's system array
+        systems.push_back(std::move(netSys));
     }
 
     systems.push_back(std::make_unique<RenderSystem>(
@@ -499,4 +573,7 @@ void Engine::shutdown() {
     delete animRenderer;
     loader->cleanUp();
     DisplayManager::closeDisplay();
+
+    // Tear down ENet after all systems (including NetworkSystem) are destroyed.
+    enet_deinitialize();
 }

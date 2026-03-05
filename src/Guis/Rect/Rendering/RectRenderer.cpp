@@ -59,7 +59,6 @@ void RectRenderer::cleanUp() {
  */
 void RectRenderer::prepareInstance(GuiRect *gui) {
     glm::mat4 matrix = Maths::createTransformationMatrix(gui->getConstraints()->getCalculatedRelativePosition(), gui->getScale());
-    std::cout << gui->getName() << " has transformation of " << gui->getConstraints()->getCalculatedRelativePosition().x << ", " << gui->getConstraints()->getCalculatedRelativePosition().y << std::endl;
     shader->loadTransformationMatrix(matrix);
     shader->loadColor(gui->getColor());
     shader->loadAlpha(gui->getAlpha());

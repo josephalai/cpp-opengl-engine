@@ -42,8 +42,8 @@ void UiMaster::applyConstraints(GuiComponent *parentComponent) {
 
         childComponent->constraints->parentPosition =
                 parentComponent->constraints->parentPosition + parentComponent->constraints->position;
-        std::cout << "Position of " << childComponent->getName() << " is " << childComponent->constraints->parentPosition.x << ", " << childComponent->constraints->parentPosition.y << std::endl ;
-        std::cout << "PARENT of ^^ : " << childComponent->getParent()->getName() << " is " << childComponent->getParent()->constraints->parentPosition.x << ", " << childComponent->getParent()->constraints->parentPosition.y << std::endl ;
+        // std::cout << "Position of " << childComponent->getName() << " is " << childComponent->constraints->parentPosition.x << ", " << childComponent->constraints->parentPosition.y << std::endl ;
+        // std::cout << "PARENT of ^^ : " << childComponent->getParent()->getName() << " is " << childComponent->getParent()->constraints->parentPosition.x << ", " << childComponent->getParent()->constraints->parentPosition.y << std::endl ;
 
         // check to see which type the parentComponent is: and perform the action based on that.
         switch (childComponent->getType()) {
@@ -148,10 +148,10 @@ void UiMaster::render() {
               { return a->getLayer() < b->getLayer(); } );
 
     for (Container *c: renderOrder) {
-        std::cout << "renderOrder: " << c->getName() << ", " << c->getLayer() << std::endl;
+        // std::cout << "renderOrder: " << c->getName() << ", " << c->getLayer() << std::endl;
         {
             if (c->isHidden()) {
-                std::cout << c->getName() << " is hidden" << std::endl;
+                // std::cout << c->getName() << " is hidden" << std::endl;
                 continue;
             }
 

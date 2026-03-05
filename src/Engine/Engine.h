@@ -113,6 +113,14 @@ private:
     ChunkManager* chunkManager = nullptr;
     std::string   terrainHeightmapFile = "heightMap"; ///< passed to ChunkManager
 
+    // --- Network (Phase 2 ENet Transport) ---
+    Entity* networkEntity_ = nullptr; ///< Demo entity driven by server snapshots.
+
+    /// Load a model and create the demo network entity, attaching a
+    /// NetworkSyncComponent.  Must be called before the ChunkManager
+    /// registration loop so the entity lands in the correct streaming chunk.
+    void initNetworkEntity();
+
     // --- ISystem ordered pipeline (owned) ---
     std::vector<std::unique_ptr<ISystem>> systems;
 };
