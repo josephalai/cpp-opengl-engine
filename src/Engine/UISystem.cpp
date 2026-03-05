@@ -13,24 +13,18 @@
 #include "../Interaction/InteractiveModel.h"
 #include "../Util/ColorName.h"
 #include "../Guis/Text/GUIText.h"
-#include "../Guis/Text/FontMeshCreator/TextMeshData.h"
-#include "../Guis/Text/FontMeshCreator/FontModel.h"
 #include "../Entities/Player.h"
 #include "../RenderEngine/DisplayManager.h"
 
 UISystem::UISystem(MasterRenderer*            renderer,
                    std::vector<Interactive*>& allBoxes,
                    GUIText*                   clickColorText,
-                   FontModel*                 fontModel,
-                   FontType*                  noodleFont,
                    GuiComponent*              masterContainer,
                    GuiRenderer*               guiRenderer,
                    std::vector<GuiTexture*>&  guis)
     : renderer_(renderer)
     , allBoxes_(allBoxes)
     , clickColorText_(clickColorText)
-    , fontModel_(fontModel)
-    , noodleFont_(noodleFont)
     , masterContainer_(masterContainer)
     , guiRenderer_(guiRenderer)
     , guis_(guis)
@@ -43,11 +37,10 @@ void UISystem::update(float /*deltaTime*/) {
         Color clickColor = Picker::getColor();
         int element      = BoundingBoxIndex::getIndexByColor(clickColor);
 
-        if (clickColorText_ && fontModel_ && noodleFont_) {
-            *clickColorText_ = GUIText(
+        if (clickColorText_) {
+            clickColorText_->updateText(
                 ColorName::toString(clickColor) + ", Element: " + std::to_string(element),
-                0.5f, fontModel_, noodleFont_, glm::vec2(10.0f, 20.0f), clickColor,
-                0.75f * static_cast<float>(DisplayManager::Width()), false);
+                clickColor);
         }
 
         Interactive* pClickedModel = InteractiveModel::getInteractiveBox(element);

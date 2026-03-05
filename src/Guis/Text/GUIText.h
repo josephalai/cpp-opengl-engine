@@ -80,6 +80,12 @@ public:
 
     void remove();
 
+    /// Update the text string and color in place.
+    /// Removes this text from TextMaster, updates fields, then re-registers.
+    /// Use this instead of copy-assigning a new GUIText, which would leave a
+    /// dangling temporary pointer inside TextMaster and crash on render.
+    void updateText(const std::string& newText, Color newColor);
+
     int getNumberOfLines() const;
 
     int getMesh();

@@ -12,8 +12,6 @@
 class MasterRenderer;
 class Interactive;
 class GUIText;
-class FontModel;
-class FontType;
 class GuiComponent;
 class GuiRenderer;
 class GuiTexture;
@@ -23,8 +21,6 @@ public:
     UISystem(MasterRenderer*            renderer,
              std::vector<Interactive*>& allBoxes,
              GUIText*                   clickColorText,
-             FontModel*                 fontModel,
-             FontType*                  noodleFont,
              GuiComponent*              masterContainer,
              GuiRenderer*               guiRenderer,
              std::vector<GuiTexture*>&  guis);
@@ -37,8 +33,6 @@ private:
     MasterRenderer*            renderer_;
     std::vector<Interactive*>& allBoxes_;
     GUIText*                   clickColorText_;
-    FontModel*                 fontModel_;
-    FontType*                  noodleFont_;
     GuiComponent*              masterContainer_;
     GuiRenderer*               guiRenderer_;
     std::vector<GuiTexture*>&  guis_;

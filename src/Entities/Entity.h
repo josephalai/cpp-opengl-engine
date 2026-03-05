@@ -10,6 +10,9 @@
 #include "../BoundingBox/BoundingBox.h"
 #include "../Interfaces/Interactive.h"
 #include "../BoundingBox/BoundingBoxIndex.h"
+#include "Components/IComponent.h"
+#include <vector>
+#include <memory>
 
 class Entity : public Interactive {
 protected:
@@ -106,6 +109,44 @@ public:
     void activateMaterial();
 
     void disableMaterial();
+
+    // -------------------------------------------------------------------------
+    // Component container
+    // -------------------------------------------------------------------------
+
+    /// Construct a component of type T in-place, attach it to this entity,
+    /// and call its init() method.  Returns a raw pointer for convenience
+    /// (lifetime is managed by the entity's components_ vector).
+    template<typename T, typename... Args>
+    T* addComponent(Args&&... args) {
+        auto comp = std::make_unique<T>(std::forward<Args>(args)...);
+        T* ptr = comp.get();
+        comp->setEntity(this);
+        comp->init();
+        components_.push_back(std::move(comp));
+        return ptr;
+    }
+
+    /// Return a raw pointer to the first component of type T, or nullptr.
+    template<typename T>
+    T* getComponent() {
+        for (auto& comp : components_) {
+            if (T* ptr = dynamic_cast<T*>(comp.get())) {
+                return ptr;
+            }
+        }
+        return nullptr;
+    }
+
+    /// Tick all attached components.  Call once per frame.
+    virtual void updateComponents(float deltaTime) {
+        for (auto& comp : components_) {
+            comp->update(deltaTime);
+        }
+    }
+
+private:
+    std::vector<std::unique_ptr<IComponent>> components_;
 
 };
 
