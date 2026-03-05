@@ -498,8 +498,15 @@ void Engine::buildSystems() {
     // all network entities.  Runs after StreamingSystem (so active entities are
     // current) but before RenderSystem (so updated positions are submitted).
     if (networkEntity_) {
-        systems.push_back(std::make_unique<NetworkSystem>(
-            std::vector<Entity*>{networkEntity_}));
+        // 1. Create the system and store it in a local variable
+        auto netSys = std::make_unique<NetworkSystem>(
+            std::vector<Entity*>{networkEntity_});
+        
+        // 2. Initialize ENet so the client actually connects
+        netSys->init();
+        
+        // 3. Move it into the engine's system array
+        systems.push_back(std::move(netSys));
     }
 
     systems.push_back(std::make_unique<RenderSystem>(
