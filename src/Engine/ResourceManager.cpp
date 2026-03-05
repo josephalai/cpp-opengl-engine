@@ -1,12 +1,14 @@
 // src/Engine/ResourceManager.cpp
 
 #include "ResourceManager.h"
+#include "AsyncResourceLoader.h"
 #include "../Animation/AnimatedModel.h"
 #include "../Animation/AnimationLoader.h"
 #include <iostream>
 
 ResourceHandle<AnimatedModel>
 ResourceManager::loadAnimatedModel(const std::string& path) {
+    std::lock_guard<std::mutex> lock(mutex_);
     // Return cached handle if already loaded
     auto it = animatedModelPaths_.find(path);
     if (it != animatedModelPaths_.end()) {
@@ -25,14 +27,58 @@ ResourceManager::loadAnimatedModel(const std::string& path) {
     return ResourceHandle<AnimatedModel>(id);
 }
 
+void ResourceManager::loadAnimatedModelAsync(
+        const std::string& path,
+        std::function<void(ResourceHandle<AnimatedModel>)> callback) {
+
+    // Check the cache first (under lock) and short-circuit if already loaded.
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = animatedModelPaths_.find(path);
+        if (it != animatedModelPaths_.end()) {
+            callback(ResourceHandle<AnimatedModel>(it->second));
+            return;
+        }
+    }
+
+    AsyncResourceLoader::instance().loadAnimatedModelAsync(
+        path,
+        [this, path, callback](AnimatedModel* model) {
+            // Invoked on the main thread by GLUploadQueue::processAll().
+            if (!model) {
+                std::cerr << "[ResourceManager] Async load failed: " << path << "\n";
+                callback(ResourceHandle<AnimatedModel>());
+                return;
+            }
+            uint32_t id;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                // Another async request may have loaded it first.
+                auto it = animatedModelPaths_.find(path);
+                if (it != animatedModelPaths_.end()) {
+                    model->cleanUp();
+                    delete model;
+                    callback(ResourceHandle<AnimatedModel>(it->second));
+                    return;
+                }
+                id = allocId();
+                animatedModels_[id]       = model;
+                animatedModelPaths_[path] = id;
+            }
+            callback(ResourceHandle<AnimatedModel>(id));
+        });
+}
+
 AnimatedModel*
 ResourceManager::resolve(ResourceHandle<AnimatedModel> handle) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (!handle.isValid()) return nullptr;
     auto it = animatedModels_.find(handle.rawId());
     return it != animatedModels_.end() ? it->second : nullptr;
 }
 
 void ResourceManager::unloadAll() {
+    std::lock_guard<std::mutex> lock(mutex_);
     for (auto& [id, model] : animatedModels_) {
         if (model) {
             model->cleanUp();

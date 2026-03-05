@@ -35,7 +35,7 @@ private:
     Player*                       player_;
     std::vector<Light*>&          lights_;
     Camera*                       camera_;
-    const glm::mat4&              projectionMatrix_;
+    glm::mat4                     projectionMatrix_;
 };
 
 #endif // ENGINE_ANIMATIONSYSTEM_H

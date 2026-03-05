@@ -25,7 +25,7 @@ void AnimatedRenderer::render(const std::vector<AnimatedEntity*>& entities,
         shader->loadBoneMatrices(boneMatrices);
 
         glm::mat4 transform = Maths::createTransformationMatrix(
-            ae->position, ae->rotation, ae->scale)
+            ae->position + ae->modelOffset, ae->rotation, ae->scale)
             * ae->model->coordinateCorrection;
         shader->loadTransformationMatrix(transform);
 

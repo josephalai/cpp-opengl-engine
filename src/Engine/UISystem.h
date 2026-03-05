@@ -1,6 +1,6 @@
 // src/Engine/UISystem.h
-// Subsystem that handles UI rendering, constraint application, and
-// click-based object picking each frame.
+// Subsystem that handles GUI texture rendering, text rendering, UiMaster,
+// constraint application, and click-based object picking each frame.
 
 #ifndef ENGINE_UISYSTEM_H
 #define ENGINE_UISYSTEM_H
@@ -15,9 +15,8 @@ class GUIText;
 class FontModel;
 class FontType;
 class GuiComponent;
-class Loader;
-class Picker;
-class BoundingBoxIndex;
+class GuiRenderer;
+class GuiTexture;
 
 class UISystem : public ISystem {
 public:
@@ -26,7 +25,9 @@ public:
              GUIText*                   clickColorText,
              FontModel*                 fontModel,
              FontType*                  noodleFont,
-             GuiComponent*              masterContainer);
+             GuiComponent*              masterContainer,
+             GuiRenderer*               guiRenderer,
+             std::vector<GuiTexture*>&  guis);
 
     void init()     override {}
     void update(float deltaTime) override;
@@ -39,6 +40,8 @@ private:
     FontModel*                 fontModel_;
     FontType*                  noodleFont_;
     GuiComponent*              masterContainer_;
+    GuiRenderer*               guiRenderer_;
+    std::vector<GuiTexture*>&  guis_;
 };
 
 #endif // ENGINE_UISYSTEM_H

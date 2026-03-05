@@ -49,7 +49,21 @@ public:
     /// collision instead of the manual terrain-height fallback in move().
     void setPhysicsSystem(PhysicsSystem* ps) { physicsSystem_ = ps; }
 
+    /// Subscribe to PlayerMoveCommandEvent on the global EventBus.
+    /// After this call, checkInputs() skips direct InputMaster polling and
+    /// relies on the event handler to keep currentSpeed / currentTurnSpeed
+    /// up to date.  Call once during engine initialisation (after InputDispatcher
+    /// has been registered as an ISystem).
+    void subscribeToEvents();
+
 private:
+    bool useEventBus_ = false; ///< set by subscribeToEvents()
+
+    /// Shared core of checkInputs() and the EventBus handler — applies
+    /// normalised axis values and flags to the player's speed fields.
+    void applyMovementCommand(float forward, float turn,
+                              bool jump, bool sprint, bool sprintReset);
+
     void checkInputs();
 
 };

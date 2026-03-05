@@ -174,6 +174,7 @@ private:
         float yOffset = 0.0f;
         float scale   = 1.0f;
         float rx = 0.0f, ry = 0.0f, rz = 0.0f;  ///< Optional Euler rotation override (degrees)
+        float ox = 0.0f, oy = 0.0f, oz = 0.0f;  ///< Visual-only model offset (world units)
     };
 
 private:

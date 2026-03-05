@@ -7,9 +7,14 @@
 #include "Engine.h"
 #include "SceneLoader.h"
 #include "InputSystem.h"
+#include "InputDispatcher.h"
 #include "AnimationSystem.h"
+#include "../Events/EventBus.h"
 #include "RenderSystem.h"
 #include "UISystem.h"
+#include "GLUploadQueue.h"
+#include "StreamingSystem.h"
+#include "../Streaming/ChunkManager.h"
 #include "../Physics/PhysicsSystem.h"
 #include "../Util/FileSystem.h"
 #include "../Util/Utils.h"
@@ -18,6 +23,7 @@
 #include "../Util/CommonHeader.h"
 #include "../RenderEngine/DisplayManager.h"
 #include "../RenderEngine/ObjLoader.h"
+#include "../RenderEngine/InstancedModel.h"
 #include "../Guis/Text/FontMeshCreator/TextMeshData.h"
 #include "../Guis/Text/GUIText.h"
 #include "../Guis/GuiComponent.h"
@@ -27,6 +33,9 @@
 #include "../BoundingBox/BoundingBoxIndex.h"
 #include "../Toolbox/Picker.h"
 #include "../Input/InputMaster.h"
+#include "../Atmosphere/FogSettings.h"
+#include "../Shadows/ShadowMap.h"
+#include "../Toolbox/Maths.h"
 #include <thread>
 
 // ---------------------------------------------------------------------------
@@ -82,7 +91,7 @@ void Engine::loadScene() {
     std::vector<SceneLoader::PhysicsBodyCfg>   physicsBodyCfgs;
     std::vector<SceneLoader::PhysicsGroundCfg> physicsGroundCfgs;
 
-    SceneLoader::load(configPath, loader,
+    bool sceneLoaded = SceneLoader::load(configPath, loader,
                       entities, scenes, lights,
                       allTerrains, guis, texts, waterTiles,
                       primaryTerrain, player, playerCamera,
@@ -130,6 +139,61 @@ void Engine::loadScene() {
         }
     }
 
+    // Fallback: if scene.cfg didn't provide a player or camera, build minimal defaults
+    // so the engine always has something to render.
+    if (!sceneLoaded || !player || !playerCamera) {
+        std::cerr << "[Engine] SceneLoader failed or missing player — using minimal defaults\n";
+
+        if (allTerrains.empty()) {
+            auto* bgTex  = new TerrainTexture(loader->loadTexture("MultiTextureTerrain/grass")->getId());
+            auto* rTex   = new TerrainTexture(loader->loadTexture("MultiTextureTerrain/dirt")->getId());
+            auto* gTex   = new TerrainTexture(loader->loadTexture("MultiTextureTerrain/blueflowers")->getId());
+            auto* bTex   = new TerrainTexture(loader->loadTexture("MultiTextureTerrain/brickroad")->getId());
+            auto* pack   = new TerrainTexturePack(bgTex, rTex, gTex, bTex);
+            auto* blend  = new TerrainTexture(loader->loadTexture("MultiTextureTerrain/blendMap")->getId());
+            primaryTerrain = new Terrain(0, -1, loader, pack, blend, terrainHeightmapFile);
+            allTerrains.push_back(primaryTerrain);
+        }
+
+        if (lights.empty()) {
+            lights.push_back(new Light(glm::vec3(0.0f, 1000.0f, -7000.0f),
+                                       glm::vec3(0.4f, 0.4f, 0.4f), {
+                .ambient  = glm::vec3(0.2f, 0.2f, 0.2f),
+                .diffuse  = glm::vec3(0.5f, 0.5f, 0.5f),
+                .constant = Light::kDirectional,
+            }));
+        }
+
+        if (!player) {
+            ModelData stallData = OBJLoader::loadObjModel("Stall");
+            if (!stallData.getIndices().empty()) {
+                BoundingBoxData bbData = OBJLoader::loadBoundingBox(
+                    stallData, ClickBoxTypes::BOX, BoundTypes::AABB);
+                auto* pBox  = loader->loadToVAO(bbData);
+                auto* model = new TexturedModel(loader->loadToVAO(stallData),
+                    new ModelTexture("stallTexture", PNG, Material{2.0f, 2.0f}));
+                player = new Player(model,
+                    new BoundingBox(pBox, BoundingBoxIndex::genUniqueId()),
+                    glm::vec3(100.0f, 3.0f, -50.0f),
+                    glm::vec3(0.0f, 180.0f, 0.0f), 1.0f);
+                InteractiveModel::setInteractiveBox(player);
+                entities.push_back(player);
+            } else {
+                std::cerr << "[Engine] Could not load Stall fallback model\n";
+            }
+        }
+
+        if (!playerCamera && player) {
+            playerCamera = new PlayerCamera(player);
+        }
+    }
+
+    // Register heightfield colliders for all terrain tiles so Bullet knows
+    // about the ground geometry for character/rigid-body collision.
+    for (auto* t : allTerrains) {
+        physicsSystem->addTerrainCollider(t);
+    }
+
     // Set up a kinematic character controller for the player so Bullet handles
     // gravity and collision instead of the manual terrain-height fallback.
     if (player) {
@@ -146,6 +210,21 @@ void Engine::initRenderers() {
     // Animation renderer
     animShader   = new AnimatedShader();
     animRenderer = new AnimatedRenderer(animShader);
+
+    // Fog / Atmosphere
+    FogSettings fogSettings;
+    fogSettings.mode              = FogMode::ExponentialSquared;
+    fogSettings.density           = 0.007f;
+    fogSettings.color             = glm::vec3(0.5f, 0.6f, 0.7f);
+    fogSettings.heightFogEnabled  = true;
+    fogSettings.heightFogStart    = 5.0f;
+    fogSettings.heightFogEnd      = -10.0f;
+    fogSettings.scatteringEnabled = true;
+    fogSettings.sunDirection      = glm::normalize(glm::vec3(0.0f, -1.0f, 0.5f));
+    renderer->setFogSettings(fogSettings);
+
+    // Shadow mapping
+    renderer->enableShadowMapping(ShadowMap::kDefaultSize);
 
     UiMaster::initialize(loader, guiRenderer, fontRenderer, rectRenderer);
 }
@@ -212,8 +291,9 @@ void Engine::initFramebuffersAndPickers() {
     auto gui   = new GuiTexture(reflectFbo->getReflectionTexture(), glm::vec2(0.75f, 0.75f), glm::vec2(0.2f));
     guis.push_back(gui);
 
-    // Water renderer — loads optional DuDv / normal textures, falls back to neutral 1×1 textures
-    if (!waterTiles.empty()) {
+    // Water renderer — loads optional DuDv / normal textures, falls back to neutral 1×1 textures.
+    // Always created so water tiles (from scene.cfg or the default) are rendered.
+    {
         GLuint dudvTex   = 0;
         GLuint waterNorm = 0;
         auto* t = loader->loadTexture("waterDUDV");
@@ -238,8 +318,14 @@ void Engine::initFramebuffersAndPickers() {
         waterRenderer = new WaterRenderer(loader, waterShader, renderer->getProjectionMatrix(),
                                           reflectFbo, dudvTex, waterNorm);
         renderer->setWaterRenderer(waterRenderer);
-        for (const auto& tile : waterTiles)
-            renderer->addWaterTile(tile);
+
+        // Add water tiles from scene.cfg; fall back to a single default tile if none configured
+        if (waterTiles.empty()) {
+            renderer->addWaterTile(WaterTile(0.0f, -1.0f, -200.0f));
+        } else {
+            for (const auto& tile : waterTiles)
+                renderer->addWaterTile(tile);
+        }
     }
 
     picker = new TerrainPicker(playerCamera, renderer->getProjectionMatrix(), primaryTerrain);
@@ -265,15 +351,61 @@ void Engine::initFramebuffersAndPickers() {
                 []() { return InputMaster::isKeyDown(Space); });
         }
     }
+
+    if (!animatedEntities.empty())
+        std::cout << "[Engine] " << animatedEntities.size() << " animated character(s) ready.\n";
+    else
+        std::cout << "[Engine] No animated_character entries in scene.cfg.\n";
+
+    // Phase 2.4 — Instanced Rendering (500+ trees in one draw call)
+    {
+        ModelData treeData = OBJLoader::loadObjModel("tree");
+        if (!treeData.getIndices().empty()) {
+            RawModel* rawTree   = loader->loadToVAO(treeData);
+            auto*     treeTex   = loader->loadTexture("tree");
+            GLuint    treeTexID = treeTex ? treeTex->getId() : 0;
+
+            instancedTreeModel = new InstancedModel(rawTree->getVaoId(),
+                                                    rawTree->getVertexCount(),
+                                                    treeTexID);
+            instancedTreeModel->setupInstanceVBO();
+
+            srand(42);
+            for (int i = 0; i < 500; ++i) {
+                float x = static_cast<float>(rand() % 800) - 400.0f;
+                float z = static_cast<float>(rand() % 800) - 400.0f;
+                float y = primaryTerrain ? primaryTerrain->getHeightOfTerrain(x, z) : 0.0f;
+                float s = 0.5f + static_cast<float>(rand() % 100) / 100.0f;
+                instancedTreeModel->addInstance(
+                    Maths::createTransformationMatrix(glm::vec3(x, y, z), glm::vec3(0.0f), s));
+            }
+            std::cout << "[Engine] Instanced tree model ready — 500 instances.\n";
+        } else {
+            std::cout << "[Engine] Could not load tree model for instancing.\n";
+        }
+    }
 }
 
 void Engine::buildSystems() {
     // Systems are updated in this order each frame:
-    //   1. PhysicsSystem — step simulation, sync transforms
-    //   2. InputSystem   — camera movement, picker, GUI animations
-    //   3. RenderSystem  — FBO + main scene render
-    //   4. AnimationSystem — sync positions + animated character render
-    //   5. UISystem      — object picking + UiMaster render + constraints
+    //   1. InputDispatcher — translate raw InputMaster state into EventBus events
+    //   2. PhysicsSystem   — step simulation, sync transforms
+    //   3. InputSystem     — camera movement, picker, GUI animations
+    //   4. StreamingSystem — update chunk loading, refresh entity/terrain lists
+    //   5. RenderSystem    — FBO + main scene render (frustum-culled)
+    //   6. AnimationSystem — sync positions + animated character render
+    //   7. UISystem        — object picking + UiMaster render + constraints
+
+    // InputDispatcher must run first so that PlayerMoveCommandEvent subscribers
+    // (e.g. Player) have up-to-date speed values before any other system runs.
+    systems.push_back(std::make_unique<InputDispatcher>(picker));
+
+    // Subscribe the player to receive movement commands via the EventBus
+    // instead of polling InputMaster::isKeyDown() directly in checkInputs().
+    if (player) {
+        player->subscribeToEvents();
+    }
+
     if (physicsSystem) {
         systems.push_back(std::unique_ptr<ISystem>(physicsSystem));
     }
@@ -281,15 +413,39 @@ void Engine::buildSystems() {
     systems.push_back(std::make_unique<InputSystem>(
         playerCamera, primaryTerrain, picker, sampleModifiedGui, pNameText));
 
+    // Build the chunk manager from the first loaded terrain's texture config.
+    // Initial scene entities are registered so they appear inside their chunk.
+    if (primaryTerrain) {
+        chunkManager = new ChunkManager(loader,
+                                        primaryTerrain->getTexturePack(),
+                                        primaryTerrain->getBlendMap(),
+                                        terrainHeightmapFile);
+        // Register existing terrain tiles so ChunkManager tracks them.
+        for (auto* t : allTerrains) {
+            if (t) chunkManager->registerTerrain(t);
+        }
+        // Register entities into the chunk grid.
+        for (auto* e : entities) {
+            if (e) chunkManager->registerEntity(e, e->getPosition());
+        }
+        for (auto* s : scenes) {
+            if (s) chunkManager->registerAssimpEntity(s, s->getPosition());
+        }
+        systems.push_back(std::make_unique<StreamingSystem>(
+            chunkManager, player, allTerrains, entities, scenes));
+    }
+
     systems.push_back(std::make_unique<RenderSystem>(
-        renderer, reflectFbo, entities, scenes, allTerrains, lights, allBoxes));
+        renderer, reflectFbo, entities, scenes, allTerrains, lights, allBoxes,
+        playerCamera, renderer->getProjectionMatrix(), instancedTreeModel));
 
     systems.push_back(std::make_unique<AnimationSystem>(
         animRenderer, animatedEntities, player, lights,
         playerCamera, renderer->getProjectionMatrix()));
 
     systems.push_back(std::make_unique<UISystem>(
-        renderer, allBoxes, clickColorText, fontModel, noodleFont, masterContainer));
+        renderer, allBoxes, clickColorText, fontModel, noodleFont, masterContainer,
+        guiRenderer, guis));
 }
 
 void Engine::run() {
@@ -305,12 +461,21 @@ void Engine::run() {
                 renderer->getProjectionMatrix());
         }
         DisplayManager::updateDisplay();
+        // Process any pending GL upload tasks (from async resource loading).
+        GLUploadQueue::instance().processAll(/*maxPerFrame=*/10);
     }
 }
 
 void Engine::shutdown() {
     systems.clear();  // ISystem destructors release per-system resources
                       // (PhysicsSystem is the first entry; it cleans up Bullet)
+
+    // Clear all EventBus subscriptions before entity/player are destroyed.
+    // This prevents any late event delivery from reaching freed objects.
+    EventBus::instance().clear();
+
+    delete instancedTreeModel;
+    instancedTreeModel = nullptr;
 
     reflectFbo->cleanUp();
     TextMaster::cleanUp();

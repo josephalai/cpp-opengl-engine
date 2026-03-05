@@ -16,11 +16,15 @@
 
 /// An in-scene animated character (model + controller + transform).
 struct AnimatedEntity {
-    AnimatedModel*       model      = nullptr;
-    AnimationController* controller = nullptr;
-    glm::vec3            position   = glm::vec3(0.0f);
-    glm::vec3            rotation   = glm::vec3(0.0f);
-    float                scale      = 1.0f;
+    AnimatedModel*       model       = nullptr;
+    AnimationController* controller  = nullptr;
+    glm::vec3            position    = glm::vec3(0.0f);
+    glm::vec3            rotation    = glm::vec3(0.0f);
+    float                scale       = 1.0f;
+    /// Pure visual offset applied on top of position at render time.
+    /// Does not affect physics. Use Up/Down arrows at runtime to find the
+    /// correct value, then bake it into scene.cfg or the constructor.
+    glm::vec3            modelOffset = glm::vec3(0.0f);
 };
 
 class AnimatedRenderer {

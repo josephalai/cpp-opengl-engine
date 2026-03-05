@@ -15,6 +15,10 @@ class Terrain {
 private:
     const float kTerrainSize = 800;
 
+public:
+    /// World-space size (width and depth) of each terrain tile.
+    static constexpr float kSize = 800.0f;
+
     float x;
     float z;
     RawModel *model;
