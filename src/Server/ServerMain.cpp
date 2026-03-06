@@ -109,6 +109,7 @@ int main() {
     // --- Server State ---
     float    serverTime  = 0.0f;
     uint32_t sequenceNum = 0;
+    uint32_t highestReceivedInputSequence = 0;
 
     using Clock = std::chrono::steady_clock;
     auto lastTick = Clock::now();
@@ -130,8 +131,16 @@ int main() {
                     break;
 
                 case ENET_EVENT_TYPE_RECEIVE:
-                    // Server ignores client packets for now (Phase 3 will
-                    // handle client input).
+                    // Deserialize PlayerInputPacket and track the highest
+                    // input sequence number received from any client.
+                    if (event.packet->dataLength == sizeof(Network::PlayerInputPacket)) {
+                        Network::PlayerInputPacket input;
+                        std::memcpy(&input, event.packet->data, sizeof(input));
+
+                        if (input.sequenceNumber > highestReceivedInputSequence) {
+                            highestReceivedInputSequence = input.sequenceNumber;
+                        }
+                    }
                     enet_packet_destroy(event.packet);
                     break;
 
@@ -154,6 +163,7 @@ int main() {
             snapshot.timestamp      = serverTime;
             snapshot.position       = generatePosition(serverTime);
             snapshot.rotation       = generateRotation(serverTime);
+            snapshot.lastProcessedInputSequence = highestReceivedInputSequence;
 
             // Serialize and broadcast to all connected peers.
             // flags=0 means unreliable delivery — acceptable for position
