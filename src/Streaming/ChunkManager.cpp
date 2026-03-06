@@ -96,6 +96,18 @@ void ChunkManager::registerEntity(Entity* e, const glm::vec3& worldPos) {
     }
 }
 
+void ChunkManager::removeEntity(Entity* e) {
+    for (auto& [key, chunk] : chunks_) {
+        if (!chunk) continue;
+        auto& ents = chunk->entities;
+        auto it = std::find(ents.begin(), ents.end(), e);
+        if (it != ents.end()) {
+            ents.erase(it);
+            return;
+        }
+    }
+}
+
 void ChunkManager::registerAssimpEntity(AssimpEntity* e, const glm::vec3& worldPos) {
     int cx = static_cast<int>(std::floor(worldPos.x / kTerrainSize));
     int cz = static_cast<int>(std::floor(worldPos.z / kTerrainSize));

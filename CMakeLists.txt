@@ -35,6 +35,10 @@ list(FILTER CLIENT_SOURCES EXCLUDE REGEX ".*/Server/.*")
 # Client Engine executable (OpenGL + GLFW + full rendering pipeline)
 # =============================================================================
 
+# The client requires OpenGL; skip if not available (e.g. headless CI).
+find_package(OpenGL QUIET)
+if(OpenGL_FOUND)
+
 add_executable(client_engine ${CLIENT_SOURCES})
 
 target_include_directories(client_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
@@ -44,8 +48,6 @@ target_compile_definitions(client_engine PRIVATE RESOURCE_ROOT="${CMAKE_SOURCE_D
 
 # --- Client Dependencies ---
 
-# OpenGL — always required for the client engine
-find_package(OpenGL REQUIRED)
 target_link_libraries(client_engine PRIVATE OpenGL::GL)
 
 # GLFW
@@ -90,16 +92,30 @@ target_link_libraries(client_engine PRIVATE
     enet
 )
 
+else()
+    message(STATUS "OpenGL not found — skipping client_engine target (server-only build).")
+endif()
+
 # =============================================================================
-# Headless Server executable (NO OpenGL, NO GLFW — only ENet + GLM)
+# Headless Server executable (NO OpenGL, NO GLFW — only ENet + GLM + stb_image)
 # =============================================================================
 
-add_executable(headless_server ${SERVER_MAIN})
+set(SERVER_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/Server/ServerMain.cpp
+    ${CMAKE_SOURCE_DIR}/src/Server/ServerNPCManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/Server/ServerStbImage.cpp
+    ${CMAKE_SOURCE_DIR}/src/Terrain/HeightMap.cpp
+    ${CMAKE_SOURCE_DIR}/src/Util/FileSystem.cpp
+)
+
+add_executable(headless_server ${SERVER_SOURCES})
 
 target_include_directories(headless_server PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/deps/glm
     ${enet_SOURCE_DIR}/include
 )
+
+target_compile_definitions(headless_server PRIVATE RESOURCE_ROOT="${CMAKE_SOURCE_DIR}")
 
 target_link_libraries(headless_server PRIVATE enet)

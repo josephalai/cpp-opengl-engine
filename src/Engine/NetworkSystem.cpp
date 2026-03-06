@@ -1,14 +1,17 @@
 // src/Engine/NetworkSystem.cpp
 //
-// Phase 4 — Client-Side Prediction & Server Reconciliation.
+// Phase 5+ — Multi-Client Networking.
 //
 // Each frame:
 //   1. Capture local input, predict movement instantly, push to history buffer,
-//      and send the input packet to the server.
-//   2. Poll ENet — when an authoritative TransformSnapshot arrives, snap to the
-//      server position, discard acknowledged inputs, and replay remaining ones.
+//      and send the input packet to the server (with PacketType prefix).
+//   2. Poll ENet — handle Welcome, Spawn, Despawn, TransformSnapshot packets.
+//   3. For the local player: snap + reconcile (replay unacknowledged inputs).
+//   4. For remote entities: push snapshots into their NetworkSyncComponent
+//      buffer for smooth interpolation.
 
 #include "NetworkSystem.h"
+#include "../Network/SharedMovement.h"
 
 #include <iostream>
 #include <cstring>
@@ -18,8 +21,12 @@
 // Construction
 // ---------------------------------------------------------------------------
 
-NetworkSystem::NetworkSystem(std::vector<Entity*> netEntities)
-    : netEntities_(std::move(netEntities))
+NetworkSystem::NetworkSystem(const std::string& serverIP,
+                             SpawnCallback   onSpawn,
+                             DespawnCallback onDespawn)
+    : serverIP_(serverIP)
+    , spawnCallback_(std::move(onSpawn))
+    , despawnCallback_(std::move(onDespawn))
 {}
 
 // ---------------------------------------------------------------------------
@@ -27,41 +34,30 @@ NetworkSystem::NetworkSystem(std::vector<Entity*> netEntities)
 // ---------------------------------------------------------------------------
 
 void NetworkSystem::init() {
-    // Create an ENet client host (no incoming connections, 1 outgoing).
-    client_ = enet_host_create(
-        nullptr,        // no bind address — this is a client
-        1,              // max 1 outgoing connection (to the server)
-        kChannelCount,  // number of channels
-        0,              // unlimited incoming bandwidth
-        0               // unlimited outgoing bandwidth
-    );
+    client_ = enet_host_create(nullptr, 1, kChannelCount, 0, 0);
 
     if (!client_) {
         std::cerr << "[NetworkSystem] Failed to create ENet client host.\n";
         return;
     }
 
-    // Resolve the server address.
     ENetAddress address;
-    enet_address_set_host(&address, kServerHost);
+    enet_address_set_host(&address, serverIP_.c_str());
     address.port = static_cast<enet_uint16>(kServerPort);
 
-    // Initiate the connection.  enet_host_connect returns a peer handle
-    // immediately; the actual handshake completes asynchronously and is
-    // reported via ENET_EVENT_TYPE_CONNECT in update().
     serverPeer_ = enet_host_connect(client_, &address, kChannelCount, 0);
     if (!serverPeer_) {
         std::cerr << "[NetworkSystem] Failed to initiate ENet connection to "
-                  << kServerHost << ":" << kServerPort << ".\n";
+                  << serverIP_ << ":" << kServerPort << ".\n";
         return;
     }
 
-    std::cout << "[NetworkSystem] Connecting to " << kServerHost
+    std::cout << "[NetworkSystem] Connecting to " << serverIP_
               << ":" << kServerPort << " ...\n";
 }
 
 // ---------------------------------------------------------------------------
-// update — prediction, send input, poll ENet, reconcile
+// update — prediction, send input, poll ENet, reconcile / interpolate
 // ---------------------------------------------------------------------------
 
 void NetworkSystem::update(float deltaTime) {
@@ -82,16 +78,18 @@ void NetworkSystem::update(float deltaTime) {
         input.turn           = turn;
         input.deltaTime      = deltaTime;
 
-        // Predict locally — apply the same math the server would.
-        applyInput(input, predictedPosition_, predictedRotation_);
+        // Predict locally using shared movement math.
+        SharedMovement::applyInput(input, predictedPosition_,
+                                   predictedRotation_);
 
-        // Store in history for potential replay after reconciliation.
         pendingInputs_.push_back(input);
 
-        // Send to the server.
+        // Send to server with PacketType prefix.
         if (serverPeer_) {
+            auto buf = Network::serialise(Network::PacketType::PlayerInput,
+                                          input);
             ENetPacket* packet = enet_packet_create(
-                &input, sizeof(input), 0 /* unreliable */);
+                buf.data(), buf.size(), 0 /* unreliable */);
             enet_peer_send(serverPeer_, 0, packet);
         }
     }
@@ -108,41 +106,126 @@ void NetworkSystem::update(float deltaTime) {
                 break;
 
             case ENET_EVENT_TYPE_RECEIVE: {
-                if (event.packet->dataLength == sizeof(Network::TransformSnapshot)) {
-                    Network::TransformSnapshot snapshot;
-                    std::memcpy(&snapshot, event.packet->data, sizeof(snapshot));
+                if (event.packet->dataLength < 1) {
+                    enet_packet_destroy(event.packet);
+                    break;
+                }
 
-                    // --------------------------------------------------
-                    // Server Reconciliation
-                    // --------------------------------------------------
+                auto ptype = static_cast<Network::PacketType>(
+                    event.packet->data[0]);
+                const uint8_t* payload = event.packet->data + 1;
+                size_t plen = event.packet->dataLength - 1;
 
-                    // a) Hard-set predicted state to authoritative values.
-                    predictedPosition_ = snapshot.position;
-                    predictedRotation_ = snapshot.rotation;
+                // ----- WelcomePacket -----
+                if (ptype == Network::PacketType::Welcome &&
+                    plen == sizeof(Network::WelcomePacket)) {
+                    Network::WelcomePacket wp;
+                    std::memcpy(&wp, payload, sizeof(wp));
+                    localPlayerId_ = wp.localNetworkId;
+                    std::cout << "[NetworkSystem] Welcome — localPlayerId = "
+                              << localPlayerId_ << "\n";
 
-                    // b) Discard acknowledged inputs.
-                    while (!pendingInputs_.empty() &&
-                           pendingInputs_.front().sequenceNumber
-                               <= snapshot.lastProcessedInputSequence) {
-                        pendingInputs_.pop_front();
+                    // Re-map the placeholder entity (id 0) to our real id.
+                    auto it0 = networkEntities_.find(0);
+                    if (it0 != networkEntities_.end()) {
+                        networkEntities_[localPlayerId_] = it0->second;
+                        networkEntities_.erase(it0);
                     }
+                }
 
-                    // c) Replay remaining unacknowledged inputs on top of
-                    //    the authoritative state.
-                    for (const auto& inp : pendingInputs_) {
-                        applyInput(inp, predictedPosition_, predictedRotation_);
-                    }
+                // ----- SpawnPacket -----
+                else if (ptype == Network::PacketType::Spawn &&
+                         plen == sizeof(Network::SpawnPacket)) {
+                    Network::SpawnPacket sp;
+                    std::memcpy(&sp, payload, sizeof(sp));
+                    std::cout << "[NetworkSystem] Spawn — networkId "
+                              << sp.networkId << " model=\"" << sp.modelType
+                              << "\" at (" << sp.position.x << ", "
+                              << sp.position.y << ", " << sp.position.z
+                              << ")\n";
 
-                    // Push snapshot into NetworkSyncComponent buffers
-                    // (existing interpolation path for other entities).
-                    for (Entity* e : netEntities_) {
-                        if (!e) continue;
-                        auto* sync = e->getComponent<NetworkSyncComponent>();
-                        if (sync) {
-                            sync->pushSnapshot(snapshot);
+                    // If this is us, link to netEntities_[localPlayerId_].
+                    if (sp.networkId == localPlayerId_) {
+                        // The local entity was already created by the Engine;
+                        // its entry in networkEntities_ should exist from
+                        // Engine::initNetworkEntity.  If not, use the
+                        // callback.
+                        if (networkEntities_.find(localPlayerId_) ==
+                            networkEntities_.end() && spawnCallback_) {
+                            Entity* e = spawnCallback_(sp.networkId,
+                                                       sp.modelType,
+                                                       sp.position);
+                            if (e) networkEntities_[sp.networkId] = e;
+                        }
+                    } else {
+                        // Remote entity — create via callback.
+                        if (spawnCallback_) {
+                            Entity* e = spawnCallback_(sp.networkId,
+                                                       sp.modelType,
+                                                       sp.position);
+                            if (e) {
+                                e->addComponent<NetworkSyncComponent>();
+                                networkEntities_[sp.networkId] = e;
+                            }
                         }
                     }
                 }
+
+                // ----- DespawnPacket -----
+                else if (ptype == Network::PacketType::Despawn &&
+                         plen == sizeof(Network::DespawnPacket)) {
+                    Network::DespawnPacket dp;
+                    std::memcpy(&dp, payload, sizeof(dp));
+                    std::cout << "[NetworkSystem] Despawn — networkId "
+                              << dp.networkId << "\n";
+
+                    auto it = networkEntities_.find(dp.networkId);
+                    if (it != networkEntities_.end()) {
+                        if (despawnCallback_) {
+                            despawnCallback_(dp.networkId, it->second);
+                        }
+                        networkEntities_.erase(it);
+                    }
+                }
+
+                // ----- TransformSnapshot -----
+                else if (ptype == Network::PacketType::TransformSnapshot &&
+                         plen == sizeof(Network::TransformSnapshot)) {
+                    Network::TransformSnapshot snapshot;
+                    std::memcpy(&snapshot, payload, sizeof(snapshot));
+
+                    if (snapshot.networkId == localPlayerId_) {
+                        // === Server Reconciliation (local player) ===
+
+                        // a) Snap to authoritative state.
+                        predictedPosition_ = snapshot.position;
+                        predictedRotation_ = snapshot.rotation;
+
+                        // b) Discard acknowledged inputs.
+                        while (!pendingInputs_.empty() &&
+                               pendingInputs_.front().sequenceNumber
+                                   <= snapshot.lastProcessedInputSequence) {
+                            pendingInputs_.pop_front();
+                        }
+
+                        // c) Replay remaining unacknowledged inputs.
+                        for (const auto& inp : pendingInputs_) {
+                            SharedMovement::applyInput(inp,
+                                predictedPosition_, predictedRotation_);
+                        }
+                    } else {
+                        // === Remote entity — push into interp buffer ===
+                        auto it = networkEntities_.find(snapshot.networkId);
+                        if (it != networkEntities_.end() && it->second) {
+                            auto* sync = it->second->getComponent<
+                                NetworkSyncComponent>();
+                            if (sync) {
+                                sync->pushSnapshot(snapshot);
+                            }
+                        }
+                    }
+                }
+
                 enet_packet_destroy(event.packet);
                 break;
             }
@@ -158,18 +241,22 @@ void NetworkSystem::update(float deltaTime) {
     }
 
     // -----------------------------------------------------------------
-    // 3. Apply predicted position to the first networked entity
+    // 3. Apply predicted position to the local player entity
     // -----------------------------------------------------------------
-    if (!netEntities_.empty() && netEntities_[0]) {
-        netEntities_[0]->setPosition(predictedPosition_);
-        netEntities_[0]->setRotation(predictedRotation_);
+    if (localPlayerId_ != 0) {
+        auto it = networkEntities_.find(localPlayerId_);
+        if (it != networkEntities_.end() && it->second) {
+            it->second->setPosition(predictedPosition_);
+            it->second->setRotation(predictedRotation_);
+        }
     }
 
-    // Drive interpolation on remaining entities.
-    for (size_t i = 1; i < netEntities_.size(); ++i) {
-        if (netEntities_[i]) {
-            netEntities_[i]->updateComponents(deltaTime);
-        }
+    // -----------------------------------------------------------------
+    // 4. Drive interpolation on remote entities
+    // -----------------------------------------------------------------
+    for (auto& [nid, ent] : networkEntities_) {
+        if (nid == localPlayerId_ || !ent) continue;
+        ent->updateComponents(deltaTime);
     }
 }
 
@@ -181,7 +268,6 @@ void NetworkSystem::shutdown() {
     if (serverPeer_) {
         enet_peer_disconnect(serverPeer_, 0);
 
-        // Allow up to 3 seconds for the disconnect to complete gracefully.
         ENetEvent event;
         bool disconnected = false;
         while (enet_host_service(client_, &event, 3000) > 0) {
@@ -208,37 +294,15 @@ void NetworkSystem::shutdown() {
 }
 
 // ---------------------------------------------------------------------------
-// addEntity
+// addEntity / removeEntity
 // ---------------------------------------------------------------------------
 
-void NetworkSystem::addEntity(Entity* e) {
+void NetworkSystem::addEntity(uint32_t networkId, Entity* e) {
     if (e) {
-        netEntities_.push_back(e);
+        networkEntities_[networkId] = e;
     }
 }
 
-// ---------------------------------------------------------------------------
-// applyInput — shared prediction / replay math (mirrors InputComponent)
-// ---------------------------------------------------------------------------
-
-void NetworkSystem::applyInput(const Network::PlayerInputPacket& input,
-                               glm::vec3& pos, glm::vec3& rot) {
-    // Rotation: turn speed scaled by deltaTime (matches InputComponent).
-    float turnSpeed = 0.0f;
-    if      (input.turn > 0.0f) turnSpeed =  kTurnSpeed / 2.0f;
-    else if (input.turn < 0.0f) turnSpeed = -kTurnSpeed / 2.0f;
-
-    rot.y += turnSpeed * input.deltaTime;
-
-    // Translation: forward speed scaled by deltaTime.
-    float speed = 0.0f;
-    if      (input.forward > 0.0f) speed =  kRunSpeed;
-    else if (input.forward < 0.0f) speed = -kRunSpeed;
-
-    float distance = speed * input.deltaTime;
-    float sinY = std::sin(glm::radians(rot.y));
-    float cosY = std::cos(glm::radians(rot.y));
-
-    pos.x += distance * sinY;
-    pos.z += distance * cosY;
+void NetworkSystem::removeEntity(uint32_t networkId) {
+    networkEntities_.erase(networkId);
 }

@@ -23,8 +23,10 @@
 #include "../RenderEngine/InstancedModel.h"
 #include "ISystem.h"
 #include "../Physics/PhysicsSystem.h"
+#include <string>
 
 class ChunkManager;
+class NetworkSystem;
 
 class Engine {
 public:
@@ -113,13 +115,25 @@ private:
     ChunkManager* chunkManager = nullptr;
     std::string   terrainHeightmapFile = "heightMap"; ///< passed to ChunkManager
 
-    // --- Network (Phase 2 ENet Transport) ---
+    // --- Network (Phase 5 Multi-Client) ---
     Entity* networkEntity_ = nullptr; ///< Demo entity driven by server snapshots.
+    NetworkSystem* networkSystem_ = nullptr; ///< Non-owning ptr (owned by systems vec).
+    std::string serverIP_ = "127.0.0.1"; ///< Read from ip.cfg or default.
 
     /// Load a model and create the demo network entity, attaching a
     /// NetworkSyncComponent.  Must be called before the ChunkManager
     /// registration loop so the entity lands in the correct streaming chunk.
     void initNetworkEntity();
+
+    /// Read ip.cfg (if present) to set serverIP_.
+    void loadIPConfig();
+
+    /// Spawn callback for NetworkSystem — creates a lamp entity.
+    Entity* onNetworkSpawn(uint32_t networkId, const std::string& modelType,
+                           const glm::vec3& position);
+
+    /// Despawn callback — removes an entity from the world.
+    void onNetworkDespawn(uint32_t networkId, Entity* e);
 
     // --- ISystem ordered pipeline (owned) ---
     std::vector<std::unique_ptr<ISystem>> systems;

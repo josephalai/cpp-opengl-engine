@@ -37,6 +37,9 @@ public:
     /// Register an entity so it appears in the chunk that covers worldPos.
     void registerEntity(Entity* e, const glm::vec3& worldPos);
 
+    /// Remove an entity from whichever chunk currently holds it.
+    void removeEntity(Entity* e);
+
     /// Register an AssimpEntity in the appropriate chunk.
     void registerAssimpEntity(AssimpEntity* e, const glm::vec3& worldPos);
 
