@@ -106,6 +106,7 @@ set(SERVER_SOURCES
     ${CMAKE_SOURCE_DIR}/src/Server/ServerStbImage.cpp
     ${CMAKE_SOURCE_DIR}/src/Terrain/HeightMap.cpp
     ${CMAKE_SOURCE_DIR}/src/Util/FileSystem.cpp
+    ${CMAKE_SOURCE_DIR}/src/Network/SharedMovement.cpp
 )
 
 add_executable(headless_server ${SERVER_SOURCES})

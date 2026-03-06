@@ -53,6 +53,11 @@ public:
     /// two bracketing snapshots available for smooth interpolation.
     static constexpr float kInterpolationDelay = 0.15f;
 
+    /// Maximum number of snapshots to retain in the buffer.  Older entries are
+    /// dropped on push when the buffer exceeds this size, preventing unbounded
+    /// memory growth if snapshots arrive faster than they are consumed.
+    static constexpr std::size_t kMaxBufferSize = 20;
+
 private:
     std::deque<Network::TransformSnapshot> buffer_;
 

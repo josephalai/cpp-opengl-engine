@@ -108,6 +108,33 @@ void ChunkManager::removeEntity(Entity* e) {
     }
 }
 
+void ChunkManager::refreshEntityPositions() {
+    // Collect entities that need to move to a different chunk.
+    // We gather them first to avoid mutating chunk entity lists while
+    // iterating over them.
+    struct EntityMove { Entity* entity; int chunkX; int chunkZ; };
+    std::vector<EntityMove> toMove;
+
+    for (auto& [key, chunk] : chunks_) {
+        if (!chunk || chunk->state != StreamingChunk::State::LOADED) continue;
+        for (Entity* e : chunk->entities) {
+            if (!e) continue;
+            const glm::vec3& pos = e->getPosition();
+            int cx = static_cast<int>(std::floor(pos.x / kTerrainSize));
+            int cz = static_cast<int>(std::floor(pos.z / kTerrainSize));
+            if (cx != key.first || cz != key.second) {
+                toMove.push_back({e, cx, cz});
+            }
+        }
+    }
+
+    // Move each entity to its correct chunk.
+    for (auto& [entity, chunkX, chunkZ] : toMove) {
+        removeEntity(entity);
+        registerEntity(entity, entity->getPosition());
+    }
+}
+
 void ChunkManager::registerAssimpEntity(AssimpEntity* e, const glm::vec3& worldPos) {
     int cx = static_cast<int>(std::floor(worldPos.x / kTerrainSize));
     int cz = static_cast<int>(std::floor(worldPos.z / kTerrainSize));

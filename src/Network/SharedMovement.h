@@ -6,57 +6,35 @@
 // By keeping the math in one place we guarantee that the client's predicted
 // position matches the server's authoritative result, eliminating visual
 // snapping under normal network conditions.
+//
+// This is a pure mathematical utility with no rendering or networking
+// dependencies — it can run identically on both the client and the headless
+// server, ensuring deterministic simulation.
 
 #ifndef ENGINE_SHARED_MOVEMENT_H
 #define ENGINE_SHARED_MOVEMENT_H
 
 #include "NetworkPackets.h"
 #include <glm/glm.hpp>
-#include <cmath>
 
-namespace SharedMovement {
+class SharedMovement {
+public:
+    /// Movement constants — must match InputComponent for consistent prediction.
+    static constexpr float kRunSpeed        = 20.0f;
+    static constexpr float kTurnSpeed       = 160.0f;
+    static constexpr float kNoTerrainHeight = -99999.0f;
 
-/// Movement constants — must match InputComponent for consistent prediction.
-static constexpr float kRunSpeed  = 20.0f;
-static constexpr float kTurnSpeed = 160.0f;
-
-/// Apply a single input to position/rotation.
-///
-/// @param input         The player input to apply.
-/// @param pos           [in/out] World-space position (modified in place).
-/// @param rot           [in/out] Euler angles in degrees (modified in place).
-/// @param terrainHeight Optional terrain height at the current XZ position.
-///                      If provided (i.e. > kNoTerrainHeight), pos.y is
-///                      clamped to this value after movement.
-static constexpr float kNoTerrainHeight = -99999.0f;
-
-inline void applyInput(const Network::PlayerInputPacket& input,
-                       glm::vec3& pos, glm::vec3& rot,
-                       float terrainHeight = kNoTerrainHeight) {
-    // --- Rotation ---
-    float turnSpeed = 0.0f;
-    if      (input.turn > 0.0f) turnSpeed =  kTurnSpeed / 2.0f;
-    else if (input.turn < 0.0f) turnSpeed = -kTurnSpeed / 2.0f;
-    rot.y += turnSpeed * input.deltaTime;
-
-    // --- Translation ---
-    float speed = 0.0f;
-    if      (input.forward > 0.0f) speed =  kRunSpeed;
-    else if (input.forward < 0.0f) speed = -kRunSpeed;
-
-    float distance = speed * input.deltaTime;
-    float sinY = std::sin(glm::radians(rot.y));
-    float cosY = std::cos(glm::radians(rot.y));
-
-    pos.x += distance * sinY;
-    pos.z += distance * cosY;
-
-    // --- Terrain height clamping ---
-    if (terrainHeight > kNoTerrainHeight) {
-        pos.y = terrainHeight;
-    }
-}
-
-} // namespace SharedMovement
+    /// Apply a single input to position/rotation.
+    ///
+    /// @param input         The player input to apply.
+    /// @param position      [in/out] World-space position (modified in place).
+    /// @param rotation      [in/out] Euler angles in degrees (modified in place).
+    /// @param terrainHeight Optional terrain height at the current XZ position.
+    ///                      If provided (i.e. > kNoTerrainHeight), position.y is
+    ///                      clamped to this value after movement.
+    static void applyInput(const Network::PlayerInputPacket& input,
+                           glm::vec3& position, glm::vec3& rotation,
+                           float terrainHeight = kNoTerrainHeight);
+};
 
 #endif // ENGINE_SHARED_MOVEMENT_H
