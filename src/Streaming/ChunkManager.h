@@ -48,6 +48,12 @@ public:
     /// The terrain is NOT deleted when the chunk is unloaded.
     void registerTerrain(Terrain* t);
 
+    /// Re-assign entities to the correct chunk based on their current
+    /// world-space position.  Call once per frame (from StreamingSystem)
+    /// so that entities whose positions are updated externally (e.g.
+    /// NetworkSyncComponent) remain in the correct spatial bucket.
+    void refreshEntityPositions();
+
     /// Collect all Terrain pointers from LOADED chunks.
     std::vector<Terrain*>      getActiveTerrains()      const;
     /// Collect all Entity pointers from LOADED chunks.

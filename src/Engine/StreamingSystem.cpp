@@ -20,6 +20,11 @@ void StreamingSystem::update(float /*deltaTime*/) {
 
     chunkManager_->update(player_->getPosition());
 
+    // Re-assign entities whose positions have changed to the correct chunk
+    // (e.g. network entities moved by NetworkSyncComponent).  This prevents
+    // entities from becoming invisible when they cross chunk boundaries.
+    chunkManager_->refreshEntityPositions();
+
     // Refresh the engine's scene lists with the currently loaded chunks.
     allTerrains_ = chunkManager_->getActiveTerrains();
     entities_    = chunkManager_->getActiveEntities();

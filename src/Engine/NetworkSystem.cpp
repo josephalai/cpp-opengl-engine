@@ -164,7 +164,6 @@ void NetworkSystem::update(float deltaTime) {
                                                        sp.modelType,
                                                        sp.position);
                             if (e) {
-                                e->addComponent<NetworkSyncComponent>();
                                 networkEntities_[sp.networkId] = e;
                             }
                         }

@@ -415,10 +415,18 @@ void Engine::initNetworkEntity() {
     auto* lampTex   = new ModelTexture("lamp", PNG, Material{1.0f, 0.0f});
     auto* lampModel = new TexturedModel(loader->loadToVAO(lampData), lampTex);
 
+    // Create a valid BoundingBox so the FrustumCuller and picking pipeline
+    // can properly handle this entity (instead of passing nullptr).
+    BoundingBoxData bbData = OBJLoader::loadBoundingBox(
+        lampData, ClickBoxTypes::BOX, BoundTypes::AABB);
+    auto* rawBB = loader->loadToVAO(bbData);
+    auto* bb    = new BoundingBox(rawBB, BoundingBoxIndex::genUniqueId());
+    bb->setAABB(lampData.getMin(), lampData.getMax());
+
     // Spawn at the default starting position.
     networkEntity_ = new Entity(
         lampModel,
-        /*box=*/nullptr,
+        bb,
         glm::vec3(100.0f, 3.0f, -80.0f),
         glm::vec3(0.0f),
         /*scale=*/1.0f);
@@ -460,7 +468,20 @@ Entity* Engine::onNetworkSpawn(uint32_t /*networkId*/,
     auto* lampTex   = new ModelTexture("lamp", PNG, Material{1.0f, 0.0f});
     auto* lampModel = new TexturedModel(loader->loadToVAO(lampData), lampTex);
 
-    auto* ent = new Entity(lampModel, nullptr, position, glm::vec3(0.0f), 1.0f);
+    // Create a valid BoundingBox so the FrustumCuller and picking pipeline
+    // can properly handle this entity (instead of passing nullptr).
+    BoundingBoxData bbData = OBJLoader::loadBoundingBox(
+        lampData, ClickBoxTypes::BOX, BoundTypes::AABB);
+    auto* rawBB = loader->loadToVAO(bbData);
+    auto* bb    = new BoundingBox(rawBB, BoundingBoxIndex::genUniqueId());
+    bb->setAABB(lampData.getMin(), lampData.getMax());
+
+    auto* ent = new Entity(lampModel, bb, position, glm::vec3(0.0f), 1.0f);
+
+    // Attach the interpolation component so the entity can receive and
+    // smoothly interpolate server transform snapshots.
+    ent->addComponent<NetworkSyncComponent>();
+
     entities.push_back(ent);
 
     // Register with ChunkManager so the StreamingSystem includes this entity
