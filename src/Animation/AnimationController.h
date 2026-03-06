@@ -63,6 +63,14 @@ public:
         setState(name.empty() ? StringId() : StringId(name));
     }
 
+    /// Programmatically request a transition to the named state.
+    /// Already-in-state calls are a no-op (setStateByHash guards against
+    /// same-state re-entry).  Use this for remote/NPC entities whose
+    /// animation state is driven by game logic rather than keyboard input.
+    void requestTransition(const std::string& name) {
+        setState(name.empty() ? StringId() : StringId(name));
+    }
+
     // ------------------------------------------------------------------
     // Query & update
     // ------------------------------------------------------------------

@@ -14,17 +14,27 @@
 #include "../Entities/Light.h"
 #include "../Entities/Camera.h"
 
+class Entity;  // Forward declaration — AnimatedEntity holds a non-owning pointer.
+
 /// An in-scene animated character (model + controller + transform).
 struct AnimatedEntity {
-    AnimatedModel*       model       = nullptr;
-    AnimationController* controller  = nullptr;
-    glm::vec3            position    = glm::vec3(0.0f);
-    glm::vec3            rotation    = glm::vec3(0.0f);
-    float                scale       = 1.0f;
+    AnimatedModel*       model         = nullptr;
+    AnimationController* controller    = nullptr;
+    glm::vec3            position      = glm::vec3(0.0f);
+    glm::vec3            rotation      = glm::vec3(0.0f);
+    float                scale         = 1.0f;
     /// Pure visual offset applied on top of position at render time.
     /// Does not affect physics. Use Up/Down arrows at runtime to find the
     /// correct value, then bake it into scene.cfg or the constructor.
-    glm::vec3            modelOffset = glm::vec3(0.0f);
+    glm::vec3            modelOffset   = glm::vec3(0.0f);
+    /// True only for the local client's own character (loaded via SceneLoader).
+    /// Remote animated entities leave this false so AnimationSystem does not
+    /// overwrite their positions with the local player's physics transform.
+    bool                 isLocalPlayer = false;
+    /// For remote entities only: pointer to the Entity that carries the
+    /// NetworkSyncComponent driving this animated character's world position.
+    /// Null for local-player entities.
+    Entity*              pairedEntity  = nullptr;
 };
 
 class AnimatedRenderer {

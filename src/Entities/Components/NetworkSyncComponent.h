@@ -14,9 +14,8 @@
 // Edge cases handled:
 //   • Buffer empty        → entity is not moved (safe no-op).
 //   • Only 1 snapshot     → entity is held at that position.
-//   • Buffer starvation   → entity extrapolates from the last two snapshots
-//                           (capped at 2× the inter-tick interval to avoid
-//                           runaway extrapolation).
+//   • Buffer starvation   → velocity-based dead reckoning from the last two
+//                           snapshots (capped at ~1 tick to avoid runaway drift).
 //   • Normal interpolation→ smooth LERP/SLERP between bracketing snapshots.
 
 #ifndef ENGINE_NETWORKSYNCCOMPONENT_H
@@ -25,6 +24,7 @@
 #include "IComponent.h"
 #include "../../Network/NetworkPackets.h"
 #include <deque>
+#include <glm/glm.hpp>
 
 class NetworkSyncComponent : public IComponent {
 public:
@@ -44,14 +44,19 @@ public:
     /// Phase 1; Phase 2 will need a mutex here.
     void pushSnapshot(const Network::TransformSnapshot& snapshot);
 
+    /// Returns the most recently computed XZ movement speed (units/sec).
+    /// Computed each frame after position is applied; used by AnimationSystem
+    /// to drive Walk/Run/Idle transitions for remote characters.
+    float getCurrentSpeed() const { return currentSpeed_; }
+
     // -------------------------------------------------------------------------
     // Tuning constants
     // -------------------------------------------------------------------------
 
     /// How far behind the most-recent snapshot the render clock trails (seconds).
-    /// A value of 1.5× the server tick interval guarantees we almost always have
+    /// A value of 2× the server tick interval guarantees we almost always have
     /// two bracketing snapshots available for smooth interpolation.
-    static constexpr float kInterpolationDelay = 0.15f;
+    static constexpr float kInterpolationDelay = 0.20f;
 
     /// Maximum number of snapshots to retain in the buffer.  Older entries are
     /// dropped on push when the buffer exceeds this size, preventing unbounded
@@ -68,6 +73,12 @@ private:
     /// True once at least two snapshots have been received and the playback
     /// clock has been synchronised to the server timeline.
     bool  started_    = false;
+
+    /// Position from the previous frame — used to compute currentSpeed_.
+    glm::vec3 previousPosition_ = glm::vec3(0.0f);
+
+    /// Most recently computed XZ movement speed (units/sec).
+    float currentSpeed_ = 0.0f;
 
     // -------------------------------------------------------------------------
     // Helpers
