@@ -462,6 +462,13 @@ Entity* Engine::onNetworkSpawn(uint32_t /*networkId*/,
 
     auto* ent = new Entity(lampModel, nullptr, position, glm::vec3(0.0f), 1.0f);
     entities.push_back(ent);
+
+    // Register with ChunkManager so the StreamingSystem includes this entity
+    // in the active render list.
+    if (chunkManager) {
+        chunkManager->registerEntity(ent, position);
+    }
+
     return ent;
 }
 
@@ -471,8 +478,15 @@ void Engine::onNetworkDespawn(uint32_t /*networkId*/, Entity* e) {
     if (it != entities.end()) {
         entities.erase(it);
     }
-    // Note: in a full implementation we would also delete the entity,
-    // but the render-system references must be cleared first.
+
+    // Deregister from ChunkManager so the StreamingSystem no longer
+    // returns this entity in the active list.
+    if (chunkManager) {
+        chunkManager->removeEntity(e);
+    }
+
+    // Free the entity to prevent memory leaks.
+    delete e;
 }
 
 void Engine::buildSystems() {
