@@ -112,7 +112,8 @@ void ChunkManager::refreshEntityPositions() {
     // Collect entities that need to move to a different chunk.
     // We gather them first to avoid mutating chunk entity lists while
     // iterating over them.
-    std::vector<std::pair<Entity*, std::pair<int,int>>> toMove;
+    struct EntityMove { Entity* entity; int chunkX; int chunkZ; };
+    std::vector<EntityMove> toMove;
 
     for (auto& [key, chunk] : chunks_) {
         if (!chunk || chunk->state != StreamingChunk::State::LOADED) continue;
@@ -122,13 +123,13 @@ void ChunkManager::refreshEntityPositions() {
             int cx = static_cast<int>(std::floor(pos.x / kTerrainSize));
             int cz = static_cast<int>(std::floor(pos.z / kTerrainSize));
             if (cx != key.first || cz != key.second) {
-                toMove.push_back({e, {cx, cz}});
+                toMove.push_back({e, cx, cz});
             }
         }
     }
 
     // Move each entity to its correct chunk.
-    for (auto& [entity, newKey] : toMove) {
+    for (auto& [entity, chunkX, chunkZ] : toMove) {
         removeEntity(entity);
         registerEntity(entity, entity->getPosition());
     }
