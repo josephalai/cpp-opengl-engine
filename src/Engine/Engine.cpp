@@ -461,7 +461,11 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
     auto* bb    = new BoundingBox(rawBB, BoundingBoxIndex::genUniqueId());
     bb->setAABB(modelMin, modelMax);
 
-    auto* ent = new Entity(remoteModel, bb, position, glm::vec3(0.0f), 1.0f);
+    // Match the local player's scale so the physics-proxy model (e.g. the
+    // invisible stall at scale=0 in scene.cfg) stays hidden on remote clients.
+    // The actual visual is provided by the AnimatedEntity created below.
+    const float remoteScale = player ? player->getScale() : 1.0f;
+    auto* ent = new Entity(remoteModel, bb, position, glm::vec3(0.0f), remoteScale);
 
     // Attach the interpolation component so the entity can receive and
     // smoothly interpolate server transform snapshots.
