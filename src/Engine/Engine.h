@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <memory>
+#include <unordered_map>
 #include "../RenderEngine/MasterRenderer.h"
 #include "../Guis/Texture/Rendering/GuiRenderer.h"
 #include "../Guis/Rect/Rendering/RectRenderer.h"
@@ -23,6 +24,7 @@
 #include "../RenderEngine/InstancedModel.h"
 #include "ISystem.h"
 #include "../Physics/PhysicsSystem.h"
+#include "ModelRegistry.h"
 #include <string>
 
 class ChunkManager;
@@ -119,14 +121,24 @@ private:
     NetworkSystem* networkSystem_ = nullptr; ///< Non-owning ptr (owned by systems vec).
     std::string serverIP_ = "127.0.0.1"; ///< Read from ip.cfg or default.
 
+    /// Maps physics Entity* → AnimatedEntity* for each remote player.
+    /// Populated by onNetworkSpawn(), cleaned up by onNetworkDespawn().
+    std::unordered_map<Entity*, AnimatedEntity*> remoteAnimMap_;
+
+    /// Cache of AnimatedModel* keyed by asset path, shared across remote
+    /// entities of the same type so the GLB is only loaded once.
+    std::unordered_map<std::string, AnimatedModel*> animModelCache_;
+
     /// Read ip.cfg (if present) to set serverIP_.
     void loadIPConfig();
 
-    /// Spawn callback for NetworkSystem — creates a lamp entity.
+    /// Spawn callback for NetworkSystem — creates a remote entity using the
+    /// model type registered in ModelRegistry.
     Entity* onNetworkSpawn(uint32_t networkId, const std::string& modelType,
                            const glm::vec3& position);
 
-    /// Despawn callback — removes an entity from the world.
+    /// Despawn callback — removes an entity from the world and cleans up any
+    /// associated AnimatedEntity from animatedEntities / remoteAnimMap_.
     void onNetworkDespawn(uint32_t networkId, Entity* e);
 
     // --- ISystem ordered pipeline (owned) ---

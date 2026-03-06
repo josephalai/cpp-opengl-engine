@@ -3,31 +3,43 @@
 #include "AnimationSystem.h"
 #include "../RenderEngine/AnimatedRenderer.h"
 #include "../Entities/Player.h"
+#include "../Entities/Entity.h"
 #include "../Input/InputMaster.h"
 #include "../RenderEngine/DisplayManager.h"
 #include <iostream>
 
-AnimationSystem::AnimationSystem(AnimatedRenderer*             renderer,
-                                  std::vector<AnimatedEntity*>& entities,
-                                  Player*                       player,
-                                  std::vector<Light*>&          lights,
-                                  Camera*                       camera,
-                                  const glm::mat4&              projectionMatrix)
+AnimationSystem::AnimationSystem(AnimatedRenderer*                                    renderer,
+                                  std::vector<AnimatedEntity*>&                        entities,
+                                  Player*                                              player,
+                                  std::vector<Light*>&                                 lights,
+                                  Camera*                                              camera,
+                                  const glm::mat4&                                     projectionMatrix,
+                                  const std::unordered_map<Entity*, AnimatedEntity*>&  remoteAnimMap)
     : renderer_(renderer)
     , entities_(entities)
     , player_(player)
     , lights_(lights)
     , camera_(camera)
     , projectionMatrix_(projectionMatrix)
+    , remoteAnimMap_(remoteAnimMap)
 {}
 
 void AnimationSystem::update(float deltaTime) {
     if (entities_.empty()) return;
 
-    // Sync every animated character's world transform to the player
+    // Sync remote animated entities from their paired physics Entity's current
+    // (NetworkSyncComponent-interpolated) position and rotation.
+    for (auto& [ent, ae] : remoteAnimMap_) {
+        if (!ent || !ae) continue;
+        ae->position = ent->getPosition();
+        ae->rotation = ent->getRotation();
+    }
+
+    // Sync only LOCAL animated entities' world transform to the player.
+    // Remote entities (isLocal == false) are driven by the loop above.
     if (player_) {
         for (auto* ae : entities_) {
-            if (!ae) continue;
+            if (!ae || !ae->isLocal) continue;
             ae->position = player_->getPosition();
             ae->rotation = player_->getRotation();
         }
@@ -67,3 +79,4 @@ void AnimationSystem::update(float deltaTime) {
 
     renderer_->render(entities_, deltaTime, lights_, camera_, projectionMatrix_);
 }
+

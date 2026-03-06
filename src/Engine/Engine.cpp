@@ -9,6 +9,7 @@
 #include "InputSystem.h"
 #include "InputDispatcher.h"
 #include "AnimationSystem.h"
+#include "ModelRegistry.h"
 #include "../Events/EventBus.h"
 #include "RenderSystem.h"
 #include "UISystem.h"
@@ -39,6 +40,8 @@
 #include "../Network/NetworkPackets.h"
 #include "../Entities/Components/NetworkSyncComponent.h"
 #include "../Toolbox/Maths.h"
+#include "../Animation/AnimationLoader.h"
+#include "../Animation/AnimationController.h"
 #include <enet/enet.h>
 #include <thread>
 #include <fstream>
@@ -111,6 +114,14 @@ void Engine::loadScene() {
                       primaryTerrain, player, playerCamera,
                       animatedEntities,
                       physicsBodyCfgs, physicsGroundCfgs);
+
+    // Load the model registry so onNetworkSpawn() knows how to instantiate
+    // remote entities by their modelType string (e.g. "player").
+    const std::string regPath = FileSystem::Scene("models.cfg");
+    if (!ModelRegistry::loadFromFile(regPath)) {
+        std::cout << "[Engine] models.cfg not found — registering built-in defaults\n";
+        ModelRegistry::registerDefaults();
+    }
 
     // Set up physics world and register bodies from config
     physicsSystem = new PhysicsSystem();
@@ -420,29 +431,177 @@ void Engine::loadIPConfig() {
 Entity* Engine::onNetworkSpawn(uint32_t networkId,
                                const std::string& modelType,
                                const glm::vec3& position) {
-    // Reuse the local player's Assimp-loaded TexturedModel for remote players.
-    // OBJLoader cannot load .glb/.gltf — the player character comes from
-    // SceneLoader/Assimp, so we share the same model pointer.
+    // Look up the model type in the registry.
+    const ModelRegistryEntry* entry = ModelRegistry::lookup(modelType);
+
+    // -----------------------------------------------------------------------
+    // ANIMATED path — load (or reuse cached) skeletal model, create
+    // an AnimatedEntity with isLocal=false so AnimationSystem drives its
+    // transform from the NetworkSyncComponent-interpolated Entity position.
+    // -----------------------------------------------------------------------
+    if (entry && entry->loaderType == ModelRegistryEntry::LoaderType::ANIMATED) {
+        // Resolve absolute path the same way SceneLoader does.
+        const std::string absPath =
+            FileSystem::Path("/src/Resources/Tutorial/" + entry->assetPath);
+
+        // Retrieve or load and cache the AnimatedModel so the GLB is only
+        // parsed once even when multiple remote players share the same rig.
+        AnimatedModel* animModel = nullptr;
+        auto cacheIt = animModelCache_.find(absPath);
+        if (cacheIt != animModelCache_.end()) {
+            animModel = cacheIt->second;
+        } else {
+            animModel = AnimationLoader::load(absPath);
+            if (animModel) {
+                animModelCache_[absPath] = animModel;
+            }
+        }
+
+        if (!animModel) {
+            std::cerr << "[Engine] onNetworkSpawn — AnimationLoader::load failed for '"
+                      << entry->assetPath << "' (networkId " << networkId << ")\n";
+            // Fall through to OBJ fallback below.
+        } else {
+            // Build an AnimationController and register clips.
+            auto* controller = new AnimationController();
+            for (auto& clip : animModel->clips) {
+                // Reuse the same clip-name normalisation as SceneLoader.
+                auto normalize = [](const std::string& raw) -> std::string {
+                    std::string lower = raw;
+                    std::transform(lower.begin(), lower.end(), lower.begin(),
+                                   [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+                    if (lower.find("idle") != std::string::npos) return "Idle";
+                    if (lower.find("walk") != std::string::npos) return "Walk";
+                    if (lower.find("run")  != std::string::npos) return "Run";
+                    if (lower.find("jump") != std::string::npos) return "Jump";
+                    std::string out = raw;
+                    if (!out.empty()) out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+                    return out;
+                };
+                controller->addState(normalize(clip.name), &clip);
+            }
+            // Start on Idle if available.
+            for (const auto& clip : animModel->clips) {
+                std::string lower = clip.name;
+                std::transform(lower.begin(), lower.end(), lower.begin(),
+                               [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+                if (lower.find("idle") != std::string::npos) {
+                    controller->setState("Idle");
+                    break;
+                }
+            }
+
+            // Bake coordinate correction from registry rotation into model space.
+            if (entry->rotation.x != 0.0f || entry->rotation.y != 0.0f || entry->rotation.z != 0.0f) {
+                glm::mat4 userRot = glm::mat4(1.0f);
+                userRot = glm::rotate(userRot, glm::radians(entry->rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+                userRot = glm::rotate(userRot, glm::radians(entry->rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+                userRot = glm::rotate(userRot, glm::radians(entry->rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+                // Only apply when this model hasn't already had the correction applied
+                // (cached models may share coordinateCorrection with local entity — skip).
+                // We apply it once per spawn via a separate correction on the AnimatedEntity
+                // by storing entry rotation so AnimatedRenderer can apply it. For simplicity,
+                // we apply it here only when the model was freshly loaded (not from cache).
+                if (cacheIt == animModelCache_.end()) {
+                    // Freshly loaded — safe to mutate coordinateCorrection.
+                    animModel->coordinateCorrection = userRot * animModel->coordinateCorrection;
+                }
+                // If from cache, the correction was already applied on first load.
+            }
+
+            // Create the AnimatedEntity — not local, does not own the shared model.
+            auto* ae         = new AnimatedEntity();
+            ae->model        = animModel;
+            ae->controller   = controller;
+            ae->position     = position;
+            ae->scale        = entry->scale;
+            ae->modelOffset  = entry->modelOffset;
+            ae->isLocal      = false;   // driven by NetworkSyncComponent via remoteAnimMap_
+            ae->ownsModel    = false;   // shared from animModelCache_
+
+            // Register with AnimationSystem's render list.
+            animatedEntities.push_back(ae);
+
+            // Create a lightweight physics/collision Entity as the "anchor"
+            // that NetworkSyncComponent interpolates.  Use a character-sized AABB.
+            glm::vec3 bbMin(-0.5f, 0.0f, -0.5f);
+            glm::vec3 bbMax( 0.5f, 2.0f,  0.5f);
+            std::vector<float> boxVerts = OBJLoader::generateBox(bbMin, bbMax);
+            AABB bbRegion(BoundTypes::AABB);
+            bbRegion.min = bbMin;
+            bbRegion.max = bbMax;
+            BoundingBoxData bbData(bbRegion, std::move(boxVerts));
+            auto* rawBB = loader->loadToVAO(bbData);
+            auto* bb    = new BoundingBox(rawBB, BoundingBoxIndex::genUniqueId());
+            bb->setAABB(bbMin, bbMax);
+
+            // Use a minimal visible model (reuse the local player's TexturedModel if
+            // available, so the entity isn't invisible during pick/collision tests).
+            TexturedModel* anchorModel = nullptr;
+            if (player && player->getModel()) {
+                anchorModel = player->getModel();
+            }
+            auto* ent = new Entity(anchorModel, bb, position, glm::vec3(0.0f), 0.0f);
+            ent->addComponent<NetworkSyncComponent>();
+
+            entities.push_back(ent);
+            allBoxes.push_back(ent);
+
+            if (chunkManager) {
+                chunkManager->registerEntity(ent, position);
+            }
+
+            // Link the anchor Entity → AnimatedEntity for position syncing.
+            remoteAnimMap_[ent] = ae;
+
+            std::cout << "[Engine] Remote animated entity " << networkId
+                      << " (model=\"" << modelType << "\") spawned at ("
+                      << position.x << ", " << position.y << ", " << position.z
+                      << ") — animatedEntities.size()=" << animatedEntities.size() << "\n";
+
+            return ent;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // OBJ / fallback path — static mesh entity (original behaviour).
+    // -----------------------------------------------------------------------
     TexturedModel* remoteModel = nullptr;
     glm::vec3 modelMin;
     glm::vec3 modelMax;
-    if (player && player->getModel()) {
-        remoteModel = player->getModel();
-        // Use character-sized default bounds when reusing the player model.
-        modelMin = glm::vec3(-0.5f, 0.0f, -0.5f);
-        modelMax = glm::vec3( 0.5f, 2.0f,  0.5f);
-    } else {
-        // Last-resort OBJ fallback
-        ModelData fallbackData = OBJLoader::loadObjModel("Stall");
-        if (fallbackData.getIndices().empty()) {
-            std::cerr << "[Engine] onNetworkSpawn FAILED — no model for remote entity "
-                      << networkId << "\n";
-            return nullptr;
+
+    // If an OBJ entry exists in the registry, use its asset/texture.
+    if (entry && entry->loaderType == ModelRegistryEntry::LoaderType::OBJ
+        && !entry->assetPath.empty()) {
+        ModelData objData = OBJLoader::loadObjModel(entry->assetPath);
+        if (!objData.getIndices().empty()) {
+            const std::string& texName = entry->textureName.empty()
+                                         ? entry->assetPath : entry->textureName;
+            auto* tex = new ModelTexture(texName, PNG, Material{2.0f, 2.0f});
+            remoteModel = new TexturedModel(loader->loadToVAO(objData), tex);
+            modelMin = objData.getMin();
+            modelMax = objData.getMax();
         }
-        auto* tex = new ModelTexture("stallTexture", PNG, Material{2.0f, 2.0f});
-        remoteModel = new TexturedModel(loader->loadToVAO(fallbackData), tex);
-        modelMin = fallbackData.getMin();
-        modelMax = fallbackData.getMax();
+    }
+
+    // If nothing worked, try the local player's model, then hard-code a Stall fallback.
+    if (!remoteModel) {
+        if (player && player->getModel()) {
+            remoteModel = player->getModel();
+            modelMin = glm::vec3(-0.5f, 0.0f, -0.5f);
+            modelMax = glm::vec3( 0.5f, 2.0f,  0.5f);
+        } else {
+            ModelData fallbackData = OBJLoader::loadObjModel("Stall");
+            if (fallbackData.getIndices().empty()) {
+                std::cerr << "[Engine] onNetworkSpawn FAILED — no model for remote entity "
+                          << networkId << "\n";
+                return nullptr;
+            }
+            auto* tex = new ModelTexture("stallTexture", PNG, Material{2.0f, 2.0f});
+            remoteModel = new TexturedModel(loader->loadToVAO(fallbackData), tex);
+            modelMin = fallbackData.getMin();
+            modelMax = fallbackData.getMax();
+        }
     }
 
     // Each entity needs its own BoundingBox (unique picking colour).
@@ -479,6 +638,28 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
 }
 
 void Engine::onNetworkDespawn(uint32_t /*networkId*/, Entity* e) {
+    // Clean up any associated AnimatedEntity (remote animated players).
+    auto animIt = remoteAnimMap_.find(e);
+    if (animIt != remoteAnimMap_.end()) {
+        AnimatedEntity* ae = animIt->second;
+
+        // Remove from the AnimationSystem's render list.
+        auto aeIt = std::find(animatedEntities.begin(), animatedEntities.end(), ae);
+        if (aeIt != animatedEntities.end()) {
+            animatedEntities.erase(aeIt);
+        }
+
+        // Delete the AnimationController (owned per-entity).
+        // Do NOT delete ae->model — it is shared via animModelCache_.
+        if (ae) {
+            delete ae->controller;
+            ae->controller = nullptr;
+            delete ae;
+        }
+
+        remoteAnimMap_.erase(animIt);
+    }
+
     // Remove from the entities list so RenderSystem stops drawing it.
     auto it = std::find(entities.begin(), entities.end(), e);
     if (it != entities.end()) {
@@ -583,7 +764,7 @@ void Engine::buildSystems() {
 
     systems.push_back(std::make_unique<AnimationSystem>(
         animRenderer, animatedEntities, player, lights,
-        playerCamera, renderer->getProjectionMatrix()));
+        playerCamera, renderer->getProjectionMatrix(), remoteAnimMap_));
 
     systems.push_back(std::make_unique<UISystem>(
         renderer, allBoxes, clickColorText, masterContainer,
@@ -632,12 +813,21 @@ void Engine::shutdown() {
     }
     for (auto* ae : animatedEntities) {
         if (ae) {
-            if (ae->model) { ae->model->cleanUp(); delete ae->model; }
+            // Only delete the model if this entity owns it.
+            // Remote entities share a cached model via animModelCache_ and must NOT delete it.
+            if (ae->ownsModel && ae->model) { ae->model->cleanUp(); delete ae->model; }
             delete ae->controller;
             delete ae;
         }
     }
     animatedEntities.clear();
+
+    // Clean up cached animated models shared by remote entities.
+    for (auto& [path, model] : animModelCache_) {
+        if (model) { model->cleanUp(); delete model; }
+    }
+    animModelCache_.clear();
+    remoteAnimMap_.clear();
     delete animRenderer;
     loader->cleanUp();
     DisplayManager::closeDisplay();

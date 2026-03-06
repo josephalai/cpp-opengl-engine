@@ -25,6 +25,12 @@ struct AnimatedEntity {
     /// Does not affect physics. Use Up/Down arrows at runtime to find the
     /// correct value, then bake it into scene.cfg or the constructor.
     glm::vec3            modelOffset = glm::vec3(0.0f);
+    /// true for the local player's entity (position driven by Player/physics).
+    /// false for remote entities (position driven by NetworkSyncComponent).
+    bool                 isLocal     = true;
+    /// true when this entity owns its AnimatedModel and should delete it on
+    /// cleanup.  Remote entities share a cached model and must NOT delete it.
+    bool                 ownsModel   = true;
 };
 
 class AnimatedRenderer {
