@@ -112,6 +112,12 @@ void Engine::loadScene() {
                       animatedEntities,
                       physicsBodyCfgs, physicsGroundCfgs);
 
+    // All animated entities loaded by SceneLoader belong to the local player's
+    // character(s).  Mark them so AnimationSystem doesn't treat them as remote.
+    for (auto* ae : animatedEntities) {
+        if (ae) ae->isLocalPlayer = true;
+    }
+
     // Set up physics world and register bodies from config
     physicsSystem = new PhysicsSystem();
     physicsSystem->init();
@@ -358,7 +364,7 @@ void Engine::initFramebuffersAndPickers() {
     // setupDefaultTransitions is safe to call when not all clip states exist —
     // the controller silently ignores transitions to unregistered states.
     for (auto* ae : animatedEntities) {
-        if (ae && ae->controller) {
+        if (ae && ae->controller && ae->isLocalPlayer) {
             ae->controller->setupDefaultTransitions(
                 []() { return InputMaster::isKeyDown(W) && !InputMaster::isKeyDown(LeftShift); },
                 []() { return InputMaster::isKeyDown(W) &&  InputMaster::isKeyDown(LeftShift); },
@@ -455,7 +461,11 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
     auto* bb    = new BoundingBox(rawBB, BoundingBoxIndex::genUniqueId());
     bb->setAABB(modelMin, modelMax);
 
-    auto* ent = new Entity(remoteModel, bb, position, glm::vec3(0.0f), 1.0f);
+    // Match the local player's scale so the physics-proxy model (e.g. the
+    // invisible stall at scale=0 in scene.cfg) stays hidden on remote clients.
+    // The actual visual is provided by the AnimatedEntity created below.
+    const float remoteScale = player ? player->getScale() : 1.0f;
+    auto* ent = new Entity(remoteModel, bb, position, glm::vec3(0.0f), remoteScale);
 
     // Attach the interpolation component so the entity can receive and
     // smoothly interpolate server transform snapshots.
@@ -470,6 +480,47 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
         chunkManager->registerEntity(ent, position);
     }
 
+    // Create an AnimatedEntity so the remote player renders with the animated
+    // character mesh (same AnimatedModel as local player — safe to share since
+    // AnimatedRenderer renders entities sequentially and uploads bone matrices
+    // per-entity before each draw call).
+    if (!animatedEntities.empty() && animatedEntities[0] && animatedEntities[0]->model) {
+        AnimatedModel* sharedModel = animatedEntities[0]->model;
+
+        // Normalize animation clip names identically to SceneLoader.
+        auto normalizeClipName = [](const std::string& raw) -> std::string {
+            std::string lower(raw);
+            for (auto& c : lower)
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (lower.find("idle") != std::string::npos) return "Idle";
+            if (lower.find("walk") != std::string::npos) return "Walk";
+            if (lower.find("run")  != std::string::npos) return "Run";
+            if (lower.find("jump") != std::string::npos) return "Jump";
+            std::string out = raw;
+            if (!out.empty())
+                out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+            return out;
+        };
+
+        auto* remoteCtrl = new AnimationController();
+        for (auto& clip : sharedModel->clips) {
+            remoteCtrl->addState(normalizeClipName(clip.name), &clip);
+        }
+        // Start in Idle; AnimationSystem will transition via requestTransition().
+        remoteCtrl->setState("Idle");
+
+        auto* remoteAe         = new AnimatedEntity();
+        remoteAe->model        = sharedModel;
+        remoteAe->controller   = remoteCtrl;
+        remoteAe->position     = position;
+        remoteAe->scale        = animatedEntities[0]->scale;
+        remoteAe->modelOffset  = glm::vec3(0.0f);  // No physics capsule offset
+        remoteAe->isLocalPlayer = false;
+        remoteAe->pairedEntity  = ent;
+
+        animatedEntities.push_back(remoteAe);
+    }
+
     std::cout << "[Engine] Remote entity " << networkId
               << " (model=\"" << modelType << "\") spawned at ("
               << position.x << ", " << position.y << ", " << position.z
@@ -479,6 +530,17 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
 }
 
 void Engine::onNetworkDespawn(uint32_t /*networkId*/, Entity* e) {
+    // Remove the paired AnimatedEntity (if any) before deleting the Entity so
+    // AnimationSystem no longer renders or accesses the dangling pairedEntity ptr.
+    for (auto it = animatedEntities.begin(); it != animatedEntities.end(); ++it) {
+        if (*it && (*it)->pairedEntity == e) {
+            delete (*it)->controller;  // Controller is owned per remote entity
+            delete *it;
+            animatedEntities.erase(it);
+            break;
+        }
+    }
+
     // Remove from the entities list so RenderSystem stops drawing it.
     auto it = std::find(entities.begin(), entities.end(), e);
     if (it != entities.end()) {

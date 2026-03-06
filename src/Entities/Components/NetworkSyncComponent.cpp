@@ -58,29 +58,25 @@ void NetworkSyncComponent::update(float deltaTime) {
     // -----------------------------------------------------------------------
     if (buffer_.size() == 1 || targetTime <= buffer_.front().timestamp) {
         applySnapshot(buffer_.front());
-        return;
-    }
 
     // -----------------------------------------------------------------------
     // Starvation / extrapolation case: targetTime is beyond our newest snapshot.
     // -----------------------------------------------------------------------
-    if (targetTime >= buffer_.back().timestamp) {
+    } else if (targetTime >= buffer_.back().timestamp) {
         if (buffer_.size() >= 2) {
             const auto& s0 = *(buffer_.end() - 2);
             const auto& s1 = buffer_.back();
             const float span = s1.timestamp - s0.timestamp;
             if (span > 0.0f) {
-                // Extrapolate but cap at 2× span to avoid runaway drift.
-                const float over = targetTime - s1.timestamp;
-                const float t    = std::min(1.0f + over / span, 2.0f);
+                // Velocity-based dead reckoning — cap over at ~1 tick to prevent
+                // runaway drift while the next snapshot is in transit.
+                const float over = std::min(targetTime - s1.timestamp, 0.1f);
+                const glm::vec3 velocity = (s1.position - s0.position) / span;
+                entity_->setPosition(s1.position + velocity * over);
 
-                entity_->setPosition(glm::mix(s0.position, s1.position, t));
-
-                // Rotation SLERP extrapolation.
-                const glm::quat q0 = glm::quat(glm::radians(s0.rotation));
-                const glm::quat q1 = glm::quat(glm::radians(s1.rotation));
-                const glm::quat qi = glm::slerp(q0, q1, t);
-                entity_->setRotation(glm::degrees(glm::eulerAngles(qi)));
+                // Hold at the last known rotation during extrapolation to avoid
+                // SLERP overshoot (t > 1) producing reversed orientations.
+                entity_->setRotation(s1.rotation);
             } else {
                 applySnapshot(s1);
             }
@@ -88,36 +84,48 @@ void NetworkSyncComponent::update(float deltaTime) {
             applySnapshot(buffer_.back());
         }
         pruneBuffer();
-        return;
-    }
 
     // -----------------------------------------------------------------------
     // Normal case: find the two snapshots that bracket targetTime and LERP.
     // -----------------------------------------------------------------------
-    for (std::size_t i = 0; i + 1 < buffer_.size(); ++i) {
-        const auto& s0 = buffer_[i];
-        const auto& s1 = buffer_[i + 1];
+    } else {
+        for (std::size_t i = 0; i + 1 < buffer_.size(); ++i) {
+            const auto& s0 = buffer_[i];
+            const auto& s1 = buffer_[i + 1];
 
-        if (s0.timestamp <= targetTime && targetTime <= s1.timestamp) {
-            const float span = s1.timestamp - s0.timestamp;
-            const float t    = (span > 0.0f)
-                                   ? glm::clamp((targetTime - s0.timestamp) / span, 0.0f, 1.0f)
-                                   : 0.0f;
+            if (s0.timestamp <= targetTime && targetTime <= s1.timestamp) {
+                const float span = s1.timestamp - s0.timestamp;
+                const float t    = (span > 0.0f)
+                                       ? glm::clamp((targetTime - s0.timestamp) / span, 0.0f, 1.0f)
+                                       : 0.0f;
 
-            // Interpolate position with LERP.
-            entity_->setPosition(glm::mix(s0.position, s1.position, t));
+                // Interpolate position with LERP.
+                entity_->setPosition(glm::mix(s0.position, s1.position, t));
 
-            // Interpolate rotation with SLERP (quaternion) to avoid gimbal lock
-            // and to produce the shortest angular arc.
-            const glm::quat q0 = glm::quat(glm::radians(s0.rotation));
-            const glm::quat q1 = glm::quat(glm::radians(s1.rotation));
-            const glm::quat qi = glm::slerp(q0, q1, t);
-            entity_->setRotation(glm::degrees(glm::eulerAngles(qi)));
-            break;
+                // Interpolate rotation with SLERP (quaternion) to avoid gimbal lock
+                // and to produce the shortest angular arc.
+                const glm::quat q0 = glm::quat(glm::radians(s0.rotation));
+                const glm::quat q1 = glm::quat(glm::radians(s1.rotation));
+                const glm::quat qi = glm::slerp(q0, q1, t);
+                entity_->setRotation(glm::degrees(glm::eulerAngles(qi)));
+                break;
+            }
         }
+
+        pruneBuffer();
     }
 
-    pruneBuffer();
+    // Compute XZ movement speed for animation-state decisions (Walk/Run/Idle).
+    // This block executes for ALL non-empty-buffer cases (hold, starvation, and
+    // normal interpolation) because the if-else chain above has no early returns.
+    // previousPosition_ is therefore always kept up to date.
+    {
+        const glm::vec3 cur  = entity_->getPosition();
+        const glm::vec3 d    = cur - previousPosition_;
+        const float     dist = std::sqrt(d.x * d.x + d.z * d.z);
+        currentSpeed_        = (deltaTime > 0.0f) ? dist / deltaTime : 0.0f;
+        previousPosition_    = cur;
+    }
 }
 
 // ---------------------------------------------------------------------------

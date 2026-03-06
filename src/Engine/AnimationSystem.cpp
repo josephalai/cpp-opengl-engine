@@ -3,6 +3,8 @@
 #include "AnimationSystem.h"
 #include "../RenderEngine/AnimatedRenderer.h"
 #include "../Entities/Player.h"
+#include "../Entities/Entity.h"
+#include "../Entities/Components/NetworkSyncComponent.h"
 #include "../Input/InputMaster.h"
 #include "../RenderEngine/DisplayManager.h"
 #include <iostream>
@@ -24,12 +26,35 @@ AnimationSystem::AnimationSystem(AnimatedRenderer*             renderer,
 void AnimationSystem::update(float deltaTime) {
     if (entities_.empty()) return;
 
-    // Sync every animated character's world transform to the player
+    // Sync local player animated entity transform to the physics-driven player.
     if (player_) {
         for (auto* ae : entities_) {
-            if (!ae) continue;
+            if (!ae || !ae->isLocalPlayer) continue;
             ae->position = player_->getPosition();
             ae->rotation = player_->getRotation();
+        }
+    }
+
+    // Sync remote animated entities from their paired Entity (NetworkSyncComponent)
+    // and drive animation state transitions based on computed movement speed.
+    for (auto* ae : entities_) {
+        if (!ae || ae->isLocalPlayer) continue;
+        if (ae->pairedEntity) {
+            ae->position = ae->pairedEntity->getPosition();
+            ae->rotation = ae->pairedEntity->getRotation();
+        }
+        if (ae->controller && ae->pairedEntity) {
+            auto* sync = ae->pairedEntity->getComponent<NetworkSyncComponent>();
+            if (sync) {
+                const float speed = sync->getCurrentSpeed();
+                if (speed > 1.0f) {
+                    ae->controller->requestTransition("Run");
+                } else if (speed > 0.1f) {
+                    ae->controller->requestTransition("Walk");
+                } else {
+                    ae->controller->requestTransition("Idle");
+                }
+            }
         }
     }
 
@@ -46,21 +71,22 @@ void AnimationSystem::update(float deltaTime) {
 
         if (InputMaster::isKeyDown(Up)) {
             for (auto* ae : entities_)
-                if (ae) ae->modelOffset.y += kOffsetSpeed * deltaTime;
+                if (ae && ae->isLocalPlayer) ae->modelOffset.y += kOffsetSpeed * deltaTime;
             adjusted = true;
         } else if (InputMaster::isKeyDown(Down)) {
             for (auto* ae : entities_)
-                if (ae) ae->modelOffset.y -= kOffsetSpeed * deltaTime;
+                if (ae && ae->isLocalPlayer) ae->modelOffset.y -= kOffsetSpeed * deltaTime;
             adjusted = true;
         }
 
         if (adjusted && offsetLogCooldown <= 0.0f) {
             offsetLogCooldown = 0.1f;
-            if (entities_[0]) {
-                std::cout << "[ModelOffset] Y = " << entities_[0]->modelOffset.y;
-                if (entities_.size() > 1)
-                    std::cout << "  (applied to all " << entities_.size() << " entities)";
-                std::cout << "\n";
+            // Print the offset of the first local-player entity for bake-in.
+            for (auto* ae : entities_) {
+                if (ae && ae->isLocalPlayer) {
+                    std::cout << "[ModelOffset] Y = " << ae->modelOffset.y << "\n";
+                    break;
+                }
             }
         }
     }
