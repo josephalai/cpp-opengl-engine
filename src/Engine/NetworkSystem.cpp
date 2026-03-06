@@ -159,7 +159,14 @@ void NetworkSystem::update(float deltaTime) {
                         }
                     } else {
                         // Remote entity — create via callback.
-                        if (spawnCallback_) {
+                        // Guard: skip if we already have an entity for this id
+                        // (prevents duplicates if the same Spawn arrives twice).
+                        if (networkEntities_.find(sp.networkId) !=
+                            networkEntities_.end()) {
+                            std::cout << "[NetworkSystem] Spawn ignored — "
+                                         "entity " << sp.networkId
+                                      << " already exists.\n";
+                        } else if (spawnCallback_) {
                             Entity* e = spawnCallback_(sp.networkId,
                                                        sp.modelType,
                                                        sp.position);

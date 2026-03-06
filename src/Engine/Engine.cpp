@@ -412,8 +412,14 @@ void Engine::initNetworkEntity() {
         return;
     }
 
+    // Cache the TexturedModel so that onNetworkSpawn() can reuse it for
+    // remote entities instead of reloading from disk every time.  This also
+    // ensures all lamp entities share the same TexturedModel* pointer, which
+    // lets the renderer batch them into a single draw-call group.
     auto* lampTex   = new ModelTexture("lamp", PNG, Material{1.0f, 0.0f});
-    auto* lampModel = new TexturedModel(loader->loadToVAO(lampData), lampTex);
+    cachedLampModel_ = new TexturedModel(loader->loadToVAO(lampData), lampTex);
+    lampModelMin_ = lampData.getMin();
+    lampModelMax_ = lampData.getMax();
 
     // Create a valid BoundingBox so the FrustumCuller and picking pipeline
     // can properly handle this entity (instead of passing nullptr).
@@ -421,11 +427,11 @@ void Engine::initNetworkEntity() {
         lampData, ClickBoxTypes::BOX, BoundTypes::AABB);
     auto* rawBB = loader->loadToVAO(bbData);
     auto* bb    = new BoundingBox(rawBB, BoundingBoxIndex::genUniqueId());
-    bb->setAABB(lampData.getMin(), lampData.getMax());
+    bb->setAABB(lampModelMin_, lampModelMax_);
 
     // Spawn at the default starting position.
     networkEntity_ = new Entity(
-        lampModel,
+        cachedLampModel_,
         bb,
         glm::vec3(100.0f, 3.0f, -80.0f),
         glm::vec3(0.0f),
@@ -458,25 +464,40 @@ void Engine::loadIPConfig() {
     std::cout << "[Engine] Server IP: " << serverIP_ << "\n";
 }
 
-Entity* Engine::onNetworkSpawn(uint32_t /*networkId*/,
-                               const std::string& /*modelType*/,
+Entity* Engine::onNetworkSpawn(uint32_t networkId,
+                               const std::string& modelType,
                                const glm::vec3& position) {
-    // Reuse the "lamp" model for all network entities.
-    ModelData lampData = OBJLoader::loadObjModel("lamp");
-    if (lampData.getIndices().empty()) return nullptr;
+    // If the cached lamp model is available (loaded in initNetworkEntity),
+    // reuse it so we avoid redundant disk I/O and OpenGL uploads.
+    // All lamp entities will share the same TexturedModel*, which makes them
+    // batch together in the renderer for better performance.
+    if (!cachedLampModel_) {
+        // Fallback: load the lamp model if it wasn't cached (shouldn't
+        // normally happen because initNetworkEntity runs first).
+        ModelData lampData = OBJLoader::loadObjModel("lamp");
+        if (lampData.getIndices().empty()) {
+            std::cerr << "[Engine] onNetworkSpawn: could not load 'lamp' model"
+                         " — remote entity " << networkId << " will not appear.\n";
+            return nullptr;
+        }
+        auto* lampTex = new ModelTexture("lamp", PNG, Material{1.0f, 0.0f});
+        cachedLampModel_ = new TexturedModel(loader->loadToVAO(lampData), lampTex);
+        lampModelMin_ = lampData.getMin();
+        lampModelMax_ = lampData.getMax();
+    }
 
-    auto* lampTex   = new ModelTexture("lamp", PNG, Material{1.0f, 0.0f});
-    auto* lampModel = new TexturedModel(loader->loadToVAO(lampData), lampTex);
-
-    // Create a valid BoundingBox so the FrustumCuller and picking pipeline
-    // can properly handle this entity (instead of passing nullptr).
-    BoundingBoxData bbData = OBJLoader::loadBoundingBox(
-        lampData, ClickBoxTypes::BOX, BoundTypes::AABB);
+    // Each entity needs its own BoundingBox (unique picking colour) but
+    // shares the AABB extents from the cached lamp model.
+    AABB bbRegion(BoundTypes::AABB);
+    bbRegion.min = lampModelMin_;
+    bbRegion.max = lampModelMax_;
+    std::vector<float> boxVerts = OBJLoader::generateBox(lampModelMin_, lampModelMax_);
+    BoundingBoxData bbData(bbRegion, std::move(boxVerts));
     auto* rawBB = loader->loadToVAO(bbData);
     auto* bb    = new BoundingBox(rawBB, BoundingBoxIndex::genUniqueId());
-    bb->setAABB(lampData.getMin(), lampData.getMax());
+    bb->setAABB(lampModelMin_, lampModelMax_);
 
-    auto* ent = new Entity(lampModel, bb, position, glm::vec3(0.0f), 1.0f);
+    auto* ent = new Entity(cachedLampModel_, bb, position, glm::vec3(0.0f), 1.0f);
 
     // Attach the interpolation component so the entity can receive and
     // smoothly interpolate server transform snapshots.
@@ -489,6 +510,11 @@ Entity* Engine::onNetworkSpawn(uint32_t /*networkId*/,
     if (chunkManager) {
         chunkManager->registerEntity(ent, position);
     }
+
+    std::cout << "[Engine] Remote entity " << networkId
+              << " (model=\"" << modelType << "\") spawned at ("
+              << position.x << ", " << position.y << ", " << position.z
+              << ") — entities.size()=" << entities.size() << "\n";
 
     return ent;
 }
