@@ -400,53 +400,6 @@ void Engine::initFramebuffersAndPickers() {
     }
 }
 
-void Engine::initNetworkEntity() {
-    // Load a simple model to use as the visual representation of the
-    // network-driven demo entity.  We reuse the "lamp" asset that is already
-    // present in the project.  If the OBJ is missing the function returns
-    // safely without creating any entity.
-    ModelData lampData = OBJLoader::loadObjModel("lamp");
-    if (lampData.getIndices().empty()) {
-        std::cerr << "[Engine] NetworkEntity: could not load 'lamp' model — "
-                     "network demo entity will not appear.\n";
-        return;
-    }
-
-    // Cache the TexturedModel so that onNetworkSpawn() can reuse it for
-    // remote entities instead of reloading from disk every time.  This also
-    // ensures all lamp entities share the same TexturedModel* pointer, which
-    // lets the renderer batch them into a single draw-call group.
-    auto* lampTex   = new ModelTexture("lamp", PNG, Material{1.0f, 0.0f});
-    cachedLampModel_ = new TexturedModel(loader->loadToVAO(lampData), lampTex);
-    lampModelMin_ = lampData.getMin();
-    lampModelMax_ = lampData.getMax();
-
-    // Create a valid BoundingBox so the FrustumCuller and picking pipeline
-    // can properly handle this entity (instead of passing nullptr).
-    BoundingBoxData bbData = OBJLoader::loadBoundingBox(
-        lampData, ClickBoxTypes::BOX, BoundTypes::AABB);
-    auto* rawBB = loader->loadToVAO(bbData);
-    auto* bb    = new BoundingBox(rawBB, BoundingBoxIndex::genUniqueId());
-    bb->setAABB(lampModelMin_, lampModelMax_);
-
-    // Spawn at the default starting position.
-    networkEntity_ = new Entity(
-        cachedLampModel_,
-        bb,
-        glm::vec3(100.0f, 3.0f, -80.0f),
-        glm::vec3(0.0f),
-        /*scale=*/1.0f);
-
-    // Attach the interpolation component for the local player.
-    networkEntity_->addComponent<NetworkSyncComponent>();
-
-    // Push into the main entities list so RenderSystem / StreamingSystem /
-    // ChunkManager see it like any other entity.
-    entities.push_back(networkEntity_);
-
-    std::cout << "[Engine] Local network entity created.\n";
-}
-
 void Engine::loadIPConfig() {
     std::ifstream cfgFile("ip.cfg");
     if (cfgFile.is_open()) {
@@ -467,37 +420,29 @@ void Engine::loadIPConfig() {
 Entity* Engine::onNetworkSpawn(uint32_t networkId,
                                const std::string& modelType,
                                const glm::vec3& position) {
-    // If the cached lamp model is available (loaded in initNetworkEntity),
-    // reuse it so we avoid redundant disk I/O and OpenGL uploads.
-    // All lamp entities will share the same TexturedModel*, which makes them
-    // batch together in the renderer for better performance.
-    if (!cachedLampModel_) {
-        // Fallback: load the lamp model if it wasn't cached (shouldn't
-        // normally happen because initNetworkEntity runs first).
-        ModelData lampData = OBJLoader::loadObjModel("lamp");
-        if (lampData.getIndices().empty()) {
-            std::cerr << "[Engine] onNetworkSpawn: could not load 'lamp' model"
-                         " — remote entity " << networkId << " will not appear.\n";
-            return nullptr;
-        }
-        auto* lampTex = new ModelTexture("lamp", PNG, Material{1.0f, 0.0f});
-        cachedLampModel_ = new TexturedModel(loader->loadToVAO(lampData), lampTex);
-        lampModelMin_ = lampData.getMin();
-        lampModelMax_ = lampData.getMax();
+    // Load the lamp model for the remote entity.
+    ModelData lampData = OBJLoader::loadObjModel("lamp");
+    if (lampData.getIndices().empty()) {
+        std::cerr << "[Engine] onNetworkSpawn: could not load 'lamp' model"
+                     " — remote entity " << networkId << " will not appear.\n";
+        return nullptr;
     }
+    auto* lampTex   = new ModelTexture("lamp", PNG, Material{1.0f, 0.0f});
+    auto* lampModel = new TexturedModel(loader->loadToVAO(lampData), lampTex);
 
-    // Each entity needs its own BoundingBox (unique picking colour) but
-    // shares the AABB extents from the cached lamp model.
+    // Each entity needs its own BoundingBox (unique picking colour).
+    glm::vec3 modelMin = lampData.getMin();
+    glm::vec3 modelMax = lampData.getMax();
     AABB bbRegion(BoundTypes::AABB);
-    bbRegion.min = lampModelMin_;
-    bbRegion.max = lampModelMax_;
-    std::vector<float> boxVerts = OBJLoader::generateBox(lampModelMin_, lampModelMax_);
+    bbRegion.min = modelMin;
+    bbRegion.max = modelMax;
+    std::vector<float> boxVerts = OBJLoader::generateBox(modelMin, modelMax);
     BoundingBoxData bbData(bbRegion, std::move(boxVerts));
     auto* rawBB = loader->loadToVAO(bbData);
     auto* bb    = new BoundingBox(rawBB, BoundingBoxIndex::genUniqueId());
-    bb->setAABB(lampModelMin_, lampModelMax_);
+    bb->setAABB(modelMin, modelMax);
 
-    auto* ent = new Entity(cachedLampModel_, bb, position, glm::vec3(0.0f), 1.0f);
+    auto* ent = new Entity(lampModel, bb, position, glm::vec3(0.0f), 1.0f);
 
     // Attach the interpolation component so the entity can receive and
     // smoothly interpolate server transform snapshots.
@@ -566,10 +511,6 @@ void Engine::buildSystems() {
 
     // Build the chunk manager from the first loaded terrain's texture config.
     // Initial scene entities are registered so they appear inside their chunk.
-    // NOTE: initNetworkEntity() is called first so networkEntity_ is pushed
-    // into `entities` before the chunk-registration loop below, ensuring the
-    // streaming system always returns it in the active entity list.
-    initNetworkEntity();
 
     if (primaryTerrain) {
         chunkManager = new ChunkManager(loader,
@@ -592,11 +533,12 @@ void Engine::buildSystems() {
     }
 
     // NetworkSystem connects to the headless server via ENet and interpolates
-    // all network entities.  Runs after StreamingSystem (so active entities are
-    // current) but before RenderSystem (so updated positions are submitted).
+    // all network entities.  The local Player entity IS the network entity —
+    // no separate dummy entity is needed.
     {
         auto netSys = std::make_unique<NetworkSystem>(
             serverIP_,
+            player,
             // Spawn callback
             [this](uint32_t nid, const std::string& model,
                    const glm::vec3& pos) -> Entity* {
@@ -607,13 +549,6 @@ void Engine::buildSystems() {
                 onNetworkDespawn(nid, e);
             }
         );
-
-        // Register the local entity that was created in initNetworkEntity.
-        // It will be linked to the local player's networkId once the
-        // WelcomePacket arrives — for now use id 0 as a placeholder.
-        if (networkEntity_) {
-            netSys->addEntity(0, networkEntity_);
-        }
 
         netSys->init();
 

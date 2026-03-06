@@ -1,13 +1,15 @@
 // src/Engine/NetworkSystem.h
 //
-// Phase 5+ — Multi-Client Networking with Entity Registry.
+// Phase 5+ — Multi-Client Networking with Unified Pipeline.
 //
 // ISystem that drives the client-side networking:
 //   1. On init(), creates an ENet client host and connects to the server.
 //   2. Handles Welcome / Spawn / Despawn / TransformSnapshot packets.
 //   3. Maintains a map of networkId → Entity* for remote interpolation.
-//   4. Performs client-side prediction and server reconciliation for the
-//      local player, while remote entities are smoothly interpolated.
+//   4. Reads the actual Player's physics-driven position each frame and
+//      sends it to the server — no separate prediction math needed.
+//   5. For remote entities: pushes snapshots into their NetworkSyncComponent
+//      buffer for smooth interpolation.
 
 #ifndef ENGINE_NETWORKSYSTEM_H
 #define ENGINE_NETWORKSYSTEM_H
@@ -25,6 +27,8 @@
 #include <enet/enet.h>
 #include <glm/glm.hpp>
 
+class Player;
+
 class NetworkSystem : public ISystem {
 public:
     /// Callback the Engine provides so the NetworkSystem can dynamically
@@ -34,8 +38,10 @@ public:
                                                   const glm::vec3& position)>;
     using DespawnCallback = std::function<void(uint32_t networkId, Entity* e)>;
 
-    /// Construct with the server IP and optional entity callbacks.
+    /// Construct with the server IP, a pointer to the local Player, and
+    /// optional entity callbacks.
     explicit NetworkSystem(const std::string& serverIP,
+                           Player*         localPlayer,
                            SpawnCallback   onSpawn   = nullptr,
                            DespawnCallback onDespawn = nullptr);
 
@@ -56,6 +62,9 @@ private:
     // --- Entity Map (Phase 7) ---
     std::unordered_map<uint32_t, Entity*> networkEntities_;
 
+    // --- Local Player ---
+    Player* localPlayer_ = nullptr;  ///< The actual physics-driven player entity.
+
     // --- Callbacks ---
     SpawnCallback   spawnCallback_;
     DespawnCallback despawnCallback_;
@@ -68,11 +77,8 @@ private:
     static constexpr int kServerPort    = 7777;
     static constexpr int kChannelCount  = 2;
 
-    // --- Client-Side Prediction state ---
+    // --- Network state ---
     uint32_t  localPlayerId_       = 0;
-    std::deque<Network::PlayerInputPacket> pendingInputs_;
-    glm::vec3 predictedPosition_ = {};
-    glm::vec3 predictedRotation_ = {};
     uint32_t  inputSequenceNumber_ = 0;
 };
 

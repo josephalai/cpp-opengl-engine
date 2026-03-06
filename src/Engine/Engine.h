@@ -116,21 +116,8 @@ private:
     std::string   terrainHeightmapFile = "heightMap"; ///< passed to ChunkManager
 
     // --- Network (Phase 5 Multi-Client) ---
-    Entity* networkEntity_ = nullptr; ///< Demo entity driven by server snapshots.
     NetworkSystem* networkSystem_ = nullptr; ///< Non-owning ptr (owned by systems vec).
     std::string serverIP_ = "127.0.0.1"; ///< Read from ip.cfg or default.
-
-    /// Cached lamp model shared by all network entities (local + remote).
-    /// Loaded once in initNetworkEntity(); reused by onNetworkSpawn() to avoid
-    /// redundant disk I/O and ensure entities batch together in the renderer.
-    TexturedModel* cachedLampModel_ = nullptr;
-    glm::vec3      lampModelMin_{0.0f};
-    glm::vec3      lampModelMax_{0.0f};
-
-    /// Load a model and create the demo network entity, attaching a
-    /// NetworkSyncComponent.  Must be called before the ChunkManager
-    /// registration loop so the entity lands in the correct streaming chunk.
-    void initNetworkEntity();
 
     /// Read ip.cfg (if present) to set serverIP_.
     void loadIPConfig();

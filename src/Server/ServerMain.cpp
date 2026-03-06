@@ -323,13 +323,36 @@ int main() {
                             if (eit != entities.end()) {
                                 auto& est = eit->second;
 
-                                // Authoritative movement.
-                                float th = terrain.valid
-                                    ? terrain.getHeight(est.position.x,
-                                                        est.position.z)
-                                    : SharedMovement::kNoTerrainHeight;
-                                SharedMovement::applyInput(
-                                    input, est.position, est.rotation, th);
+                                // ------------------------------------------------
+                                // Client-authoritative, server-validated model.
+                                // Accept the client's physics-driven position
+                                // directly (with basic speed validation).
+                                // ------------------------------------------------
+                                glm::vec3 delta = input.position - est.position;
+                                float distSq = glm::dot(delta, delta);
+                                // Allow up to ~50 units/tick max distance to
+                                // prevent obvious cheating (speed hack).
+                                static constexpr float kMaxDistPerTick = 50.0f;
+                                if (distSq <= kMaxDistPerTick * kMaxDistPerTick) {
+                                    est.position = input.position;
+                                    est.rotation = input.rotation;
+                                } else {
+                                    // Reject the move — use SharedMovement as
+                                    // a fallback to keep the entity moving.
+                                    float th = terrain.valid
+                                        ? terrain.getHeight(est.position.x,
+                                                            est.position.z)
+                                        : SharedMovement::kNoTerrainHeight;
+                                    SharedMovement::applyInput(
+                                        input, est.position, est.rotation, th);
+                                }
+
+                                // Terrain height clamping.
+                                if (terrain.valid) {
+                                    float th = terrain.getHeight(
+                                        est.position.x, est.position.z);
+                                    est.position.y = th;
+                                }
 
                                 if (input.sequenceNumber >
                                     est.lastProcessedInputSequence) {
