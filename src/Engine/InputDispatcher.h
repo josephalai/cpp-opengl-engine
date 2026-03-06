@@ -33,6 +33,10 @@ public:
 private:
     TerrainPicker* picker_;
     bool           prevRightClick_ = false; ///< edge-detect: fire event only once per press
+
+    /// Frame counter for [NetTrace] log throttling.
+    uint32_t logThrottleCounter_ = 0;
+    static constexpr uint32_t kLogThrottleInterval = 60; ///< log at most once per 60 frames
 };
 
 #endif // ENGINE_INPUTDISPATCHER_H

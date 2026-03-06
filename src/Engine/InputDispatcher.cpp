@@ -5,6 +5,7 @@
 #include "../Events/EventBus.h"
 #include "../Input/InputMaster.h"
 #include "../Toolbox/TerrainPicker.h"
+#include <iostream>
 
 InputDispatcher::InputDispatcher(TerrainPicker* picker)
     : picker_(picker)
@@ -23,6 +24,14 @@ void InputDispatcher::update(float /*deltaTime*/) {
     moveCmd.jump        = InputMaster::isKeyDown(Space);
     moveCmd.sprint      = InputMaster::isKeyDown(Tab);
     moveCmd.sprintReset = InputMaster::isKeyDown(Backslash);
+
+    // [NetTrace] Log non-zero movement commands (throttled)
+    if ((moveCmd.forward != 0.0f || moveCmd.turn != 0.0f) &&
+        logThrottleCounter_++ % kLogThrottleInterval == 0) {
+        std::cout << "[NetTrace][InputDispatcher] PlayerMoveCommandEvent"
+                     " fwd=" << moveCmd.forward
+                  << " turn=" << moveCmd.turn << "\n";
+    }
 
     EventBus::instance().publish(moveCmd);
 

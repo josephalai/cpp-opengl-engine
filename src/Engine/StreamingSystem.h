@@ -37,6 +37,11 @@ private:
     std::vector<Terrain*>&      allTerrains_;
     std::vector<Entity*>&       entities_;
     std::vector<AssimpEntity*>& scenes_;
+
+    /// Frame counter and last-seen entity count for [NetTrace] log throttling.
+    uint32_t    logFrameCounter_ = 0;
+    std::size_t lastEntityCount_ = static_cast<std::size_t>(-1); ///< sentinel
+    static constexpr uint32_t kLogInterval = 60; ///< log at most once per 60 frames
 };
 
 #endif // ENGINE_STREAMINGSYSTEM_H

@@ -255,6 +255,9 @@ int main() {
                     std::strncpy(sp.modelType, est.modelType.c_str(),
                                  Network::kModelTypeLen - 1);
                     sp.modelType[Network::kModelTypeLen - 1] = '\0';
+                    std::cout << "[NetTrace][Server] Sending SpawnPacket to new peer"
+                                 " — networkId=" << eid
+                              << " modelType=\"" << sp.modelType << "\"\n";
                     sendTo(event.peer, Network::PacketType::Spawn,
                            &sp, sizeof(sp), true);
                 }
@@ -268,6 +271,9 @@ int main() {
                 newSp.modelType[Network::kModelTypeLen - 1] = '\0';
                 for (auto& [peer, pid] : peerToId) {
                     if (peer != event.peer) {
+                        std::cout << "[NetTrace][Server] Broadcasting SpawnPacket"
+                                     " — networkId=" << newId
+                                  << " modelType=\"" << newSp.modelType << "\"\n";
                         sendTo(peer, Network::PacketType::Spawn,
                                &newSp, sizeof(newSp), true);
                     }
@@ -322,6 +328,16 @@ int main() {
                             auto eit = entities.find(nid);
                             if (eit != entities.end()) {
                                 auto& est = eit->second;
+
+                                // [NetTrace] Log input (throttled: every 60 packets)
+                                if (input.sequenceNumber % 60 == 1) {
+                                    std::cout << "[NetTrace][Server] PlayerInputPacket"
+                                                 " networkId=" << nid
+                                              << " seq=" << input.sequenceNumber
+                                              << " pos=(" << input.position.x
+                                              << ", " << input.position.y
+                                              << ", " << input.position.z << ")\n";
+                                }
 
                                 // ------------------------------------------------
                                 // Client-authoritative, server-validated model.
@@ -397,6 +413,7 @@ int main() {
             }
 
             // ----- Broadcast all entity snapshots -----
+            static constexpr uint32_t kBroadcastLogInterval = 100; // log every ~10 seconds
             for (auto& [eid, est] : entities) {
                 Network::TransformSnapshot snap;
                 snap.networkId     = eid;
@@ -405,6 +422,16 @@ int main() {
                 snap.position       = est.position;
                 snap.rotation       = est.rotation;
                 snap.lastProcessedInputSequence = est.lastProcessedInputSequence;
+
+                // [NetTrace] Log broadcast (throttled: every kBroadcastLogInterval sequences)
+                if (snap.sequenceNumber % kBroadcastLogInterval == 0) {
+                    std::cout << "[NetTrace][Server] Broadcasting TransformSnapshot"
+                                 " networkId=" << eid
+                              << " seq=" << snap.sequenceNumber
+                              << " pos=(" << snap.position.x
+                              << ", " << snap.position.y
+                              << ", " << snap.position.z << ")\n";
+                }
 
                 broadcast(server, Network::PacketType::TransformSnapshot,
                           &snap, sizeof(snap));

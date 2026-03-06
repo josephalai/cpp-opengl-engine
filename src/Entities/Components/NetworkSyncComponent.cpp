@@ -8,6 +8,7 @@
 #include <glm/gtx/quaternion.hpp>
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 
 // ---------------------------------------------------------------------------
 // pushSnapshot
@@ -25,6 +26,16 @@ void NetworkSyncComponent::pushSnapshot(const Network::TransformSnapshot& snapsh
     // Clamp the buffer to kMaxBufferSize to prevent memory bloat.
     while (buffer_.size() > kMaxBufferSize) {
         buffer_.pop_front();
+    }
+
+    // [NetTrace] Log accepted snapshots (throttled)
+    if (++logThrottleCounter_ % kLogThrottleInterval == 0) {
+        std::cout << "[NetTrace][NetworkSyncComponent] pushSnapshot accepted"
+                     " seq=" << snapshot.sequenceNumber
+                  << " pos=(" << snapshot.position.x << ", "
+                              << snapshot.position.y << ", "
+                              << snapshot.position.z << ")"
+                  << " bufferSize=" << buffer_.size() << "\n";
     }
 
     // The first time we accumulate two snapshots we synchronise our playback
@@ -53,11 +64,19 @@ void NetworkSyncComponent::update(float deltaTime) {
     // The time we actually want to display (lagging kInterpolationDelay behind).
     const float targetTime = renderTime_ - kInterpolationDelay;
 
+    // Increment once per frame for consistent throttling across all branches.
+    const bool shouldLog = (++logThrottleCounter_ % kLogThrottleInterval == 0);
+
     // -----------------------------------------------------------------------
     // Hold case: only one snapshot or targetTime is before the earliest one.
     // -----------------------------------------------------------------------
     if (buffer_.size() == 1 || targetTime <= buffer_.front().timestamp) {
         applySnapshot(buffer_.front());
+        if (shouldLog) {
+            glm::vec3 pos = entity_->getPosition();
+            std::cout << "[NetTrace][NetworkSyncComponent] update hold —"
+                         " pos=(" << pos.x << ", " << pos.y << ", " << pos.z << ")\n";
+        }
         return;
     }
 
@@ -81,6 +100,12 @@ void NetworkSyncComponent::update(float deltaTime) {
                 const glm::quat q1 = glm::quat(glm::radians(s1.rotation));
                 const glm::quat qi = glm::slerp(q0, q1, t);
                 entity_->setRotation(glm::degrees(glm::eulerAngles(qi)));
+
+                if (shouldLog) {
+                    glm::vec3 pos = entity_->getPosition();
+                    std::cout << "[NetTrace][NetworkSyncComponent] update extrapolation —"
+                                 " pos=(" << pos.x << ", " << pos.y << ", " << pos.z << ")\n";
+                }
             } else {
                 applySnapshot(s1);
             }
@@ -113,6 +138,12 @@ void NetworkSyncComponent::update(float deltaTime) {
             const glm::quat q1 = glm::quat(glm::radians(s1.rotation));
             const glm::quat qi = glm::slerp(q0, q1, t);
             entity_->setRotation(glm::degrees(glm::eulerAngles(qi)));
+
+            if (shouldLog) {
+                glm::vec3 pos = entity_->getPosition();
+                std::cout << "[NetTrace][NetworkSyncComponent] update interpolation —"
+                             " pos=(" << pos.x << ", " << pos.y << ", " << pos.z << ")\n";
+            }
             break;
         }
     }

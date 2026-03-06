@@ -69,6 +69,12 @@ private:
     /// clock has been synchronised to the server timeline.
     bool  started_    = false;
 
+    /// Frame counter used to throttle [NetTrace] log output in update().
+    uint32_t logThrottleCounter_ = 0;
+
+    /// Log one interpolation message every this many frames.
+    static constexpr uint32_t kLogThrottleInterval = 60;
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------

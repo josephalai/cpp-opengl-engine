@@ -85,6 +85,20 @@ void NetworkSystem::update(float deltaTime) {
         input.position       = localPlayer_->getPosition();
         input.rotation       = localPlayer_->getRotation();
 
+        // [NetTrace] Log send (throttled: every 60 frames, or when moving)
+        if ((forward != 0.0f || turn != 0.0f) && (inputSequenceNumber_ % 60 == 1)) {
+            std::cout << "[NetTrace][NetworkSystem] Sending PlayerInputPacket"
+                         " seq=" << input.sequenceNumber
+                      << " fwd=" << input.forward
+                      << " turn=" << input.turn
+                      << " pos=(" << input.position.x << ", "
+                                  << input.position.y << ", "
+                                  << input.position.z << ")"
+                      << " rot=(" << input.rotation.x << ", "
+                                  << input.rotation.y << ", "
+                                  << input.rotation.z << ")\n";
+        }
+
         auto buf = Network::serialise(Network::PacketType::PlayerInput,
                                       input);
         ENetPacket* packet = enet_packet_create(
@@ -120,8 +134,8 @@ void NetworkSystem::update(float deltaTime) {
                     Network::WelcomePacket wp;
                     std::memcpy(&wp, payload, sizeof(wp));
                     localPlayerId_ = wp.localNetworkId;
-                    std::cout << "[NetworkSystem] Welcome — localPlayerId = "
-                              << localPlayerId_ << "\n";
+                    std::cout << "[NetTrace][NetworkSystem] WelcomePacket received"
+                                 " — localPlayerId=" << localPlayerId_ << "\n";
 
                     // Link the local Player entity to our real network id.
                     if (localPlayer_) {
@@ -134,11 +148,12 @@ void NetworkSystem::update(float deltaTime) {
                          plen == sizeof(Network::SpawnPacket)) {
                     Network::SpawnPacket sp;
                     std::memcpy(&sp, payload, sizeof(sp));
-                    std::cout << "[NetworkSystem] Spawn — networkId "
-                              << sp.networkId << " model=\"" << sp.modelType
-                              << "\" at (" << sp.position.x << ", "
-                              << sp.position.y << ", " << sp.position.z
-                              << ")\n";
+                    std::cout << "[NetTrace][NetworkSystem] SpawnPacket received"
+                                 " — networkId=" << sp.networkId
+                              << " model=\"" << sp.modelType
+                              << "\" pos=(" << sp.position.x << ", "
+                                            << sp.position.y << ", "
+                                            << sp.position.z << ")\n";
 
                     // If this is us, the local Player is already linked.
                     if (sp.networkId == localPlayerId_) {
@@ -152,8 +167,8 @@ void NetworkSystem::update(float deltaTime) {
                         // Guard: skip if we already have an entity for this id.
                         if (networkEntities_.find(sp.networkId) !=
                             networkEntities_.end()) {
-                            std::cout << "[NetworkSystem] Spawn ignored — "
-                                         "entity " << sp.networkId
+                            std::cout << "[NetTrace][NetworkSystem] SpawnPacket"
+                                         " ignored — entity " << sp.networkId
                                       << " already exists.\n";
                         } else if (spawnCallback_) {
                             Entity* e = spawnCallback_(sp.networkId,
@@ -171,8 +186,8 @@ void NetworkSystem::update(float deltaTime) {
                          plen == sizeof(Network::DespawnPacket)) {
                     Network::DespawnPacket dp;
                     std::memcpy(&dp, payload, sizeof(dp));
-                    std::cout << "[NetworkSystem] Despawn — networkId "
-                              << dp.networkId << "\n";
+                    std::cout << "[NetTrace][NetworkSystem] DespawnPacket received"
+                                 " — networkId=" << dp.networkId << "\n";
 
                     auto it = networkEntities_.find(dp.networkId);
                     if (it != networkEntities_.end()) {
@@ -201,8 +216,9 @@ void NetworkSystem::update(float deltaTime) {
                             if (distSq > 25.0f) {
                                 localPlayer_->setPosition(snapshot.position);
                                 localPlayer_->setRotation(snapshot.rotation);
-                                std::cout << "[NetworkSystem] Server reconciliation — "
-                                             "snapped local player to server position.\n";
+                                std::cout << "[NetTrace][NetworkSystem] Server"
+                                             " reconciliation — snapped local player"
+                                             " to server position.\n";
                             }
                         }
                     } else {
@@ -212,6 +228,13 @@ void NetworkSystem::update(float deltaTime) {
                             auto* sync = it->second->getComponent<
                                 NetworkSyncComponent>();
                             if (sync) {
+                                std::cout << "[NetTrace][NetworkSystem]"
+                                             " TransformSnapshot pushing to"
+                                             " networkId=" << snapshot.networkId
+                                          << " seq=" << snapshot.sequenceNumber
+                                          << " pos=(" << snapshot.position.x
+                                          << ", " << snapshot.position.y
+                                          << ", " << snapshot.position.z << ")\n";
                                 sync->pushSnapshot(snapshot);
                             }
                         }

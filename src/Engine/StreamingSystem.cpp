@@ -2,6 +2,7 @@
 
 #include "StreamingSystem.h"
 #include "../Entities/Player.h"
+#include <iostream>
 
 StreamingSystem::StreamingSystem(ChunkManager*               chunkManager,
                                   Player*                     player,
@@ -29,6 +30,15 @@ void StreamingSystem::update(float /*deltaTime*/) {
     allTerrains_ = chunkManager_->getActiveTerrains();
     entities_    = chunkManager_->getActiveEntities();
     scenes_      = chunkManager_->getActiveAssimpEntities();
+
+    // [NetTrace] Log entity count when it changes, or every kLogInterval frames.
+    std::size_t currentCount = entities_.size();
+    if (currentCount != lastEntityCount_ || logFrameCounter_ % kLogInterval == 0) {
+        std::cout << "[NetTrace][StreamingSystem] getActiveEntities count="
+                  << currentCount << "\n";
+        lastEntityCount_ = currentCount;
+    }
+    ++logFrameCounter_;
 }
 
 void StreamingSystem::shutdown() {

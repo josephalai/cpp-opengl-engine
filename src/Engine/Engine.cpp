@@ -420,19 +420,42 @@ void Engine::loadIPConfig() {
 Entity* Engine::onNetworkSpawn(uint32_t networkId,
                                const std::string& modelType,
                                const glm::vec3& position) {
-    // Load the lamp model for the remote entity.
-    ModelData lampData = OBJLoader::loadObjModel("lamp");
-    if (lampData.getIndices().empty()) {
-        std::cerr << "[Engine] onNetworkSpawn: could not load 'lamp' model"
-                     " — remote entity " << networkId << " will not appear.\n";
+    std::cout << "[NetTrace][Engine] onNetworkSpawn entered — networkId="
+              << networkId << " modelType=\"" << modelType << "\" pos=("
+              << position.x << ", " << position.y << ", " << position.z << ")\n";
+
+    // --- Bug 1 fix: use the modelType parameter with a fallback chain ---
+    // Try the requested model first, then fall back to "lamp", then "Stall".
+    static const std::vector<std::string> kFallbacks = {"lamp", "Stall"};
+
+    ModelData modelData = OBJLoader::loadObjModel(modelType);
+    std::string loadedName = modelType;
+    if (modelData.getIndices().empty()) {
+        std::cout << "[NetTrace][Engine] Model \"" << modelType
+                  << "\" not found, trying fallbacks.\n";
+        for (const auto& fb : kFallbacks) {
+            if (fb == modelType) continue; // avoid re-trying the same name
+            modelData = OBJLoader::loadObjModel(fb);
+            if (!modelData.getIndices().empty()) {
+                loadedName = fb;
+                break;
+            }
+        }
+    }
+    if (modelData.getIndices().empty()) {
+        std::cerr << "[NetTrace][Engine] onNetworkSpawn: no model could be loaded"
+                     " for remote entity " << networkId << " — skipping spawn.\n";
         return nullptr;
     }
-    auto* lampTex   = new ModelTexture("lamp", PNG, Material{1.0f, 0.0f});
-    auto* lampModel = new TexturedModel(loader->loadToVAO(lampData), lampTex);
+    std::cout << "[NetTrace][Engine] Loaded model \"" << loadedName
+              << "\" for networkId=" << networkId << "\n";
+
+    auto* modelTex   = new ModelTexture(loadedName, PNG, Material{1.0f, 0.0f});
+    auto* texturedModel = new TexturedModel(loader->loadToVAO(modelData), modelTex);
 
     // Each entity needs its own BoundingBox (unique picking colour).
-    glm::vec3 modelMin = lampData.getMin();
-    glm::vec3 modelMax = lampData.getMax();
+    glm::vec3 modelMin = modelData.getMin();
+    glm::vec3 modelMax = modelData.getMax();
     AABB bbRegion(BoundTypes::AABB);
     bbRegion.min = modelMin;
     bbRegion.max = modelMax;
@@ -442,13 +465,21 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
     auto* bb    = new BoundingBox(rawBB, BoundingBoxIndex::genUniqueId());
     bb->setAABB(modelMin, modelMax);
 
-    auto* ent = new Entity(lampModel, bb, position, glm::vec3(0.0f), 1.0f);
+    auto* ent = new Entity(texturedModel, bb, position, glm::vec3(0.0f), 1.0f);
 
     // Attach the interpolation component so the entity can receive and
     // smoothly interpolate server transform snapshots.
     ent->addComponent<NetworkSyncComponent>();
 
+    // TODO (Bug 3): Remote players currently spawn as plain Entity objects
+    // and are not added to animatedEntities.  To support animated remote
+    // characters, instantiate an AnimatedEntity here and register it in
+    // animatedEntities so AnimationSystem picks it up.
+
     entities.push_back(ent);
+
+    // --- Bug 2 fix: keep allBoxes in sync so RenderSystem/UISystem stay valid ---
+    allBoxes.push_back(ent);
 
     // Register with ChunkManager so the StreamingSystem includes this entity
     // in the active render list.
@@ -456,19 +487,29 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
         chunkManager->registerEntity(ent, position);
     }
 
-    std::cout << "[Engine] Remote entity " << networkId
-              << " (model=\"" << modelType << "\") spawned at ("
-              << position.x << ", " << position.y << ", " << position.z
-              << ") — entities.size()=" << entities.size() << "\n";
+    std::cout << "[NetTrace][Engine] onNetworkSpawn complete — networkId="
+              << networkId << " model=\"" << loadedName
+              << "\" entities.size()=" << entities.size()
+              << " allBoxes.size()=" << allBoxes.size() << "\n";
 
     return ent;
 }
 
-void Engine::onNetworkDespawn(uint32_t /*networkId*/, Entity* e) {
+void Engine::onNetworkDespawn(uint32_t networkId, Entity* e) {
+    std::cout << "[NetTrace][Engine] onNetworkDespawn entered — networkId="
+              << networkId << " entities.size()=" << entities.size()
+              << " allBoxes.size()=" << allBoxes.size() << "\n";
+
     // Remove from the entities list so RenderSystem stops drawing it.
     auto it = std::find(entities.begin(), entities.end(), e);
     if (it != entities.end()) {
         entities.erase(it);
+    }
+
+    // --- Bug 2 fix: remove from allBoxes before deleting to avoid dangling pointer ---
+    auto bit = std::find(allBoxes.begin(), allBoxes.end(), e);
+    if (bit != allBoxes.end()) {
+        allBoxes.erase(bit);
     }
 
     // Deregister from ChunkManager so the StreamingSystem no longer
@@ -476,6 +517,10 @@ void Engine::onNetworkDespawn(uint32_t /*networkId*/, Entity* e) {
     if (chunkManager) {
         chunkManager->removeEntity(e);
     }
+
+    std::cout << "[NetTrace][Engine] onNetworkDespawn complete — networkId="
+              << networkId << " entities.size()=" << entities.size()
+              << " allBoxes.size()=" << allBoxes.size() << "\n";
 
     // Free the entity to prevent memory leaks.
     delete e;
