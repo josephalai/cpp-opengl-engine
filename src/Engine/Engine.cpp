@@ -41,6 +41,8 @@
 #include "../Toolbox/Maths.h"
 #include <enet/enet.h>
 #include <thread>
+#include <fstream>
+#include <algorithm>
 
 // ---------------------------------------------------------------------------
 
@@ -52,6 +54,9 @@ void Engine::init() {
     if (enet_initialize() != 0) {
         std::cerr << "[Engine] Failed to initialize ENet.\n";
     }
+
+    // Read server IP from ip.cfg (or default to 127.0.0.1).
+    loadIPConfig();
 
     DisplayManager::createDisplay();
     loader = new Loader();
@@ -410,33 +415,64 @@ void Engine::initNetworkEntity() {
     auto* lampTex   = new ModelTexture("lamp", PNG, Material{1.0f, 0.0f});
     auto* lampModel = new TexturedModel(loader->loadToVAO(lampData), lampTex);
 
-    // Spawn at the orbit starting position.
-    static constexpr float kOrbitRadius  = 20.0f;
-    static constexpr float kOrbitCentreX = 100.0f;
-    static constexpr float kOrbitCentreY =   3.0f;
-    static constexpr float kOrbitCentreZ = -80.0f;
-
+    // Spawn at the default starting position.
     networkEntity_ = new Entity(
         lampModel,
         /*box=*/nullptr,
-        glm::vec3(kOrbitCentreX + kOrbitRadius, kOrbitCentreY, kOrbitCentreZ),
+        glm::vec3(100.0f, 3.0f, -80.0f),
         glm::vec3(0.0f),
         /*scale=*/1.0f);
 
-    // Attach the interpolation component.  The ENet-based NetworkSystem will
-    // push snapshots into this component's buffer when packets arrive.
+    // Attach the interpolation component for the local player.
     networkEntity_->addComponent<NetworkSyncComponent>();
 
-    // Push into the main entities list so SceneLoader / RenderSystem /
-    // StreamingSystem / ChunkManager see it like any other entity.
+    // Push into the main entities list so RenderSystem / StreamingSystem /
+    // ChunkManager see it like any other entity.
     entities.push_back(networkEntity_);
 
-    std::cout << "[Engine] NetworkSyncComponent entity spawned — "
-                 "orbiting at ("
-              << kOrbitCentreX << ", "
-              << kOrbitCentreY << ", "
-              << kOrbitCentreZ << ") r="
-              << kOrbitRadius  << "\n";
+    std::cout << "[Engine] Local network entity created.\n";
+}
+
+void Engine::loadIPConfig() {
+    std::ifstream cfgFile("ip.cfg");
+    if (cfgFile.is_open()) {
+        std::string ip;
+        if (std::getline(cfgFile, ip)) {
+            // Trim whitespace.
+            auto start = ip.find_first_not_of(" \t\r\n");
+            auto end   = ip.find_last_not_of(" \t\r\n");
+            if (start != std::string::npos) {
+                serverIP_ = ip.substr(start, end - start + 1);
+            }
+        }
+        cfgFile.close();
+    }
+    std::cout << "[Engine] Server IP: " << serverIP_ << "\n";
+}
+
+Entity* Engine::onNetworkSpawn(uint32_t /*networkId*/,
+                               const std::string& /*modelType*/,
+                               const glm::vec3& position) {
+    // Reuse the "lamp" model for all network entities.
+    ModelData lampData = OBJLoader::loadObjModel("lamp");
+    if (lampData.getIndices().empty()) return nullptr;
+
+    auto* lampTex   = new ModelTexture("lamp", PNG, Material{1.0f, 0.0f});
+    auto* lampModel = new TexturedModel(loader->loadToVAO(lampData), lampTex);
+
+    auto* ent = new Entity(lampModel, nullptr, position, glm::vec3(0.0f), 1.0f);
+    entities.push_back(ent);
+    return ent;
+}
+
+void Engine::onNetworkDespawn(uint32_t /*networkId*/, Entity* e) {
+    // Remove from the entities list so RenderSystem stops drawing it.
+    auto it = std::find(entities.begin(), entities.end(), e);
+    if (it != entities.end()) {
+        entities.erase(it);
+    }
+    // Note: in a full implementation we would also delete the entity,
+    // but the render-system references must be cleared first.
 }
 
 void Engine::buildSystems() {
@@ -497,15 +533,30 @@ void Engine::buildSystems() {
     // NetworkSystem connects to the headless server via ENet and interpolates
     // all network entities.  Runs after StreamingSystem (so active entities are
     // current) but before RenderSystem (so updated positions are submitted).
-    if (networkEntity_) {
-        // 1. Create the system and store it in a local variable
+    {
         auto netSys = std::make_unique<NetworkSystem>(
-            std::vector<Entity*>{networkEntity_});
-        
-        // 2. Initialize ENet so the client actually connects
+            serverIP_,
+            // Spawn callback
+            [this](uint32_t nid, const std::string& model,
+                   const glm::vec3& pos) -> Entity* {
+                return onNetworkSpawn(nid, model, pos);
+            },
+            // Despawn callback
+            [this](uint32_t nid, Entity* e) {
+                onNetworkDespawn(nid, e);
+            }
+        );
+
+        // Register the local entity that was created in initNetworkEntity.
+        // It will be linked to the local player's networkId once the
+        // WelcomePacket arrives — for now use id 0 as a placeholder.
+        if (networkEntity_) {
+            netSys->addEntity(0, networkEntity_);
+        }
+
         netSys->init();
-        
-        // 3. Move it into the engine's system array
+
+        networkSystem_ = netSys.get();
         systems.push_back(std::move(netSys));
     }
 
