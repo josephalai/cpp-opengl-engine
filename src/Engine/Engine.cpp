@@ -420,19 +420,32 @@ void Engine::loadIPConfig() {
 Entity* Engine::onNetworkSpawn(uint32_t networkId,
                                const std::string& modelType,
                                const glm::vec3& position) {
-    // Load the lamp model for the remote entity.
-    ModelData lampData = OBJLoader::loadObjModel("lamp");
-    if (lampData.getIndices().empty()) {
-        std::cerr << "[Engine] onNetworkSpawn: could not load 'lamp' model"
-                     " — remote entity " << networkId << " will not appear.\n";
-        return nullptr;
+    // Reuse the local player's Assimp-loaded TexturedModel for remote players.
+    // OBJLoader cannot load .glb/.gltf — the player character comes from
+    // SceneLoader/Assimp, so we share the same model pointer.
+    TexturedModel* remoteModel = nullptr;
+    glm::vec3 modelMin;
+    glm::vec3 modelMax;
+    if (player && player->getModel()) {
+        remoteModel = player->getModel();
+        // Use character-sized default bounds when reusing the player model.
+        modelMin = glm::vec3(-0.5f, 0.0f, -0.5f);
+        modelMax = glm::vec3( 0.5f, 2.0f,  0.5f);
+    } else {
+        // Last-resort OBJ fallback
+        ModelData fallbackData = OBJLoader::loadObjModel("Stall");
+        if (fallbackData.getIndices().empty()) {
+            std::cerr << "[Engine] onNetworkSpawn FAILED — no model for remote entity "
+                      << networkId << "\n";
+            return nullptr;
+        }
+        auto* tex = new ModelTexture("stallTexture", PNG, Material{2.0f, 2.0f});
+        remoteModel = new TexturedModel(loader->loadToVAO(fallbackData), tex);
+        modelMin = fallbackData.getMin();
+        modelMax = fallbackData.getMax();
     }
-    auto* lampTex   = new ModelTexture("lamp", PNG, Material{1.0f, 0.0f});
-    auto* lampModel = new TexturedModel(loader->loadToVAO(lampData), lampTex);
 
     // Each entity needs its own BoundingBox (unique picking colour).
-    glm::vec3 modelMin = lampData.getMin();
-    glm::vec3 modelMax = lampData.getMax();
     AABB bbRegion(BoundTypes::AABB);
     bbRegion.min = modelMin;
     bbRegion.max = modelMax;
@@ -442,13 +455,14 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
     auto* bb    = new BoundingBox(rawBB, BoundingBoxIndex::genUniqueId());
     bb->setAABB(modelMin, modelMax);
 
-    auto* ent = new Entity(lampModel, bb, position, glm::vec3(0.0f), 1.0f);
+    auto* ent = new Entity(remoteModel, bb, position, glm::vec3(0.0f), 1.0f);
 
     // Attach the interpolation component so the entity can receive and
     // smoothly interpolate server transform snapshots.
     ent->addComponent<NetworkSyncComponent>();
 
     entities.push_back(ent);
+    allBoxes.push_back(ent);   // Keep allBoxes in sync for RenderSystem/UISystem
 
     // Register with ChunkManager so the StreamingSystem includes this entity
     // in the active render list.
@@ -475,6 +489,13 @@ void Engine::onNetworkDespawn(uint32_t /*networkId*/, Entity* e) {
     // returns this entity in the active list.
     if (chunkManager) {
         chunkManager->removeEntity(e);
+    }
+
+    // Remove from allBoxes to prevent dangling pointer
+    auto boxIt = std::find(allBoxes.begin(), allBoxes.end(),
+                           static_cast<Interactive*>(e));
+    if (boxIt != allBoxes.end()) {
+        allBoxes.erase(boxIt);
     }
 
     // Free the entity to prevent memory leaks.
