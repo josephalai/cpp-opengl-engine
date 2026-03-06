@@ -22,6 +22,11 @@ void NetworkSyncComponent::pushSnapshot(const Network::TransformSnapshot& snapsh
 
     buffer_.push_back(snapshot);
 
+    // Clamp the buffer to kMaxBufferSize to prevent memory bloat.
+    while (buffer_.size() > kMaxBufferSize) {
+        buffer_.pop_front();
+    }
+
     // The first time we accumulate two snapshots we synchronise our playback
     // clock to the server timeline so renderTime_ - kInterpolationDelay gives
     // a targetTime that is slightly behind the earliest snapshot, allowing
