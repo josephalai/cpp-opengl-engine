@@ -26,12 +26,13 @@ static constexpr float kTurnSpeed = 160.0f;
 /// @param pos           [in/out] World-space position (modified in place).
 /// @param rot           [in/out] Euler angles in degrees (modified in place).
 /// @param terrainHeight Optional terrain height at the current XZ position.
-///                      If provided, pos.y is clamped to this value after
-///                      movement so the entity sticks to the terrain surface.
-///                      Pass a negative sentinel (e.g. -99999) to skip.
+///                      If provided (i.e. > kNoTerrainHeight), pos.y is
+///                      clamped to this value after movement.
+static constexpr float kNoTerrainHeight = -99999.0f;
+
 inline void applyInput(const Network::PlayerInputPacket& input,
                        glm::vec3& pos, glm::vec3& rot,
-                       float terrainHeight = -99999.0f) {
+                       float terrainHeight = kNoTerrainHeight) {
     // --- Rotation ---
     float turnSpeed = 0.0f;
     if      (input.turn > 0.0f) turnSpeed =  kTurnSpeed / 2.0f;
@@ -51,7 +52,7 @@ inline void applyInput(const Network::PlayerInputPacket& input,
     pos.z += distance * cosY;
 
     // --- Terrain height clamping ---
-    if (terrainHeight > -99998.0f) {
+    if (terrainHeight > kNoTerrainHeight) {
         pos.y = terrainHeight;
     }
 }

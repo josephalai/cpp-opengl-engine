@@ -254,6 +254,7 @@ int main() {
                     sp.position  = est.position;
                     std::strncpy(sp.modelType, est.modelType.c_str(),
                                  Network::kModelTypeLen - 1);
+                    sp.modelType[Network::kModelTypeLen - 1] = '\0';
                     sendTo(event.peer, Network::PacketType::Spawn,
                            &sp, sizeof(sp), true);
                 }
@@ -264,6 +265,7 @@ int main() {
                 newSp.position  = st.position;
                 std::strncpy(newSp.modelType, st.modelType.c_str(),
                              Network::kModelTypeLen - 1);
+                newSp.modelType[Network::kModelTypeLen - 1] = '\0';
                 for (auto& [peer, pid] : peerToId) {
                     if (peer != event.peer) {
                         sendTo(peer, Network::PacketType::Spawn,
@@ -325,7 +327,7 @@ int main() {
                                 float th = terrain.valid
                                     ? terrain.getHeight(est.position.x,
                                                         est.position.z)
-                                    : -99999.0f;
+                                    : SharedMovement::kNoTerrainHeight;
                                 SharedMovement::applyInput(
                                     input, est.position, est.rotation, th);
 
@@ -364,7 +366,7 @@ int main() {
                     auto& est = eit->second;
                     float th = terrain.valid
                         ? terrain.getHeight(est.position.x, est.position.z)
-                        : -99999.0f;
+                        : SharedMovement::kNoTerrainHeight;
                     SharedMovement::applyInput(inp, est.position,
                                                est.rotation, th);
                 }

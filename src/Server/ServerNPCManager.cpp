@@ -41,6 +41,9 @@ std::vector<NPCDefinition> ServerNPCManager::loadConfig(const std::string& fileP
                 >> def.startPos.x >> def.startPos.y >> def.startPos.z
                 >> def.scriptType) {
             defs.push_back(def);
+        } else {
+            std::cerr << "[ServerNPCManager] Skipping malformed line: "
+                      << line << "\n";
         }
     }
 
