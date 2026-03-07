@@ -7,7 +7,7 @@
 // but driven entirely by JSON data instead of the legacy .cfg text parser.
 //
 // StringId hashing (Phase 1, Step 1) is used for modelMap lookups.
-// ComponentPool (Phase 1, Step 2) is used automatically via Entity::addComponent.
+// Components are emplaced directly into the EnTT registry via Entity::addComponent.
 
 #include "SceneLoaderJson.h"
 #include "../Util/FileSystem.h"

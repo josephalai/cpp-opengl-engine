@@ -10,11 +10,6 @@
 #include "../BoundingBox/BoundingBox.h"
 #include "../Interfaces/Interactive.h"
 #include "../BoundingBox/BoundingBoxIndex.h"
-#include "Components/IComponent.h"
-#include "ComponentPool.h"
-#include <vector>
-#include <memory>
-#include <functional>
 #include <entt/entt.hpp>
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/RenderComponent.h"
@@ -113,40 +108,24 @@ public:
     entt::registry& getRegistry() { return *registry_; }
 
     // -------------------------------------------------------------------------
-    // Component container
+    // ECS Component interface — delegates directly to entt::registry
     // -------------------------------------------------------------------------
 
-    /// Destructor — releases all pooled components and destroys the ECS entity.
+    /// Destructor — destroys the ECS entity and all its components.
     virtual ~Entity();
 
-    /// Allocate a component of type T from its global ComponentPool, attach it
-    /// to this entity, and call its init() method.  Returns a raw pointer for
-    /// convenience (pool manages the memory; Entity manages the lifecycle).
+    /// Emplace a component of type T into the registry for this entity.
+    /// Returns a raw pointer into registry storage for convenience.
     template<typename T, typename... Args>
     T* addComponent(Args&&... args) {
-        T* ptr = ComponentPool<T>::global().allocate();
-        // Re-construct with provided args via assignment (T must be default-constructible).
-        if constexpr (sizeof...(Args) > 0) {
-            *ptr = T(std::forward<Args>(args)...);
-        }
-        ptr->setEntity(this);
-        ptr->init();
-        components_.push_back({
-            static_cast<IComponent*>(ptr),
-            [ptr]() { ComponentPool<T>::global().release(ptr); }
-        });
-        return ptr;
+        auto& comp = registry_->emplace<T>(handle_, std::forward<Args>(args)...);
+        return &comp;
     }
 
-    /// Return a raw pointer to the first component of type T, or nullptr.
+    /// Return a raw pointer to the component of type T, or nullptr.
     template<typename T>
     T* getComponent() {
-        for (auto& entry : components_) {
-            if (T* ptr = dynamic_cast<T*>(entry.ptr)) {
-                return ptr;
-            }
-        }
-        return nullptr;
+        return registry_->try_get<T>(handle_);
     }
 
 private:
@@ -155,19 +134,6 @@ private:
     // -----------------------------------------------------------------------
     entt::entity    handle_;
     entt::registry* registry_;
-
-    // -----------------------------------------------------------------------
-    // ComponentEntry — pairs an IComponent raw pointer with a type-erased
-    // release function so Entity can return components to their pools without
-    // knowing the concrete type at destruction time.
-    // -----------------------------------------------------------------------
-    struct ComponentEntry {
-        IComponent*           ptr      = nullptr;
-        std::function<void()> releaser;
-    };
-
-    std::vector<ComponentEntry> components_;
-
 };
 
 #endif //ENGINE_ENTITY_H

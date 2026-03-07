@@ -40,7 +40,7 @@ public:
     void subscribeToEvents();
 
 private:
-    InputComponent* inputComponent_ = nullptr; ///< non-owning ptr; owned by components_
+    InputComponent* inputComponent_ = nullptr; ///< non-owning ptr into registry storage
 };
 #endif //ENGINE_PLAYER_H
 

@@ -1,18 +1,15 @@
 //
 // InputComponent.h — Pure-data keyboard-movement component.
 //
-// Phase 2 Step 3: update() has been removed.  The per-frame movement
-// application logic now lives in InputSystem::update(), which reads the
-// public data fields below and applies rotation / physics walk-direction
-// each frame.  The EventBus subscription (subscribeToEvents()) remains here
-// because it wires an internal applyMovementCommand() callback that only
-// needs to update the component's data fields, not touch any entity transform.
+// Phase 2 Step 3 (complete): IComponent inheritance removed. This struct
+// holds only movement state data and wiring helpers. Per-frame movement
+// logic lives in InputSystem::update(). The EventBus subscription
+// (subscribeToEvents()) keeps currentSpeed_ / currentTurnSpeed_ up-to-date.
 //
 
 #ifndef ENGINE_INPUTCOMPONENT_H
 #define ENGINE_INPUTCOMPONENT_H
 
-#include "IComponent.h"
 #include "../../Input/InputMaster.h"
 #include "../../Terrain/Terrain.h"
 #include <nlohmann/json_fwd.hpp>
@@ -20,18 +17,16 @@
 // Forward-declare to avoid pulling in the full Bullet / PhysicsSystem headers.
 class PhysicsSystem;
 
-class InputComponent : public IComponent {
-public:
+struct InputComponent {
     // -------------------------------------------------------------------------
-    // IComponent interface
+    // JSON initialisation
     // -------------------------------------------------------------------------
-    void init() override;
 
-    /// JSON initialisation — load movement tuning from a prefab.
+    /// Load movement tuning from a prefab JSON object.
     /// Supported keys:
     ///   "run_speed"   (float) — units/sec when running
     ///   "turn_speed"  (float) — degrees/sec rotation rate
-    void initFromJson(const nlohmann::json& j) override;
+    void initFromJson(const nlohmann::json& j);
 
     // -------------------------------------------------------------------------
     // Configuration

@@ -3,10 +3,9 @@
 // Pure-data component that holds the state needed for remote-entity
 // interpolation driven by server snapshots.
 //
-// Phase 2 Step 3: update() has been removed.  The interpolation logic
-// (formerly in update()) now lives in NetworkSystem::update(), which reads
-// and writes the public data fields below using registry.view<> iteration
-// (or direct component access via ent->getComponent<>() during migration).
+// Phase 2 Step 3 (complete): IComponent inheritance removed. This struct
+// holds interpolation state only. All per-frame logic lives in
+// NetworkSystem::update(), which reads and writes the public fields below.
 //
 // KEY CONCEPT — Entity Interpolation:
 //   Remote entities do NOT snap directly to the newest snapshot.  Instead,
@@ -37,33 +36,27 @@
 #ifndef ENGINE_NETWORKSYNCCOMPONENT_H
 #define ENGINE_NETWORKSYNCCOMPONENT_H
 
-#include "IComponent.h"
 #include "../../Network/NetworkPackets.h"
 #include <deque>
 #include <glm/glm.hpp>
 #include <nlohmann/json_fwd.hpp>
 
-class NetworkSyncComponent : public IComponent {
-public:
+struct NetworkSyncComponent {
     // -------------------------------------------------------------------------
-    // IComponent interface
+    // JSON initialisation
     // -------------------------------------------------------------------------
-    void init()   override {}
 
-    /// JSON initialisation — load tuning parameters from a prefab.
+    /// Load tuning parameters from a prefab JSON object.
     /// Supported keys:
     ///   "interpolation_delay" (float) — seconds of playback lag
     ///   "max_buffer_size"    (int)    — snapshot ring-buffer capacity
-    void initFromJson(const nlohmann::json& j) override;
+    void initFromJson(const nlohmann::json& j);
 
     // -------------------------------------------------------------------------
     // Server interface
     // -------------------------------------------------------------------------
 
     /// Push a new authoritative snapshot into the incoming buffer.
-    /// Called by MockServer (or the real transport layer in Phase 2+) whenever a
-    /// packet arrives.  Thread-safety: all calls must be from the main thread in
-    /// Phase 1; Phase 2 will need a mutex here.
     void pushSnapshot(const Network::TransformSnapshot& snapshot);
 
     /// Returns the most recently computed XZ movement speed (units/sec).

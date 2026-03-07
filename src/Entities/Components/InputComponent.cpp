@@ -1,5 +1,4 @@
 #include "InputComponent.h"
-#include "../Entity.h"
 #include "../../Physics/PhysicsSystem.h"
 #include "../../Events/Event.h"
 #include "../../Events/EventBus.h"
@@ -7,13 +6,8 @@
 
 #include <glm/glm.hpp>
 #include <cmath>
-#include <iostream>
 
 float InputComponent::SPEED_HACK = 1.0f;
-
-void InputComponent::init() {
-    std::cout << "[InputComponent] Initialized and attached to entity." << std::endl;
-}
 
 void InputComponent::initFromJson(const nlohmann::json& j) {
     if (j.contains("run_speed"))  runSpeed_  = j["run_speed"].get<float>();
