@@ -26,9 +26,6 @@ Entity::Entity(entt::registry& registry, TexturedModel *model, BoundingBox *box,
 }
 
 Entity::~Entity() {
-    for (auto& entry : components_) {
-        entry.releaser();
-    }
     if (registry_ != nullptr && registry_->valid(handle_)) {
         registry_->destroy(handle_);
     }

@@ -7,7 +7,6 @@
 #include "Entity.h"
 #include "../RenderEngine/DisplayManager.h"
 #include "../Terrain/Terrain.h"
-#include "Components/InputComponent.h"
 
 class PhysicsSystem;  ///< forward declaration — avoids circular include
 
@@ -26,21 +25,11 @@ public:
            glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f),
            glm::vec3 rotation = glm::vec3(0), float scale = 1.0f);
 
+    /// No-op stub retained for call-site compatibility (PlayerCamera::move).
     void move(Terrain *terrain);
 
-    /// Wire the player to a live PhysicsSystem so Bullet handles gravity and
-    /// collision instead of the manual terrain-height fallback in move().
+    /// No-op stub retained for call-site compatibility (Engine::loadScene).
     void setPhysicsSystem(PhysicsSystem* ps);
-
-    /// Subscribe to PlayerMoveCommandEvent on the global EventBus.
-    /// After this call, checkInputs() skips direct InputMaster polling and
-    /// relies on the event handler to keep currentSpeed / currentTurnSpeed
-    /// up to date.  Call once during engine initialisation (after InputDispatcher
-    /// has been registered as an ISystem).
-    void subscribeToEvents();
-
-private:
-    InputComponent* inputComponent_ = nullptr; ///< non-owning ptr; owned by components_
 };
 #endif //ENGINE_PLAYER_H
 
