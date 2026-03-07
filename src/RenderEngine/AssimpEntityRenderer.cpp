@@ -11,9 +11,9 @@ AssimpEntityRenderer::AssimpEntityRenderer(AssimpStaticShader *shader) {
  * @param scenes  Batched scene components grouped by AssimpMesh*.
  */
 void AssimpEntityRenderer::render(std::map<AssimpMesh *, std::vector<AssimpModelComponent>> *scenes) {
-    for (auto it = scenes->begin(); it != scenes->end(); ++it) {
-        AssimpMesh* model = it->first;
-        for (const AssimpModelComponent& comp : it->second) {
+    for (const auto& [model, batch] : *scenes) {
+        if (!model) continue;
+        for (const AssimpModelComponent& comp : batch) {
             prepareInstance(comp);
             model->render(shader);
         }
