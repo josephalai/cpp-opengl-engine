@@ -1,0 +1,62 @@
+# CI Workflow: Headless Server — Ubuntu VPS Build Validation
+#
+# Builds the `headless_server` target on Ubuntu (no GPU, no display manager)
+# to confirm the "Build Wall" is intact:
+#   - No OpenGL/GLFW linkage
+#   - Pure C++ terminal binary: ENet + GLM + EnTT + nlohmann/json
+#
+# This mirrors the exact compilation environment of the target Ubuntu VPS.
+
+name: Headless Server Build
+
+on:
+  push:
+    branches: [ master, "copilot/**" ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build-headless-server:
+    name: Build headless_server on Ubuntu
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y cmake g++ ninja-build
+
+      - name: Configure (headless — no OpenGL)
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_STANDARD=17
+
+      - name: Build headless_server
+        run: cmake --build build --target headless_server --parallel
+
+      - name: Smoke-test headless_server binary
+        # Run for 2 seconds then kill. Exit 124 = timeout (expected), 0 = too fast.
+        run: |
+          timeout 2 ./build/headless_server || code=$?
+          if [ "${code:-0}" -eq 124 ] || [ "${code:-0}" -eq 0 ]; then
+            echo "headless_server ran successfully."
+          else
+            echo "headless_server exited with unexpected code: ${code}"
+            exit 1
+          fi
+
+      - name: Verify no OpenGL linkage in headless_server
+        run: |
+          if ldd ./build/headless_server | grep -qi "libGL\|libOpenGL\|libglfw"; then
+            echo "ERROR: headless_server unexpectedly links to a GL/GLFW library!"
+            ldd ./build/headless_server
+            exit 1
+          else
+            echo "OK: headless_server has no GL/GLFW linkage."
+          fi

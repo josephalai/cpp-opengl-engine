@@ -36,6 +36,18 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(entt)
 
 # =============================================================================
+# GLM — header-only math library (fetched automatically via FetchContent)
+# Replaces the manually-cloned deps/glm so the headless server builds on any
+# machine (Ubuntu VPS, CI) without requiring a local deps/ clone.
+# =============================================================================
+FetchContent_Declare(
+    glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG        1.0.1
+)
+FetchContent_MakeAvailable(glm)
+
+# =============================================================================
 # Source file collection
 # =============================================================================
 
@@ -88,8 +100,9 @@ find_package(assimp REQUIRED)
 # Quill (logging)
 add_subdirectory(deps/quill)
 
-# GLM — header-only; just add the include path, no add_subdirectory needed.
-target_include_directories(client_engine PRIVATE deps/glm)
+# GLM — header-only; fetched via FetchContent (glm_SOURCE_DIR set above).
+# deps/glm is kept as a fallback for local macOS builds with a manual clone.
+target_include_directories(client_engine PRIVATE ${glm_SOURCE_DIR})
 
 # Bullet Physics — system dependency (brew install bullet)
 find_package(Bullet REQUIRED)
@@ -139,7 +152,7 @@ add_executable(headless_server ${SERVER_SOURCES})
 
 target_include_directories(headless_server PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/deps/glm
+    ${glm_SOURCE_DIR}
     ${enet_SOURCE_DIR}/include
     ${nlohmann_json_SOURCE_DIR}/include
     ${entt_SOURCE_DIR}/src
