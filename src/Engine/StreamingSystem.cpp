@@ -1,18 +1,19 @@
 // src/Engine/StreamingSystem.cpp
+//
+// Phase 2 Step 3: entities_ and scenes_ refs removed.
+//   StreamingSystem only updates the terrain list and drives ChunkManager.
+//   RenderSystem calls chunkManager_->getActiveEntities() / getActiveAssimpEntities()
+//   directly each frame to obtain the current visible subset.
 
 #include "StreamingSystem.h"
 #include "../Entities/Player.h"
 
-StreamingSystem::StreamingSystem(ChunkManager*               chunkManager,
-                                  Player*                     player,
-                                  std::vector<Terrain*>&      allTerrains,
-                                  std::vector<Entity*>&       entities,
-                                  std::vector<AssimpEntity*>& scenes)
+StreamingSystem::StreamingSystem(ChunkManager*            chunkManager,
+                                  Player*                  player,
+                                  std::vector<Terrain*>&   allTerrains)
     : chunkManager_(chunkManager)
     , player_(player)
     , allTerrains_(allTerrains)
-    , entities_(entities)
-    , scenes_(scenes)
 {}
 
 void StreamingSystem::update(float /*deltaTime*/) {
@@ -25,10 +26,9 @@ void StreamingSystem::update(float /*deltaTime*/) {
     // entities from becoming invisible when they cross chunk boundaries.
     chunkManager_->refreshEntityPositions();
 
-    // Refresh the engine's scene lists with the currently loaded chunks.
+    // Refresh the terrain list with the currently loaded chunks so RenderSystem
+    // has the up-to-date active terrain set.
     allTerrains_ = chunkManager_->getActiveTerrains();
-    entities_    = chunkManager_->getActiveEntities();
-    scenes_      = chunkManager_->getActiveAssimpEntities();
 }
 
 void StreamingSystem::shutdown() {

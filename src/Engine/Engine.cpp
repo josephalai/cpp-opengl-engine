@@ -40,9 +40,12 @@
 #include "../Network/NetworkPackets.h"
 #include "../Entities/Components/NetworkSyncComponent.h"
 #include "../ECS/Components/TransformComponent.h"
+#include "../ECS/Components/EntityOwnerComponent.h"
+#include "../ECS/Components/AssimpComponent.h"
+#include "../ECS/Components/LightComponent.h"
+#include "../Streaming/ChunkManager.h"
 #include "../Toolbox/Maths.h"
 #include <enet/enet.h>
-#include <thread>
 #include <fstream>
 #include <algorithm>
 
@@ -114,6 +117,16 @@ void Engine::loadScene() {
     const std::string jsonPath = FileSystem::Scene("scene.json");
     const std::string cfgPath  = FileSystem::Scene("scene.cfg");
 
+    // -----------------------------------------------------------------------
+    // Temporary accumulators — used only during loading.  After loading,
+    // their contents are migrated into the EnTT registry as pure components so
+    // that Systems can discover them via registry.view<> instead of side-vectors.
+    // -----------------------------------------------------------------------
+    std::vector<Entity*>         tmpEntities;
+    std::vector<AssimpEntity*>   tmpScenes;
+    std::vector<Light*>          tmpLights;
+    std::vector<AnimatedEntity*> tmpAnimated;
+
     std::vector<SceneLoader::PhysicsBodyCfg>   physicsBodyCfgs;
     std::vector<SceneLoader::PhysicsGroundCfg> physicsGroundCfgs;
 
@@ -124,10 +137,10 @@ void Engine::loadScene() {
             probe.close();
             sceneLoaded = SceneLoaderJson::load(jsonPath, loader,
                               registry,
-                              entities, scenes, lights,
+                              tmpEntities, tmpScenes, tmpLights,
                               allTerrains, guis, texts, waterTiles,
                               primaryTerrain, player, playerCamera,
-                              animatedEntities,
+                              tmpAnimated,
                               physicsBodyCfgs, physicsGroundCfgs);
             if (!sceneLoaded) {
                 std::cerr << "[Engine] scene.json load failed — falling back to scene.cfg\n";
@@ -137,39 +150,58 @@ void Engine::loadScene() {
     if (!sceneLoaded) {
         sceneLoaded = SceneLoader::load(cfgPath, loader,
                           registry,
-                          entities, scenes, lights,
+                          tmpEntities, tmpScenes, tmpLights,
                           allTerrains, guis, texts, waterTiles,
                           primaryTerrain, player, playerCamera,
-                          animatedEntities,
+                          tmpAnimated,
                           physicsBodyCfgs, physicsGroundCfgs);
     }
 
-    // All animated entities loaded by SceneLoader belong to the local player's
-    // character(s).  Mark them so AnimationSystem doesn't treat them as remote.
-    // Also mark them as model owners so Engine::shutdown() knows to delete the
-    // model for these entities (remote entities share the pointer and must not).
-    for (auto* ae : animatedEntities) {
-        if (ae) {
-            ae->isLocalPlayer = true;
-            ae->ownsModel     = true;
-        }
+    // -----------------------------------------------------------------------
+    // Migrate temporaries → registry components
+    // -----------------------------------------------------------------------
+
+    // Entity* → EntityOwnerComponent so RenderSystem can discover them via view
+    for (auto* e : tmpEntities) {
+        registry.emplace<EntityOwnerComponent>(e->getHandle(), e);
     }
 
-    // Set up physics world and register bodies from config
+    // AssimpEntity* → AssimpComponent (registry entity per scene object)
+    for (auto* s : tmpScenes) {
+        auto h = registry.create();
+        registry.emplace<AssimpComponent>(h, s);
+    }
+
+    // Light* → LightComponent (registry entity per light; component takes ownership)
+    for (auto* l : tmpLights) {
+        auto h = registry.create();
+        registry.emplace<LightComponent>(h, l);
+    }
+
+    // AnimatedEntity* → AnimatedEntity component (copy fields into registry)
+    for (auto* ae : tmpAnimated) {
+        ae->isLocalPlayer = true;
+        ae->ownsModel     = true;
+        auto h = registry.create();
+        registry.emplace<AnimatedEntity>(h, *ae); // copy by value into registry
+        delete ae; // fields copied; original wrapper no longer needed
+    }
+
+    // -----------------------------------------------------------------------
+    // Physics world setup
+    // -----------------------------------------------------------------------
     physicsSystem = new PhysicsSystem();
     physicsSystem->init();
 
-    // Add ground planes
     for (const auto& g : physicsGroundCfgs) {
         physicsSystem->addGroundPlane(g.yHeight);
     }
 
-    // Add rigid bodies for named entities
+    // physicsBodyCfgs uses entityIndex into tmpEntities (same ordering as before)
     for (const auto& cfg : physicsBodyCfgs) {
-        // entityIndex was resolved by SceneLoader against the entities vector
-        if (cfg.entityIndex < 0 || cfg.entityIndex >= static_cast<int>(entities.size()))
+        if (cfg.entityIndex < 0 || cfg.entityIndex >= static_cast<int>(tmpEntities.size()))
             continue;
-        Entity* ent = entities[static_cast<size_t>(cfg.entityIndex)];
+        Entity* ent = tmpEntities[static_cast<size_t>(cfg.entityIndex)];
 
         PhysicsBodyDef def;
         def.type        = cfg.type;
@@ -196,8 +228,9 @@ void Engine::loadScene() {
         }
     }
 
-    // Fallback: if neither scene.json nor scene.cfg provided a player or camera,
-    // build minimal defaults so the engine always has something to render.
+    // -----------------------------------------------------------------------
+    // Fallback defaults when scene files are missing / incomplete
+    // -----------------------------------------------------------------------
     if (!sceneLoaded || !player || !playerCamera) {
         std::cerr << "[Engine] SceneLoader failed or missing player — using minimal defaults\n";
 
@@ -212,13 +245,15 @@ void Engine::loadScene() {
             allTerrains.push_back(primaryTerrain);
         }
 
-        if (lights.empty()) {
-            lights.push_back(new Light(glm::vec3(0.0f, 1000.0f, -7000.0f),
-                                       glm::vec3(0.4f, 0.4f, 0.4f), {
+        if (registry.view<LightComponent>().size_hint() == 0) {
+            auto* l = new Light(glm::vec3(0.0f, 1000.0f, -7000.0f),
+                                glm::vec3(0.4f, 0.4f, 0.4f), {
                 .ambient  = glm::vec3(0.2f, 0.2f, 0.2f),
                 .diffuse  = glm::vec3(0.5f, 0.5f, 0.5f),
                 .constant = Light::kDirectional,
-            }));
+            });
+            auto h = registry.create();
+            registry.emplace<LightComponent>(h, l);
         }
 
         if (!player) {
@@ -234,7 +269,8 @@ void Engine::loadScene() {
                     glm::vec3(100.0f, 3.0f, -50.0f),
                     glm::vec3(0.0f, 180.0f, 0.0f), 1.0f);
                 InteractiveModel::setInteractiveBox(player);
-                entities.push_back(player);
+                registry.emplace<EntityOwnerComponent>(player->getHandle(),
+                                                       static_cast<Entity*>(player));
             } else {
                 std::cerr << "[Engine] Could not load Stall fallback model\n";
             }
@@ -245,14 +281,12 @@ void Engine::loadScene() {
         }
     }
 
-    // Register heightfield colliders for all terrain tiles so Bullet knows
-    // about the ground geometry for character/rigid-body collision.
+    // Register heightfield colliders for all terrain tiles.
     for (auto* t : allTerrains) {
         physicsSystem->addTerrainCollider(t);
     }
 
-    // Set up a kinematic character controller for the player so Bullet handles
-    // gravity and collision instead of the manual terrain-height fallback.
+    // Set up kinematic character controller for the player.
     if (player) {
         physicsSystem->setCharacterController(player, 1.0f, 3.0f);
         player->setPhysicsSystem(physicsSystem);
@@ -387,32 +421,28 @@ void Engine::initFramebuffersAndPickers() {
 
     picker = new TerrainPicker(playerCamera, renderer->getProjectionMatrix(), primaryTerrain);
 
-    for (auto e : entities) {
-        if (e->getBoundingBox() != nullptr) {
-            allBoxes.push_back(e);
-        }
-    }
-    allBoxes.reserve(entities.size() + scenes.size());
-    allBoxes.insert(allBoxes.end(), entities.begin(), entities.end());
-    allBoxes.insert(allBoxes.end(), scenes.begin(), scenes.end());
-
     // Wire keyboard-driven animation transitions for every animated character.
-    // SceneLoader registered no-op lambdas; replace with real input-driven ones.
     // setupDefaultTransitions is safe to call when not all clip states exist —
     // the controller silently ignores transitions to unregistered states.
-    for (auto* ae : animatedEntities) {
-        if (ae && ae->controller && ae->isLocalPlayer) {
-            ae->controller->setupDefaultTransitions(
-                []() { return InputMaster::isKeyDown(W) && !InputMaster::isKeyDown(LeftShift); },
-                []() { return InputMaster::isKeyDown(W) &&  InputMaster::isKeyDown(LeftShift); },
-                []() { return InputMaster::isKeyDown(Space); });
+    {
+        auto animView = registry.view<AnimatedEntity>();
+        for (auto [e, ae] : animView.each()) {
+            if (ae.controller && ae.isLocalPlayer) {
+                ae.controller->setupDefaultTransitions(
+                    []() { return InputMaster::isKeyDown(W) && !InputMaster::isKeyDown(LeftShift); },
+                    []() { return InputMaster::isKeyDown(W) &&  InputMaster::isKeyDown(LeftShift); },
+                    []() { return InputMaster::isKeyDown(Space); });
+            }
         }
     }
 
-    if (!animatedEntities.empty())
-        std::cout << "[Engine] " << animatedEntities.size() << " animated character(s) ready.\n";
-    else
-        std::cout << "[Engine] No animated_character entries in scene.cfg.\n";
+    {
+        auto animCount = registry.view<AnimatedEntity>().size_hint();
+        if (animCount > 0)
+            std::cout << "[Engine] " << animCount << " animated character(s) ready.\n";
+        else
+            std::cout << "[Engine] No animated_character entries in scene.cfg.\n";
+    }
 
     // Phase 2.4 — Instanced Rendering (500+ trees in one draw call)
     {
@@ -508,8 +538,8 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
     // smoothly interpolate server transform snapshots.
     ent->addComponent<NetworkSyncComponent>();
 
-    entities.push_back(ent);
-    allBoxes.push_back(ent);   // Keep allBoxes in sync for RenderSystem/UISystem
+    // Register in registry so RenderSystem can discover this entity via view.
+    registry.emplace<EntityOwnerComponent>(ent->getHandle(), ent);
 
     // Register with ChunkManager so the StreamingSystem includes this entity
     // in the active render list.
@@ -517,87 +547,89 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
         chunkManager->registerEntity(ent, position);
     }
 
-    // Create an AnimatedEntity so the remote player renders with the animated
-    // character mesh (same AnimatedModel as local player — safe to share since
-    // AnimatedRenderer renders entities sequentially and uploads bone matrices
-    // per-entity before each draw call).
-    if (!animatedEntities.empty() && animatedEntities[0] && animatedEntities[0]->model) {
-        AnimatedModel* sharedModel = animatedEntities[0]->model;
-
-        // Normalize animation clip names identically to SceneLoader.
-        auto normalizeClipName = [](const std::string& raw) -> std::string {
-            std::string lower(raw);
-            for (auto& c : lower)
-                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (lower.find("idle") != std::string::npos) return "Idle";
-            if (lower.find("walk") != std::string::npos) return "Walk";
-            if (lower.find("run")  != std::string::npos) return "Run";
-            if (lower.find("jump") != std::string::npos) return "Jump";
-            std::string out = raw;
-            if (!out.empty())
-                out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
-            return out;
-        };
-
-        auto* remoteCtrl = new AnimationController();
-        for (auto& clip : sharedModel->clips) {
-            remoteCtrl->addState(normalizeClipName(clip.name), &clip);
+    // Create an AnimatedEntity component so the remote player renders with the
+    // animated character mesh (same AnimatedModel as local player — safe to
+    // share since AnimatedRenderer renders entities sequentially).
+    {
+        // Find the local player's animated model from the registry.
+        AnimatedModel* sharedModel = nullptr;
+        float          firstScale  = 1.0f;
+        auto animView = registry.view<AnimatedEntity>();
+        for (auto [ae_handle, ae] : animView.each()) {
+            if (ae.isLocalPlayer && ae.model) {
+                sharedModel = ae.model;
+                firstScale  = ae.scale;
+                break;
+            }
         }
-        // Start in Idle; AnimationSystem will transition via requestTransition().
-        remoteCtrl->setState("Idle");
 
-        auto* remoteAe         = new AnimatedEntity();
-        remoteAe->model        = sharedModel;
-        remoteAe->controller   = remoteCtrl;
-        remoteAe->position     = position;
-        remoteAe->scale        = animatedEntities[0]->scale;
-        remoteAe->modelOffset  = glm::vec3(0.0f);  // No physics capsule offset
-        remoteAe->isLocalPlayer = false;
-        remoteAe->pairedEntity  = ent;
+        if (sharedModel) {
+            // Normalize animation clip names identically to SceneLoader.
+            auto normalizeClipName = [](const std::string& raw) -> std::string {
+                std::string lower(raw);
+                for (auto& c : lower)
+                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (lower.find("idle") != std::string::npos) return "Idle";
+                if (lower.find("walk") != std::string::npos) return "Walk";
+                if (lower.find("run")  != std::string::npos) return "Run";
+                if (lower.find("jump") != std::string::npos) return "Jump";
+                std::string out = raw;
+                if (!out.empty())
+                    out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+                return out;
+            };
 
-        animatedEntities.push_back(remoteAe);
+            auto* remoteCtrl = new AnimationController();
+            for (auto& clip : sharedModel->clips) {
+                remoteCtrl->addState(normalizeClipName(clip.name), &clip);
+            }
+            remoteCtrl->setState("Idle");
+
+            AnimatedEntity remoteAe;
+            remoteAe.model        = sharedModel;
+            remoteAe.controller   = remoteCtrl;
+            remoteAe.position     = position;
+            remoteAe.scale        = firstScale;
+            remoteAe.modelOffset  = glm::vec3(0.0f);
+            remoteAe.isLocalPlayer = false;
+            remoteAe.ownsModel    = false;
+            remoteAe.pairedEntity = ent;
+
+            auto aeHandle = registry.create();
+            registry.emplace<AnimatedEntity>(aeHandle, remoteAe);
+        }
     }
 
     std::cout << "[Engine] Remote entity " << networkId
               << " (model=\"" << modelType << "\") spawned at ("
-              << position.x << ", " << position.y << ", " << position.z
-              << ") — entities.size()=" << entities.size() << "\n";
+              << position.x << ", " << position.y << ", " << position.z << ")\n";
 
     return ent;
 }
 
 void Engine::onNetworkDespawn(uint32_t /*networkId*/, Entity* e) {
-    // Remove the paired AnimatedEntity (if any) before deleting the Entity so
+    // Remove the paired AnimatedEntity component from the registry so
     // AnimationSystem no longer renders or accesses the dangling pairedEntity ptr.
-    for (auto it = animatedEntities.begin(); it != animatedEntities.end(); ++it) {
-        if (*it && (*it)->pairedEntity == e) {
-            delete (*it)->controller;  // Controller is owned per remote entity
-            delete *it;
-            animatedEntities.erase(it);
-            break;
+    {
+        auto animView = registry.view<AnimatedEntity>();
+        for (auto [ae_handle, ae] : animView.each()) {
+            if (ae.pairedEntity == e) {
+                delete ae.controller; // controller is owned per remote entity
+                registry.destroy(ae_handle);
+                break;
+            }
         }
     }
 
-    // Remove from the entities list so RenderSystem stops drawing it.
-    auto it = std::find(entities.begin(), entities.end(), e);
-    if (it != entities.end()) {
-        entities.erase(it);
-    }
-
-    // Deregister from ChunkManager so the StreamingSystem no longer
+    // Deregister from ChunkManager so StreamingSystem no longer
     // returns this entity in the active list.
     if (chunkManager) {
         chunkManager->removeEntity(e);
     }
 
-    // Remove from allBoxes to prevent dangling pointer
-    auto boxIt = std::find(allBoxes.begin(), allBoxes.end(),
-                           static_cast<Interactive*>(e));
-    if (boxIt != allBoxes.end()) {
-        allBoxes.erase(boxIt);
-    }
-
-    // Free the entity to prevent memory leaks.
+    // Deleting the Entity* calls Entity::~Entity() which destroys the entt
+    // entity handle and all its registry components (EntityOwnerComponent,
+    // TransformComponent, etc.).
     delete e;
 }
 
@@ -642,15 +674,21 @@ void Engine::buildSystems() {
         for (auto* t : allTerrains) {
             if (t) chunkManager->registerTerrain(t);
         }
-        // Register entities into the chunk grid.
-        for (auto* e : entities) {
-            if (e) chunkManager->registerEntity(e, e->getPosition());
+        // Register entities from the registry into the chunk grid.
+        {
+            auto eView = registry.view<EntityOwnerComponent>();
+            for (auto [h, eoc] : eView.each()) {
+                if (eoc.ptr) chunkManager->registerEntity(eoc.ptr, eoc.ptr->getPosition());
+            }
         }
-        for (auto* s : scenes) {
-            if (s) chunkManager->registerAssimpEntity(s, s->getPosition());
+        {
+            auto sView = registry.view<AssimpComponent>();
+            for (auto [h, ac] : sView.each()) {
+                if (ac.entity) chunkManager->registerAssimpEntity(ac.entity, ac.entity->getPosition());
+            }
         }
         systems.push_back(std::make_unique<StreamingSystem>(
-            chunkManager, player, allTerrains, entities, scenes));
+            chunkManager, player, allTerrains));
     }
 
     // NetworkSystem connects to the headless server via ENet and interpolates
@@ -678,15 +716,16 @@ void Engine::buildSystems() {
     }
 
     systems.push_back(std::make_unique<RenderSystem>(
-        renderer, reflectFbo, entities, scenes, allTerrains, lights, allBoxes,
-        playerCamera, renderer->getProjectionMatrix(), instancedTreeModel));
+        renderer, reflectFbo, registry, allTerrains,
+        playerCamera, renderer->getProjectionMatrix(), instancedTreeModel,
+        chunkManager));
 
     systems.push_back(std::make_unique<AnimationSystem>(
-        animRenderer, animatedEntities, player, lights,
+        animRenderer, registry, player,
         playerCamera, renderer->getProjectionMatrix()));
 
     systems.push_back(std::make_unique<UISystem>(
-        renderer, allBoxes, clickColorText, masterContainer,
+        renderer, registry, clickColorText, masterContainer,
         guiRenderer, guis));
 }
 
@@ -730,20 +769,29 @@ void Engine::shutdown() {
         animShader->getBoneBuffer().cleanup();
         animShader->cleanUp();
     }
-    for (auto* ae : animatedEntities) {
-        if (ae) {
-            // Only delete the model when this entity owns it.  Remote entities
-            // share the local player's AnimatedModel pointer; deleting it more
-            // than once causes the malloc double-free crash seen on quit.
-            if (ae->ownsModel && ae->model) {
-                ae->model->cleanUp();
-                delete ae->model;
+
+    // Clean up animated entities from the registry.
+    // Only delete the model when the component owns it (local-player entities);
+    // remote entities share the pointer and must NOT delete it.
+    {
+        auto view = registry.view<AnimatedEntity>();
+        for (auto [e, ae] : view.each()) {
+            if (ae.ownsModel && ae.model) {
+                ae.model->cleanUp();
+                delete ae.model;
             }
-            delete ae->controller;
-            delete ae;
+            delete ae.controller;
         }
     }
-    animatedEntities.clear();
+
+    // Clean up lights owned via LightComponent.
+    {
+        auto view = registry.view<LightComponent>();
+        for (auto [e, lc] : view.each()) {
+            delete lc.light;
+        }
+    }
+
     delete animRenderer;
     loader->cleanUp();
     DisplayManager::closeDisplay();

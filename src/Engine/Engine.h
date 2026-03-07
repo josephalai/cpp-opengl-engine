@@ -25,6 +25,9 @@
 #include "../Physics/PhysicsSystem.h"
 #include <entt/entt.hpp>
 #include <string>
+#include "../ECS/Components/EntityOwnerComponent.h"
+#include "../ECS/Components/AssimpComponent.h"
+#include "../ECS/Components/LightComponent.h"
 
 class ChunkManager;
 class NetworkSystem;
@@ -86,10 +89,6 @@ private:
     std::vector<WaterTile> waterTiles;
 
     std::vector<Terrain*> allTerrains;
-    std::vector<Light*> lights;
-    std::vector<Entity*> entities;
-    std::vector<AssimpEntity*> scenes;
-    std::vector<Interactive*> allBoxes;
     std::vector<GuiTexture*> guis;
     std::vector<GuiRect*> rects;
     std::vector<GUIText*> texts;
@@ -108,7 +107,6 @@ private:
     // --- Animation ---
     AnimatedShader*   animShader   = nullptr;
     AnimatedRenderer* animRenderer = nullptr;
-    std::vector<AnimatedEntity*> animatedEntities;
 
     // --- Physics ---
     PhysicsSystem* physicsSystem = nullptr;

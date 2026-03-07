@@ -1,4 +1,8 @@
 // src/Engine/UISystem.cpp
+//
+// Phase 2 Step 3 — Pure Systems.
+//   allBoxes is built from registry views each frame instead of being
+//   passed as a constructor argument.
 
 #include "UISystem.h"
 #include "../RenderEngine/MasterRenderer.h"
@@ -15,15 +19,20 @@
 #include "../Guis/Text/GUIText.h"
 #include "../Entities/Player.h"
 #include "../RenderEngine/DisplayManager.h"
+#include "../ECS/Components/EntityOwnerComponent.h"
+#include "../ECS/Components/AssimpComponent.h"
+#include "../Interfaces/Interactive.h"
+#include "../Entities/Entity.h"
+#include "../Entities/AssimpEntity.h"
 
 UISystem::UISystem(MasterRenderer*            renderer,
-                   std::vector<Interactive*>& allBoxes,
+                   entt::registry&            registry,
                    GUIText*                   clickColorText,
                    GuiComponent*              masterContainer,
                    GuiRenderer*               guiRenderer,
                    std::vector<GuiTexture*>&  guis)
     : renderer_(renderer)
-    , allBoxes_(allBoxes)
+    , registry_(registry)
     , clickColorText_(clickColorText)
     , masterContainer_(masterContainer)
     , guiRenderer_(guiRenderer)
@@ -33,7 +42,20 @@ UISystem::UISystem(MasterRenderer*            renderer,
 void UISystem::update(float /*deltaTime*/) {
     // Handle object picking on left-click
     if (InputMaster::hasPendingClick() && InputMaster::mouseClicked(LeftClick)) {
-        renderer_->renderBoundingBoxes(allBoxes_);
+        // Build allBoxes from registry on demand for picking.
+        std::vector<Interactive*> allBoxes;
+        {
+            auto eView = registry_.view<EntityOwnerComponent>();
+            for (auto [e, eoc] : eView.each()) {
+                if (eoc.ptr && eoc.ptr->getBoundingBox()) allBoxes.push_back(eoc.ptr);
+            }
+            auto sView = registry_.view<AssimpComponent>();
+            for (auto [e, ac] : sView.each()) {
+                if (ac.entity && ac.entity->getBoundingBox()) allBoxes.push_back(ac.entity);
+            }
+        }
+
+        renderer_->renderBoundingBoxes(allBoxes);
         Color clickColor = Picker::getColor();
         int element      = BoundingBoxIndex::getIndexByColor(clickColor);
 
