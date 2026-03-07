@@ -19,9 +19,9 @@ MasterRenderer::MasterRenderer(PlayerCamera *cameraInput, Loader *loader) : shad
                                                             bShader(new BoundingBoxShader()){
     RenderStyle::enableCulling();
     entities = new std::map<TexturedModel *, std::vector<Entity *>>;
-    scenes = new std::map<AssimpMesh *, std::vector<AssimpEntity *>>;
+    scenes = new std::map<AssimpMesh *, std::vector<AssimpModelComponent>>;
     terrains = new std::vector<Terrain *>;
-    boxes = new std::map<RawBoundingBox *, std::vector<Interactive *>>;
+    boxes = new std::map<RawBoundingBox *, std::vector<Entity *>>;
     terrainRenderer = new TerrainRenderer(terrainShader, this->projectionMatrix);
     sceneRenderer = new AssimpEntityRenderer(sceneShader);
     skyboxRenderer = new SkyboxRenderer(loader, this->projectionMatrix, &skyColor);
@@ -131,31 +131,31 @@ void MasterRenderer::processEntity(Entity *entity) {
     }
 }
 
-void MasterRenderer::processAssimpEntity(AssimpEntity *scene) {
-    AssimpMesh *model = scene->getModel();
+void MasterRenderer::processAssimpEntity(const AssimpModelComponent& comp) {
+    AssimpMesh *model = comp.mesh;
     auto batchIterator = scenes->find(model);
     if (batchIterator != scenes->end()) {
-        batchIterator->second.push_back(scene);
+        batchIterator->second.push_back(comp);
     } else {
-        std::vector<AssimpEntity *> newBatch;
-        newBatch.push_back(scene);
+        std::vector<AssimpModelComponent> newBatch;
+        newBatch.push_back(comp);
         (*scenes)[model] = newBatch;
     }
 }
 
-void MasterRenderer::processBoundingBox(Interactive *entityWithBox) {
-    auto coloredBox = entityWithBox->getBoundingBox()->getRawBoundingBox();
+void MasterRenderer::processBoundingBox(Entity *entity) {
+    auto coloredBox = entity->getBoundingBox()->getRawBoundingBox();
     auto itBoxes = boxes->find(coloredBox);
     if (itBoxes != boxes->end()) {
-        itBoxes->second.push_back(entityWithBox);
+        itBoxes->second.push_back(entity);
     } else {
-        std::vector<Interactive *> newBatch;
-        newBatch.push_back(entityWithBox);
+        std::vector<Entity *> newBatch;
+        newBatch.push_back(entity);
         (*boxes)[coloredBox] = newBatch;
     }
 }
 
-void MasterRenderer::renderScene(std::vector<Entity *> entities, std::vector<AssimpEntity *> aEntities,
+void MasterRenderer::renderScene(std::vector<Entity *> entities, std::vector<AssimpModelComponent> aComps,
                                  std::vector<Terrain *> terrains, std::vector<Light *> lights) {
     for (Terrain *ter : terrains) {
         processTerrain(ter);
@@ -165,8 +165,8 @@ void MasterRenderer::renderScene(std::vector<Entity *> entities, std::vector<Ass
         processEntity(ent);
     }
 
-    for (AssimpEntity *scene : aEntities) {
-        processAssimpEntity(scene);
+    for (const AssimpModelComponent& comp : aComps) {
+        processAssimpEntity(comp);
     }
 
     render(lights);
@@ -175,13 +175,13 @@ void MasterRenderer::renderScene(std::vector<Entity *> entities, std::vector<Ass
 /**
  * Renders Bounding Boxes
  *
- * Inputs a variety of Interactive objects, which means each of them have bounding boxes. Then the bounding boxes
+ * Inputs a variety of Entity objects, which means each of them have bounding boxes. Then the bounding boxes
  * are rendered with each of their colors.
  *
  * @param boxes
  */
-void MasterRenderer::renderBoundingBoxes(std::vector<Interactive*> boxes) {
-    for (Interactive *entity : boxes) {
+void MasterRenderer::renderBoundingBoxes(std::vector<Entity*> entities) {
+    for (Entity *entity : entities) {
         if (entity->getBoundingBox() != nullptr) {
             processBoundingBox(entity);
         }
@@ -254,11 +254,11 @@ void MasterRenderer::renderWater(Camera* cam, Light* sun) {
 // Scene Graph
 // ---------------------------------------------------------------------------
 
-void MasterRenderer::renderSceneGraph(SceneGraph& graph, std::vector<AssimpEntity*> aEntities,
+void MasterRenderer::renderSceneGraph(SceneGraph& graph, std::vector<AssimpModelComponent> aComps,
                                        std::vector<Terrain*> terrains, std::vector<Light*> lights) {
     graph.update();
     std::vector<Entity*> sgEntities = graph.collectEntities();
-    renderScene(sgEntities, aEntities, terrains, lights);
+    renderScene(sgEntities, aComps, terrains, lights);
 }
 
 // ---------------------------------------------------------------------------

@@ -14,7 +14,6 @@
 
 #include "../RenderEngine/Loader.h"
 #include "../Entities/Entity.h"
-#include "../Entities/AssimpEntity.h"
 #include "../Entities/Player.h"
 #include "../Entities/PlayerCamera.h"
 #include "../Entities/Light.h"
@@ -59,7 +58,6 @@ public:
         Loader*                     loader,
         entt::registry&             registry,
         std::vector<Entity*>&       entities,
-        std::vector<AssimpEntity*>& scenes,
         std::vector<Light*>&        lights,
         std::vector<Terrain*>&      allTerrains,
         std::vector<GuiTexture*>&   guis,

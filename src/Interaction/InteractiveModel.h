@@ -5,20 +5,20 @@
 #ifndef ENGINE_INTERACTIVEMODEL_H
 #define ENGINE_INTERACTIVEMODEL_H
 
-
-#include "../Interfaces/Interactive.h"
 #include <map>
 
+class Entity;
+
 class InteractiveModel {
-    static std::map<int, Interactive *> interactiveBox;
+    static std::map<int, Entity *> interactiveBox;
 public:
-    static Interactive* getInteractiveBox(int index);
+    static Entity* getInteractiveBox(int index);
 
-    static void setInteractiveBox(int index, Interactive *interactive);
+    static void setInteractiveBox(int index, Entity *entity);
 
-    static void setInteractiveBox(Interactive *interactive);
+    static void setInteractiveBox(Entity *entity);
 
-    static int getIndexByInteractive(Interactive *interactive);
+    static int getIndexByInteractive(Entity *entity);
 };
 
 
