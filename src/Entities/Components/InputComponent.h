@@ -11,7 +11,7 @@
 #include "IComponent.h"
 #include "../../Input/InputMaster.h"
 #include "../../Terrain/Terrain.h"
-#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 // Forward-declare to avoid pulling in the full Bullet / PhysicsSystem headers.
 class PhysicsSystem;

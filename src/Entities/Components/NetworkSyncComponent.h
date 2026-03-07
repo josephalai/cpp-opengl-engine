@@ -25,7 +25,7 @@
 #include "../../Network/NetworkPackets.h"
 #include <deque>
 #include <glm/glm.hpp>
-#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 class NetworkSyncComponent : public IComponent {
 public:

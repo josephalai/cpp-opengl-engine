@@ -12,9 +12,10 @@
 #ifndef ENGINE_ICOMPONENT_H
 #define ENGINE_ICOMPONENT_H
 
-// Forward-declare nlohmann::json to avoid pulling in the full header in
-// every translation unit that includes IComponent.h.
-namespace nlohmann { class json; }
+// Use the official forward-declaration header so we get nlohmann::json
+// without triggering a name-collision between our forward-decl and the
+// library's own  `using json = basic_json<>`.
+#include <nlohmann/json_fwd.hpp>
 
 class Entity;
 
