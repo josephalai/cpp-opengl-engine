@@ -22,7 +22,8 @@ public:
      * @param rotation
      * @param scale
      */
-    Player(TexturedModel *model, BoundingBox *box, glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f),
+    Player(entt::registry& registry, TexturedModel *model, BoundingBox *box,
+           glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f),
            glm::vec3 rotation = glm::vec3(0), float scale = 1.0f);
 
     void move(Terrain *terrain);

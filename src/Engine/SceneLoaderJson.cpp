@@ -85,6 +85,7 @@ float parseJsonY(const nlohmann::json& val, float& yOffset) {
 bool SceneLoaderJson::load(
     const std::string&             jsonPath,
     Loader*                        loader,
+    entt::registry&                registry,
     std::vector<Entity*>&          entities,
     std::vector<AssimpEntity*>&    scenes,
     std::vector<Light*>&           lights,
@@ -273,6 +274,7 @@ bool SceneLoaderJson::load(
             float sc = e.value("scale", 1.0f);
             entityAliasByIndex[aliasId].push_back(static_cast<int>(entities.size()));
             entities.push_back(new Entity(
+                registry,
                 lm.model,
                 new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
                 glm::vec3(x, yVal, z), glm::vec3(rx, ry, rz), sc));
@@ -304,11 +306,11 @@ bool SceneLoaderJson::load(
                 entityAliasByIndex[aliasId].push_back(static_cast<int>(entities.size()));
                 if (useAtlas) {
                     int idx = (rand() % 4) + 1;
-                    entities.push_back(new Entity(lm.model,
+                    entities.push_back(new Entity(registry, lm.model,
                         new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
                         idx, pos, rot, sc));
                 } else {
-                    entities.push_back(new Entity(lm.model,
+                    entities.push_back(new Entity(registry, lm.model,
                         new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
                         pos, rot, sc));
                 }
@@ -349,6 +351,7 @@ bool SceneLoaderJson::load(
         if (it != modelMap.end()) {
             auto& lm = it->second;
             player = new Player(
+                registry,
                 lm.model,
                 new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
                 glm::vec3(p.value("x", 0.0f), p.value("y", 0.0f), p.value("z", 0.0f)),

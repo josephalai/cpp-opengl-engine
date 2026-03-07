@@ -5,9 +5,9 @@
 // Created by Joseph Alai on 7/10/21.
 //
 
-Player::Player(TexturedModel *model, BoundingBox *box, glm::vec3 position,
-               glm::vec3 rotation, float scale)
-    : Entity(model, box, position, rotation, scale)
+Player::Player(entt::registry& registry, TexturedModel *model, BoundingBox *box,
+               glm::vec3 position, glm::vec3 rotation, float scale)
+    : Entity(registry, model, box, position, rotation, scale)
 {
     inputComponent_ = addComponent<InputComponent>();
 }

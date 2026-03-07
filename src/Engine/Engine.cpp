@@ -39,6 +39,7 @@
 #include "NetworkSystem.h"
 #include "../Network/NetworkPackets.h"
 #include "../Entities/Components/NetworkSyncComponent.h"
+#include "../ECS/Components/TransformComponent.h"
 #include "../Toolbox/Maths.h"
 #include <enet/enet.h>
 #include <thread>
@@ -69,16 +70,13 @@ void Engine::init() {
     initFramebuffersAndPickers();
     buildSystems();
 
-    // --- ECS smoke test (Phase 2 Step 1) — remove after Step 2 lands ---
+    // --- ECS Phase 2 Step 2 verification ---
     {
-        struct SmokePos { float x, y, z; };
-        auto testEntity = registry.create();
-        registry.emplace<SmokePos>(testEntity, 1.0f, 2.0f, 3.0f);
-        auto& pos = registry.get<SmokePos>(testEntity);
-        std::cout << "[ECS] Smoke test passed: entity "
-                  << static_cast<uint32_t>(testEntity)
-                  << " position = (" << pos.x << ", " << pos.y << ", " << pos.z << ")\n";
-        registry.destroy(testEntity);
+        auto view = registry.view<TransformComponent>();
+        int count = 0;
+        for (auto e : view) { (void)e; ++count; }
+        std::cout << "[ECS] Phase 2 Step 2 complete: " << count
+                  << " entities with TransformComponent in registry.\n";
     }
 }
 
@@ -125,6 +123,7 @@ void Engine::loadScene() {
         if (probe.is_open()) {
             probe.close();
             sceneLoaded = SceneLoaderJson::load(jsonPath, loader,
+                              registry,
                               entities, scenes, lights,
                               allTerrains, guis, texts, waterTiles,
                               primaryTerrain, player, playerCamera,
@@ -137,6 +136,7 @@ void Engine::loadScene() {
     }
     if (!sceneLoaded) {
         sceneLoaded = SceneLoader::load(cfgPath, loader,
+                          registry,
                           entities, scenes, lights,
                           allTerrains, guis, texts, waterTiles,
                           primaryTerrain, player, playerCamera,
@@ -229,7 +229,7 @@ void Engine::loadScene() {
                 auto* pBox  = loader->loadToVAO(bbData);
                 auto* model = new TexturedModel(loader->loadToVAO(stallData),
                     new ModelTexture("stallTexture", PNG, Material{2.0f, 2.0f}));
-                player = new Player(model,
+                player = new Player(registry, model,
                     new BoundingBox(pBox, BoundingBoxIndex::genUniqueId()),
                     glm::vec3(100.0f, 3.0f, -50.0f),
                     glm::vec3(0.0f, 180.0f, 0.0f), 1.0f);
@@ -502,7 +502,7 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
     // invisible stall at scale=0 in scene.cfg) stays hidden on remote clients.
     // The actual visual is provided by the AnimatedEntity created below.
     const float remoteScale = player ? player->getScale() : 1.0f;
-    auto* ent = new Entity(remoteModel, bb, position, glm::vec3(0.0f), remoteScale);
+    auto* ent = new Entity(registry, remoteModel, bb, position, glm::vec3(0.0f), remoteScale);
 
     // Attach the interpolation component so the entity can receive and
     // smoothly interpolate server transform snapshots.

@@ -15,53 +15,47 @@
 #include <vector>
 #include <memory>
 #include <functional>
+#include <entt/entt.hpp>
+#include "../ECS/Components/TransformComponent.h"
+#include "../ECS/Components/RenderComponent.h"
+#include "../ECS/Components/ColliderComponent.h"
+#include "../ECS/Components/MaterialDataComponent.h"
 
 class Entity : public Interactive {
-protected:
-    TexturedModel *model;
-
-    BoundingBox *box;
-
-    glm::vec3 position;
-
-    glm::vec3 rotation;
-
-    float scale;
-
-    int textureIndex = 0;
-
-    Material material = {0.1, 0.9};
-
-    bool textureActivated = false;
 public:
 
     /**
-     * @brief Entity stores the TexturedModel (RawModel & Texture), and stores vectors
-     *        to manipulate its' vertex, rotation, fontSize, (transformation).  It also
-     *        stores the textureOffsets for textures in case there is a texture atlas.
+     * @brief ECS-backed constructor.  Creates an entt entity and emplaces
+     *        TransformComponent, RenderComponent, ColliderComponent and
+     *        MaterialDataComponent into the supplied registry.
      *
-     * @param model
-     * @param position
-     * @param rotation
-     * @param scale
+     * @param registry  The engine-level entt::registry that owns the data.
+     * @param model     TexturedModel (RawModel + Texture).
+     * @param box       Bounding box used for picking/collision.
+     * @param position  Initial world position.
+     * @param rotation  Initial Euler rotation (degrees).
+     * @param scale     Uniform scale factor.
      */
-    explicit Entity(TexturedModel *model, BoundingBox *box, glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f),
+    explicit Entity(entt::registry& registry, TexturedModel *model, BoundingBox *box,
+                    glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f),
                     glm::vec3 rotation = glm::vec3(0),
                     float scale = 1.0f);
 
     /**
-      * @brief Entity stores the TexturedModel (RawModel & Texture), and stores vectors
-      *        to manipulate its' vertex, rotation, fontSize, (transformation).  It also
-      *        stores the textureOffsets and kBboxIndices for textures in case there is a
-      *        texture atlas.
-      *
-      * @param model
-      * @param position
-      * @param rotation
-      * @param scale
-      */
-    explicit Entity(TexturedModel *model, BoundingBox *box, int textureIndex,
-                    glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3 rotation = glm::vec3(0),
+     * @brief ECS-backed constructor with texture atlas index.
+     *
+     * @param registry     The engine-level entt::registry that owns the data.
+     * @param model        TexturedModel (RawModel + Texture).
+     * @param box          Bounding box used for picking/collision.
+     * @param textureIndex Atlas row index for texture atlases.
+     * @param position     Initial world position.
+     * @param rotation     Initial Euler rotation (degrees).
+     * @param scale        Uniform scale factor.
+     */
+    explicit Entity(entt::registry& registry, TexturedModel *model, BoundingBox *box,
+                    int textureIndex,
+                    glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f),
+                    glm::vec3 rotation = glm::vec3(0),
                     float scale = 1.0f);
 
     BoundingBox *getBoundingBox() const override;
@@ -112,17 +106,18 @@ public:
 
     void disableMaterial();
 
+    /// Access the underlying ECS entity handle.
+    entt::entity getHandle() const { return handle_; }
+
+    /// Access the registry this entity belongs to.
+    entt::registry& getRegistry() { return *registry_; }
+
     // -------------------------------------------------------------------------
     // Component container
     // -------------------------------------------------------------------------
 
-    /// Destructor — releases all pooled components back to their respective
-    /// ComponentPool<T> instances.
-    virtual ~Entity() {
-        for (auto& entry : components_) {
-            entry.releaser();
-        }
-    }
+    /// Destructor — releases all pooled components and destroys the ECS entity.
+    virtual ~Entity();
 
     /// Allocate a component of type T from its global ComponentPool, attach it
     /// to this entity, and call its init() method.  Returns a raw pointer for
@@ -162,6 +157,12 @@ public:
     }
 
 private:
+    // -----------------------------------------------------------------------
+    // ECS handle — all data lives in the registry components above.
+    // -----------------------------------------------------------------------
+    entt::entity    handle_;
+    entt::registry* registry_;
+
     // -----------------------------------------------------------------------
     // ComponentEntry — pairs an IComponent raw pointer with a type-erased
     // release function so Entity can return components to their pools without

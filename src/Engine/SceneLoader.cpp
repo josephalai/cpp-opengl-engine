@@ -126,6 +126,7 @@ static std::string optVal(const std::string& tok, const std::string& key) {
 bool SceneLoader::load(
     const std::string&          configPath,
     Loader*                     loader,
+    entt::registry&             registry,
     std::vector<Entity*>&       entities,
     std::vector<AssimpEntity*>& scenes,
     std::vector<Light*>&        lights,
@@ -666,6 +667,7 @@ bool SceneLoader::load(
         entityAliasByIndex[aliasId].push_back(static_cast<int>(entities.size()));
 
         entities.push_back(new Entity(
+            registry,
             lm.model,
             new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
             glm::vec3(ed.x, yVal, ed.z),
@@ -693,11 +695,11 @@ bool SceneLoader::load(
             entityAliasByIndex[aliasId].push_back(static_cast<int>(entities.size()));
             if (rd.useAtlas) {
                 int idx = (rand() % 4) + 1;   // atlas row 1-4
-                entities.push_back(new Entity(lm.model,
+                entities.push_back(new Entity(registry, lm.model,
                     new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
                     idx, pos, rot, sc));
             } else {
-                entities.push_back(new Entity(lm.model,
+                entities.push_back(new Entity(registry, lm.model,
                     new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
                     pos, rot, sc));
             }
@@ -728,6 +730,7 @@ bool SceneLoader::load(
         if (it != modelMap.end()) {
             auto& lm = it->second;
             player = new Player(
+                registry,
                 lm.model,
                 new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
                 glm::vec3(playerDef.x, playerDef.y, playerDef.z),

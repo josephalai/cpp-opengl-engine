@@ -29,6 +29,7 @@
 #include "../RenderEngine/AnimatedRenderer.h"
 #include "../Physics/PhysicsComponents.h"
 #include "SceneLoader.h"   // re-use PhysicsBodyCfg / PhysicsGroundCfg types
+#include <entt/entt.hpp>
 
 class SceneLoaderJson {
 public:
@@ -43,6 +44,7 @@ public:
     static bool load(
         const std::string&             jsonPath,
         Loader*                        loader,
+        entt::registry&                registry,
         std::vector<Entity*>&          entities,
         std::vector<AssimpEntity*>&    scenes,
         std::vector<Light*>&           lights,
