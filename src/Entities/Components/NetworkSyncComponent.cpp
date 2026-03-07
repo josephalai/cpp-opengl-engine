@@ -2,6 +2,7 @@
 
 #include "NetworkSyncComponent.h"
 #include "../Entity.h"
+#include <nlohmann/json.hpp>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/quaternion.hpp>
@@ -22,17 +23,17 @@ void NetworkSyncComponent::pushSnapshot(const Network::TransformSnapshot& snapsh
 
     buffer_.push_back(snapshot);
 
-    // Clamp the buffer to kMaxBufferSize to prevent memory bloat.
-    while (buffer_.size() > kMaxBufferSize) {
+    // Clamp the buffer to maxBufferSize_ to prevent memory bloat.
+    while (buffer_.size() > maxBufferSize_) {
         buffer_.pop_front();
     }
 
     // The first time we accumulate two snapshots we synchronise our playback
-    // clock to the server timeline so renderTime_ - kInterpolationDelay gives
+    // clock to the server timeline so renderTime_ - interpolationDelay_ gives
     // a targetTime that is slightly behind the earliest snapshot, allowing
     // smooth ramp-up from the very first frame.
     if (!started_ && buffer_.size() >= 2) {
-        renderTime_ = buffer_.front().timestamp + kInterpolationDelay;
+        renderTime_ = buffer_.front().timestamp + interpolationDelay_;
         started_    = true;
     }
 }
@@ -50,8 +51,8 @@ void NetworkSyncComponent::update(float deltaTime) {
     // Advance the playback clock at real-time speed.
     renderTime_ += deltaTime;
 
-    // The time we actually want to display (lagging kInterpolationDelay behind).
-    const float targetTime = renderTime_ - kInterpolationDelay;
+    // The time we actually want to display (lagging interpolationDelay_ behind).
+    const float targetTime = renderTime_ - interpolationDelay_;
 
     // -----------------------------------------------------------------------
     // Hold case: only one snapshot or targetTime is before the earliest one.
@@ -135,10 +136,21 @@ void NetworkSyncComponent::update(float deltaTime) {
 void NetworkSyncComponent::pruneBuffer() {
     // Retain every snapshot whose timestamp is >= (targetTime - one extra tick)
     // so we always keep two snapshots available for extrapolation.
-    const float keepFrom = (renderTime_ - kInterpolationDelay) - kInterpolationDelay;
+    const float keepFrom = (renderTime_ - interpolationDelay_) - interpolationDelay_;
     while (buffer_.size() > 2 && buffer_.front().timestamp < keepFrom) {
         buffer_.pop_front();
     }
+}
+
+// ---------------------------------------------------------------------------
+// initFromJson — data-driven component initialisation (Phase 1, Step 3)
+// ---------------------------------------------------------------------------
+
+void NetworkSyncComponent::initFromJson(const nlohmann::json& j) {
+    if (j.contains("interpolation_delay"))
+        interpolationDelay_ = j["interpolation_delay"].get<float>();
+    if (j.contains("max_buffer_size"))
+        maxBufferSize_ = static_cast<std::size_t>(j["max_buffer_size"].get<int>());
 }
 
 // ---------------------------------------------------------------------------

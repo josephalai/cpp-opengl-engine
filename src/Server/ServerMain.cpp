@@ -185,10 +185,24 @@ int main() {
     uint32_t nextNetworkId = 100;
 
     // --- NPC Loading ---
+    // Prefer npcs.json (JSON format); fall back to server_npcs.cfg (legacy).
     ServerNPCManager npcManager;
     {
-        std::string npcCfg = FileSystem::Scene("server_npcs.cfg");
-        auto defs = npcManager.loadConfig(npcCfg);
+        std::string jsonPath = FileSystem::Scene("npcs.json");
+        std::string cfgPath  = FileSystem::Scene("server_npcs.cfg");
+
+        std::vector<NPCDefinition> defs;
+        {
+            std::ifstream probe(jsonPath);
+            if (probe.is_open()) {
+                probe.close();
+                defs = npcManager.loadFromJson(jsonPath);
+            } else {
+                std::cout << "[Server] npcs.json not found — falling back to server_npcs.cfg\n";
+                defs = npcManager.loadConfig(cfgPath);
+            }
+        }
+
         for (auto& d : defs) {
             uint32_t nid = nextNetworkId++;
             ServerEntityState st;

@@ -16,6 +16,16 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(enet)
 
 # =============================================================================
+# nlohmann/json — header-only JSON library (fetched automatically)
+# =============================================================================
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
+# =============================================================================
 # Source file collection
 # =============================================================================
 
@@ -78,6 +88,9 @@ target_include_directories(client_engine PRIVATE ${BULLET_INCLUDE_DIRS})
 # ENet include path (FetchContent populates enet_SOURCE_DIR)
 target_include_directories(client_engine PRIVATE ${enet_SOURCE_DIR}/include)
 
+# nlohmann/json — header-only (FetchContent populates nlohmann_json_SOURCE_DIR)
+target_include_directories(client_engine PRIVATE ${nlohmann_json_SOURCE_DIR}/include)
+
 # Link all client dependencies
 target_link_libraries(client_engine PRIVATE
     glfw
@@ -115,6 +128,7 @@ target_include_directories(headless_server PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/deps/glm
     ${enet_SOURCE_DIR}/include
+    ${nlohmann_json_SOURCE_DIR}/include
 )
 
 target_compile_definitions(headless_server PRIVATE RESOURCE_ROOT="${CMAKE_SOURCE_DIR}")

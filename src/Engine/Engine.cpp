@@ -6,6 +6,7 @@
 
 #include "Engine.h"
 #include "SceneLoader.h"
+#include "SceneLoaderJson.h"
 #include "InputSystem.h"
 #include "InputDispatcher.h"
 #include "AnimationSystem.h"
@@ -97,20 +98,39 @@ void Engine::initFonts() {
 }
 
 void Engine::loadScene() {
-    // Load 3-D scene content from the text config file.
-    // Developers can edit scene.cfg to add/remove/modify models, entities,
-    // lights, terrain tiles, and GUI textures at runtime without recompiling.
-    const std::string configPath = FileSystem::Scene("scene.cfg");
+    // Load 3-D scene content from the config.
+    // Prefers scene.json (JSON format, Phase 1 Step 3); falls back to scene.cfg
+    // (legacy text format) when scene.json is absent or cannot be parsed.
+    const std::string jsonPath = FileSystem::Scene("scene.json");
+    const std::string cfgPath  = FileSystem::Scene("scene.cfg");
 
     std::vector<SceneLoader::PhysicsBodyCfg>   physicsBodyCfgs;
     std::vector<SceneLoader::PhysicsGroundCfg> physicsGroundCfgs;
 
-    bool sceneLoaded = SceneLoader::load(configPath, loader,
-                      entities, scenes, lights,
-                      allTerrains, guis, texts, waterTiles,
-                      primaryTerrain, player, playerCamera,
-                      animatedEntities,
-                      physicsBodyCfgs, physicsGroundCfgs);
+    bool sceneLoaded = false;
+    {
+        std::ifstream probe(jsonPath);
+        if (probe.is_open()) {
+            probe.close();
+            sceneLoaded = SceneLoaderJson::load(jsonPath, loader,
+                              entities, scenes, lights,
+                              allTerrains, guis, texts, waterTiles,
+                              primaryTerrain, player, playerCamera,
+                              animatedEntities,
+                              physicsBodyCfgs, physicsGroundCfgs);
+            if (!sceneLoaded) {
+                std::cerr << "[Engine] scene.json load failed — falling back to scene.cfg\n";
+            }
+        }
+    }
+    if (!sceneLoaded) {
+        sceneLoaded = SceneLoader::load(cfgPath, loader,
+                          entities, scenes, lights,
+                          allTerrains, guis, texts, waterTiles,
+                          primaryTerrain, player, playerCamera,
+                          animatedEntities,
+                          physicsBodyCfgs, physicsGroundCfgs);
+    }
 
     // All animated entities loaded by SceneLoader belong to the local player's
     // character(s).  Mark them so AnimationSystem doesn't treat them as remote.
@@ -159,8 +179,8 @@ void Engine::loadScene() {
         }
     }
 
-    // Fallback: if scene.cfg didn't provide a player or camera, build minimal defaults
-    // so the engine always has something to render.
+    // Fallback: if neither scene.json nor scene.cfg provided a player or camera,
+    // build minimal defaults so the engine always has something to render.
     if (!sceneLoaded || !player || !playerCamera) {
         std::cerr << "[Engine] SceneLoader failed or missing player — using minimal defaults\n";
 

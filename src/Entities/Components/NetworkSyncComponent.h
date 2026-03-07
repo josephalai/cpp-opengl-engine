@@ -25,6 +25,7 @@
 #include "../../Network/NetworkPackets.h"
 #include <deque>
 #include <glm/glm.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 class NetworkSyncComponent : public IComponent {
 public:
@@ -33,6 +34,12 @@ public:
     // -------------------------------------------------------------------------
     void init()   override {}
     void update(float deltaTime) override;
+
+    /// JSON initialisation — load tuning parameters from a prefab.
+    /// Supported keys:
+    ///   "interpolation_delay" (float) — seconds of playback lag
+    ///   "max_buffer_size"    (int)    — snapshot ring-buffer capacity
+    void initFromJson(const nlohmann::json& j) override;
 
     // -------------------------------------------------------------------------
     // Server interface
@@ -50,7 +57,7 @@ public:
     float getCurrentSpeed() const { return currentSpeed_; }
 
     // -------------------------------------------------------------------------
-    // Tuning constants
+    // Tuning constants (defaults; may be overridden via initFromJson)
     // -------------------------------------------------------------------------
 
     /// How far behind the most-recent snapshot the render clock trails (seconds).
@@ -65,6 +72,10 @@ public:
 
 private:
     std::deque<Network::TransformSnapshot> buffer_;
+
+    // Per-instance tuning (initialised from the static defaults; JSON can override)
+    float       interpolationDelay_ = kInterpolationDelay;
+    std::size_t maxBufferSize_      = kMaxBufferSize;
 
     /// Monotonically advancing render-playback clock (seconds).
     /// Starts at 0 and is incremented by deltaTime each frame.

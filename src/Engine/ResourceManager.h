@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <functional>
 #include <mutex>
+#include "StringId.h"
 
 // Forward declarations for the managed types
 class AnimatedModel;
@@ -65,7 +66,8 @@ private:
     std::mutex mutex_;
 
     std::unordered_map<uint32_t, AnimatedModel*> animatedModels_;
-    std::unordered_map<std::string, uint32_t>    animatedModelPaths_;
+    // StringId-keyed path cache: O(1) integer-comparison lookup on hot paths.
+    std::unordered_map<StringId, uint32_t>       animatedModelPaths_;
 
     uint32_t allocId() { return nextId_++; }
 };

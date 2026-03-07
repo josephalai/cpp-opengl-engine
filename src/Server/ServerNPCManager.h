@@ -1,9 +1,21 @@
 // src/Server/ServerNPCManager.h
 //
 // Data-driven NPC loader and AI manager for the headless server.
-// Reads NPC definitions from a configuration file (server_npcs.cfg) and
-// generates synthetic PlayerInputPacket commands each tick based on each
-// NPC's assigned AI script type.
+// Reads NPC definitions from JSON (npcs.json) — the successor to the legacy
+// server_npcs.cfg pipe-separated text format — and generates synthetic
+// PlayerInputPacket commands each tick based on each NPC's assigned AI
+// script type.
+//
+// JSON format (src/Resources/npcs.json):
+//   {
+//     "npcs": [
+//       { "npc_id": 1, "prefab": "npc_wanderer", "model_type": "npc_wanderer",
+//         "position": { "x": 110.0, "y": 3.0, "z": -70.0 }, "script": "WanderAI" },
+//       ...
+//     ]
+//   }
+//
+// The legacy loadConfig(path) method is retained for backward compatibility.
 
 #ifndef ENGINE_SERVER_NPC_MANAGER_H
 #define ENGINE_SERVER_NPC_MANAGER_H
@@ -27,13 +39,14 @@ struct ServerEntityState {
 };
 
 // -------------------------------------------------------------------------
-// NPC definition as read from the configuration file
+// NPC definition as read from the configuration / JSON file
 // -------------------------------------------------------------------------
 struct NPCDefinition {
     uint32_t    npcId      = 0;
     std::string modelType  = "npc";
     glm::vec3   startPos   = {};
     std::string scriptType = "WanderAI";
+    std::string prefab;    ///< Prefab name (JSON only; empty for legacy cfg)
 };
 
 // -------------------------------------------------------------------------
@@ -49,9 +62,13 @@ struct NPCAIState {
 // -------------------------------------------------------------------------
 class ServerNPCManager {
 public:
-    /// Load NPC definitions from the given config file.
+    /// Load NPC definitions from a JSON file (npcs.json).
     /// Returns the loaded definitions so the caller can register them in the
     /// entity map.  Each NPC should be assigned a networkId by the caller.
+    std::vector<NPCDefinition> loadFromJson(const std::string& filePath);
+
+    /// Load NPC definitions from the legacy pipe-separated .cfg file.
+    /// Retained for backward compatibility; prefer loadFromJson for new code.
     std::vector<NPCDefinition> loadConfig(const std::string& filePath);
 
     /// Register an NPC's networkId so the manager can track its AI state.

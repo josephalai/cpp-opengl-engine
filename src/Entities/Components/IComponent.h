@@ -12,6 +12,11 @@
 #ifndef ENGINE_ICOMPONENT_H
 #define ENGINE_ICOMPONENT_H
 
+// Use the official forward-declaration header so we get nlohmann::json
+// without triggering a name-collision between our forward-decl and the
+// library's own  `using json = basic_json<>`.
+#include <nlohmann/json_fwd.hpp>
+
 class Entity;
 
 class IComponent {
@@ -24,6 +29,11 @@ public:
 
     /// Called every frame with the current frame delta-time (seconds).
     virtual void update(float deltaTime) = 0;
+
+    /// Data-driven initialisation: load component variables from a JSON object.
+    /// Override in concrete components to support prefab-based instantiation.
+    /// The default implementation is a no-op so existing components remain valid.
+    virtual void initFromJson(const nlohmann::json& /*j*/) {}
 
     /// Store the owning entity pointer so the component can manipulate it.
     void setEntity(Entity* entity) { entity_ = entity; }

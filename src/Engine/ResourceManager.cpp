@@ -9,8 +9,9 @@
 ResourceHandle<AnimatedModel>
 ResourceManager::loadAnimatedModel(const std::string& path) {
     std::lock_guard<std::mutex> lock(mutex_);
-    // Return cached handle if already loaded
-    auto it = animatedModelPaths_.find(path);
+    // Convert path to StringId for O(1) cache lookup
+    StringId pathId(path);
+    auto it = animatedModelPaths_.find(pathId);
     if (it != animatedModelPaths_.end()) {
         return ResourceHandle<AnimatedModel>(it->second);
     }
@@ -22,8 +23,8 @@ ResourceManager::loadAnimatedModel(const std::string& path) {
     }
 
     uint32_t id = allocId();
-    animatedModels_[id]       = model;
-    animatedModelPaths_[path] = id;
+    animatedModels_[id]         = model;
+    animatedModelPaths_[pathId] = id;
     return ResourceHandle<AnimatedModel>(id);
 }
 
@@ -34,7 +35,8 @@ void ResourceManager::loadAnimatedModelAsync(
     // Check the cache first (under lock) and short-circuit if already loaded.
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        auto it = animatedModelPaths_.find(path);
+        StringId pathId(path);
+        auto it = animatedModelPaths_.find(pathId);
         if (it != animatedModelPaths_.end()) {
             callback(ResourceHandle<AnimatedModel>(it->second));
             return;
@@ -53,8 +55,9 @@ void ResourceManager::loadAnimatedModelAsync(
             uint32_t id;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
+                StringId pathId(path);
                 // Another async request may have loaded it first.
-                auto it = animatedModelPaths_.find(path);
+                auto it = animatedModelPaths_.find(pathId);
                 if (it != animatedModelPaths_.end()) {
                     model->cleanUp();
                     delete model;
@@ -62,8 +65,8 @@ void ResourceManager::loadAnimatedModelAsync(
                     return;
                 }
                 id = allocId();
-                animatedModels_[id]       = model;
-                animatedModelPaths_[path] = id;
+                animatedModels_[id]         = model;
+                animatedModelPaths_[pathId] = id;
             }
             callback(ResourceHandle<AnimatedModel>(id));
         });
