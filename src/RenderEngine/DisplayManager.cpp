@@ -61,16 +61,7 @@ void DisplayManager::updateDisplay() {
 
 void DisplayManager::uniformMovement() {
     float currentFrame = glfwGetTime();
-    // On the very first call lastFrameTime is 0, which would give delta equal
-    // to the entire startup time (seconds).  Re-seed it so the first measured
-    // frame is treated as a normal-length frame.
-    if (lastFrameTime == 0.0f) {
-        lastFrameTime = currentFrame;
-    }
     delta = currentFrame - lastFrameTime;
-    // Cap at 50 ms (≈ 20 FPS minimum) to prevent physics and network systems
-    // from receiving a huge dt during occasional long frames or system stalls.
-    if (delta > 0.05f) delta = 0.05f;
     lastFrameTime = currentFrame;
 }
 
