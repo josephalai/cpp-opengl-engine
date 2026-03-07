@@ -28,7 +28,7 @@ private:
     // ------------------------------------------------------------------------
     void checkCompileErrors(GLuint shader, std::string type);
 
-    std::string fileName;
+    const std::string &fileName;
 };
 
 class ShaderProgram {
