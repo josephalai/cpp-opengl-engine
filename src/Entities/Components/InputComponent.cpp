@@ -3,6 +3,7 @@
 #include "../../Physics/PhysicsSystem.h"
 #include "../../Events/Event.h"
 #include "../../Events/EventBus.h"
+#include <nlohmann/json.hpp>
 
 #include <glm/glm.hpp>
 #include <cmath>
@@ -12,6 +13,11 @@ float InputComponent::SPEED_HACK = 1.0f;
 
 void InputComponent::init() {
     std::cout << "[InputComponent] Initialized and attached to entity." << std::endl;
+}
+
+void InputComponent::initFromJson(const nlohmann::json& j) {
+    if (j.contains("run_speed"))  runSpeed_  = j["run_speed"].get<float>();
+    if (j.contains("turn_speed")) turnSpeed_ = j["turn_speed"].get<float>();
 }
 
 void InputComponent::update(float deltaTime) {
@@ -77,12 +83,12 @@ void InputComponent::checkInputs() {
 
 void InputComponent::applyMovementCommand(float forward, float turn,
                                           bool jump, bool sprint, bool sprintReset) {
-    if      (forward > 0.0f) currentSpeed_ =  kRunSpeed * SPEED_HACK;
-    else if (forward < 0.0f) currentSpeed_ = -kRunSpeed * SPEED_HACK;
+    if      (forward > 0.0f) currentSpeed_ =  runSpeed_ * SPEED_HACK;
+    else if (forward < 0.0f) currentSpeed_ = -runSpeed_ * SPEED_HACK;
     else                     currentSpeed_ = 0.0f;
 
-    if      (turn > 0.0f) currentTurnSpeed_ =  kTurnSpeed * SPEED_HACK / 2.0f;
-    else if (turn < 0.0f) currentTurnSpeed_ = -kTurnSpeed * SPEED_HACK / 2.0f;
+    if      (turn > 0.0f) currentTurnSpeed_ =  turnSpeed_ * SPEED_HACK / 2.0f;
+    else if (turn < 0.0f) currentTurnSpeed_ = -turnSpeed_ * SPEED_HACK / 2.0f;
     else                  currentTurnSpeed_ = 0.0f;
 
     if (sprint)      SPEED_HACK = 4.5f;

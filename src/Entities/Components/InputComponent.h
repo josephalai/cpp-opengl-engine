@@ -11,6 +11,7 @@
 #include "IComponent.h"
 #include "../../Input/InputMaster.h"
 #include "../../Terrain/Terrain.h"
+#include <nlohmann/json.hpp>
 
 // Forward-declare to avoid pulling in the full Bullet / PhysicsSystem headers.
 class PhysicsSystem;
@@ -22,6 +23,12 @@ public:
     // -------------------------------------------------------------------------
     void init() override;
     void update(float deltaTime) override;
+
+    /// JSON initialisation — load movement tuning from a prefab.
+    /// Supported keys:
+    ///   "run_speed"   (float) — units/sec when running
+    ///   "turn_speed"  (float) — degrees/sec rotation rate
+    void initFromJson(const nlohmann::json& j) override;
 
     // -------------------------------------------------------------------------
     // Configuration
@@ -42,10 +49,16 @@ private:
     // Movement constants (mirror of old Player constants)
     // -------------------------------------------------------------------------
     static float SPEED_HACK;
-    static constexpr float kRunSpeed   = 20.0f;
-    static constexpr float kTurnSpeed  = 160.0f;
+    static constexpr float kDefaultRunSpeed  = 20.0f;
+    static constexpr float kDefaultTurnSpeed = 160.0f;
+    static constexpr float kRunSpeed   = kDefaultRunSpeed;
+    static constexpr float kTurnSpeed  = kDefaultTurnSpeed;
     static constexpr float kGravity    = -50.0f;
     static constexpr float kJumpPower  = 30.0f;
+
+    // Per-instance overrides (JSON-configurable; initialised from static defaults)
+    float runSpeed_  = kDefaultRunSpeed;
+    float turnSpeed_ = kDefaultTurnSpeed;
 
     // -------------------------------------------------------------------------
     // Per-frame state

@@ -2,13 +2,71 @@
 
 #include "ServerNPCManager.h"
 
+#include <nlohmann/json.hpp>
 #include <fstream>
 #include <sstream>
 #include <iostream>
 #include <algorithm>
 
 // -------------------------------------------------------------------------
-// loadConfig — parse server_npcs.cfg
+// loadFromJson — parse npcs.json (Phase 1, Step 3)
+//
+// Expected JSON structure:
+//   {
+//     "npcs": [
+//       { "npc_id": 1, "prefab": "npc_wanderer", "model_type": "npc_wanderer",
+//         "position": { "x": 110.0, "y": 3.0, "z": -70.0 }, "script": "WanderAI" },
+//       ...
+//     ]
+//   }
+// -------------------------------------------------------------------------
+
+std::vector<NPCDefinition> ServerNPCManager::loadFromJson(const std::string& filePath) {
+    std::vector<NPCDefinition> defs;
+
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+        std::cerr << "[ServerNPCManager] Could not open JSON file: " << filePath << "\n";
+        return defs;
+    }
+
+    nlohmann::json root;
+    try {
+        file >> root;
+    } catch (const nlohmann::json::parse_error& e) {
+        std::cerr << "[ServerNPCManager] JSON parse error in " << filePath
+                  << ": " << e.what() << "\n";
+        return defs;
+    }
+
+    if (!root.contains("npcs") || !root["npcs"].is_array()) {
+        std::cerr << "[ServerNPCManager] JSON missing top-level \"npcs\" array: "
+                  << filePath << "\n";
+        return defs;
+    }
+
+    for (const auto& entry : root["npcs"]) {
+        NPCDefinition def;
+        if (entry.contains("npc_id"))    def.npcId      = entry["npc_id"].get<uint32_t>();
+        if (entry.contains("model_type"))def.modelType  = entry["model_type"].get<std::string>();
+        if (entry.contains("script"))    def.scriptType = entry["script"].get<std::string>();
+        if (entry.contains("prefab"))    def.prefab     = entry["prefab"].get<std::string>();
+        if (entry.contains("position")) {
+            const auto& pos = entry["position"];
+            if (pos.contains("x")) def.startPos.x = pos["x"].get<float>();
+            if (pos.contains("y")) def.startPos.y = pos["y"].get<float>();
+            if (pos.contains("z")) def.startPos.z = pos["z"].get<float>();
+        }
+        defs.push_back(def);
+    }
+
+    std::cout << "[ServerNPCManager] Loaded " << defs.size()
+              << " NPC(s) from JSON: " << filePath << "\n";
+    return defs;
+}
+
+// -------------------------------------------------------------------------
+// loadConfig — parse server_npcs.cfg (legacy pipe-separated format)
 //
 // Expected format (one NPC per line, '#' comments, blank lines ignored):
 //   NPC_ID | MODEL_TYPE | START_X | START_Y | START_Z | SCRIPT_TYPE

@@ -28,6 +28,7 @@
 #include "../Guis/Text/FontMeshCreator/TextMeshData.h"
 #include "../Toolbox/Color.h"
 #include "../Animation/AnimationLoader.h"
+#include "StringId.h"
 
 #include <fstream>
 #include <sstream>
@@ -568,11 +569,12 @@ bool SceneLoader::load(
     // -----------------------------------------------------------------------
 
     // model alias → (TexturedModel*, RawBoundingBox*)
+    // Uses StringId keys for O(1) integer-comparison lookups on hot paths.
     struct LoadedModel {
         TexturedModel*   model = nullptr;
         RawBoundingBox*  bbox  = nullptr;
     };
-    std::map<std::string, LoadedModel> modelMap;
+    std::unordered_map<StringId, LoadedModel> modelMap;
 
     // parallel load: one thread per model
     struct RawLoad {
@@ -611,7 +613,7 @@ bool SceneLoader::load(
         if (md.atlasRows > 1) tex->setNumberOfRows(md.atlasRows);
 
         lm.model = new TexturedModel(loader->loadToVAO(rawLoads[i].data), tex);
-        modelMap[md.alias] = lm;
+        modelMap[StringId(md.alias)] = lm;
     }
 
     // -----------------------------------------------------------------------
@@ -645,10 +647,11 @@ bool SceneLoader::load(
     // -----------------------------------------------------------------------
     // Track ALL entity indices per alias so that a single physics_body line
     // applies to every entity sharing that alias (e.g. all 3 lamps), not just
-    // the first one.
-    std::map<std::string, std::vector<int>> entityAliasByIndex;
+    // the first one.  Uses StringId keys for O(1) lookups.
+    std::unordered_map<StringId, std::vector<int>> entityAliasByIndex;
     for (auto& ed : entityDefs) {
-        auto it = modelMap.find(ed.alias);
+        StringId aliasId(ed.alias);
+        auto it = modelMap.find(aliasId);
         if (it == modelMap.end()) {
             std::cerr << "[SceneLoader] entity references unknown model alias '"
                       << ed.alias << "'\n";
@@ -660,7 +663,7 @@ bool SceneLoader::load(
             yVal = primaryTerrain->getHeightOfTerrain(ed.x, ed.z);
 
         // Record this entity's index before pushing
-        entityAliasByIndex[ed.alias].push_back(static_cast<int>(entities.size()));
+        entityAliasByIndex[aliasId].push_back(static_cast<int>(entities.size()));
 
         entities.push_back(new Entity(
             lm.model,
@@ -674,7 +677,8 @@ bool SceneLoader::load(
     // Pass 6: random entities
     // -----------------------------------------------------------------------
     for (auto& rd : randomDefs) {
-        auto it = modelMap.find(rd.alias);
+        StringId aliasId(rd.alias);
+        auto it = modelMap.find(aliasId);
         if (it == modelMap.end()) {
             std::cerr << "[SceneLoader] random references unknown model alias '"
                       << rd.alias << "'\n";
@@ -686,7 +690,7 @@ bool SceneLoader::load(
             glm::vec3 rot = randomRotation();
             float     sc  = randomScale(rd.scaleMin, rd.scaleMax);
             // Record index before push so physics_body can cover random entities
-            entityAliasByIndex[rd.alias].push_back(static_cast<int>(entities.size()));
+            entityAliasByIndex[aliasId].push_back(static_cast<int>(entities.size()));
             if (rd.useAtlas) {
                 int idx = (rand() % 4) + 1;   // atlas row 1-4
                 entities.push_back(new Entity(lm.model,
@@ -720,7 +724,7 @@ bool SceneLoader::load(
     // Pass 8: player
     // -----------------------------------------------------------------------
     if (hasPlayer) {
-        auto it = modelMap.find(playerDef.alias);
+        auto it = modelMap.find(StringId(playerDef.alias));
         if (it != modelMap.end()) {
             auto& lm = it->second;
             player = new Player(
@@ -909,7 +913,8 @@ bool SceneLoader::load(
     // Pass 13: resolve physics body definitions → PhysicsBodyCfg
     // -----------------------------------------------------------------------
     for (const auto& pd : physicsBodyRawDefs) {
-        auto it = entityAliasByIndex.find(pd.alias);
+        StringId aliasId(pd.alias);
+        auto it = entityAliasByIndex.find(aliasId);
         if (it == entityAliasByIndex.end()) {
             std::cerr << "[SceneLoader] physics_body references unknown entity alias '"
                       << pd.alias << "'\n";

@@ -11,8 +11,10 @@
 #include "../Interfaces/Interactive.h"
 #include "../BoundingBox/BoundingBoxIndex.h"
 #include "Components/IComponent.h"
+#include "ComponentPool.h"
 #include <vector>
 #include <memory>
+#include <functional>
 
 class Entity : public Interactive {
 protected:
@@ -114,24 +116,38 @@ public:
     // Component container
     // -------------------------------------------------------------------------
 
-    /// Construct a component of type T in-place, attach it to this entity,
-    /// and call its init() method.  Returns a raw pointer for convenience
-    /// (lifetime is managed by the entity's components_ vector).
+    /// Destructor — releases all pooled components back to their respective
+    /// ComponentPool<T> instances.
+    virtual ~Entity() {
+        for (auto& entry : components_) {
+            entry.releaser();
+        }
+    }
+
+    /// Allocate a component of type T from its global ComponentPool, attach it
+    /// to this entity, and call its init() method.  Returns a raw pointer for
+    /// convenience (pool manages the memory; Entity manages the lifecycle).
     template<typename T, typename... Args>
     T* addComponent(Args&&... args) {
-        auto comp = std::make_unique<T>(std::forward<Args>(args)...);
-        T* ptr = comp.get();
-        comp->setEntity(this);
-        comp->init();
-        components_.push_back(std::move(comp));
+        T* ptr = ComponentPool<T>::global().allocate();
+        // Re-construct with provided args via assignment (T must be default-constructible).
+        if constexpr (sizeof...(Args) > 0) {
+            *ptr = T(std::forward<Args>(args)...);
+        }
+        ptr->setEntity(this);
+        ptr->init();
+        components_.push_back({
+            static_cast<IComponent*>(ptr),
+            [ptr]() { ComponentPool<T>::global().release(ptr); }
+        });
         return ptr;
     }
 
     /// Return a raw pointer to the first component of type T, or nullptr.
     template<typename T>
     T* getComponent() {
-        for (auto& comp : components_) {
-            if (T* ptr = dynamic_cast<T*>(comp.get())) {
+        for (auto& entry : components_) {
+            if (T* ptr = dynamic_cast<T*>(entry.ptr)) {
                 return ptr;
             }
         }
@@ -140,13 +156,23 @@ public:
 
     /// Tick all attached components.  Call once per frame.
     virtual void updateComponents(float deltaTime) {
-        for (auto& comp : components_) {
-            comp->update(deltaTime);
+        for (auto& entry : components_) {
+            entry.ptr->update(deltaTime);
         }
     }
 
 private:
-    std::vector<std::unique_ptr<IComponent>> components_;
+    // -----------------------------------------------------------------------
+    // ComponentEntry — pairs an IComponent raw pointer with a type-erased
+    // release function so Entity can return components to their pools without
+    // knowing the concrete type at destruction time.
+    // -----------------------------------------------------------------------
+    struct ComponentEntry {
+        IComponent*           ptr      = nullptr;
+        std::function<void()> releaser;
+    };
+
+    std::vector<ComponentEntry> components_;
 
 };
 
