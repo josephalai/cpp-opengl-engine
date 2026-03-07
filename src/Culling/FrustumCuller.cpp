@@ -62,7 +62,7 @@ std::vector<AssimpModelComponent> FrustumCuller::cull(const std::vector<AssimpMo
 
     for (const AssimpModelComponent& comp : comps) {
         if (!comp.mesh) {
-            visible.push_back(comp);
+            // Component without a mesh is invalid — skip it.
             continue;
         }
 

@@ -13,7 +13,7 @@ void AssimpEntityRenderer::render(std::map<AssimpMesh *, std::vector<AssimpModel
     AssimpMesh *model;
     while (it != scenes->end()) {
         model = it->first;
-        std::vector<AssimpModelComponent>& batch = it->second;
+        const auto& batch = it->second;
         for (const AssimpModelComponent& comp : batch) {
             prepareInstance(comp);
             // draw elements
