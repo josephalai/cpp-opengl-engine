@@ -166,6 +166,7 @@ void Engine::loadScene() {
 
     // Set up physics world and register bodies from config
     physicsSystem = new PhysicsSystem();
+    physicsSystem->setRegistry(registry);  // Bind ECS registry for TransformComponent sync
     physicsSystem->init();
 
     // Add ground planes

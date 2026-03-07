@@ -29,7 +29,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y cmake g++ ninja-build
+          sudo apt-get install -y cmake g++ ninja-build libbullet-dev
 
       - name: Configure (headless — no OpenGL)
         run: |

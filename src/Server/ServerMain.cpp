@@ -1,19 +1,22 @@
 // src/Server/ServerMain.cpp
 //
-// Phases 5–8 — Headless Authoritative Server.
+// Authoritative Headless Server — Game Engine Architecture (GEA) style.
 //
 // This executable does NOT use OpenGL, GLFW, or any rendering subsystem.
-// It only depends on ENet, GLM (header-only), stb_image (for heightmap),
-// NetworkPackets.h, SharedMovement.h, and ServerNPCManager.
+// It owns the master entt::registry (the ECS), runs PhysicsSystem::update()
+// each tick, and broadcasts TransformComponent snapshots to all clients via ENet.
 //
-// Key responsibilities:
-//   • Network Entity Registry — every moving object gets a unique networkId.
-//   • Connection Handshake    — Welcome / Spawn / Despawn protocol.
-//   • Authoritative Simulation— player inputs processed via SharedMovement.
-//   • Headless Terrain        — heightmap-based Y-clamping without GL.
-//   • NPC AI                  — data-driven NPCs from server_npcs.cfg.
-//   • 10 Hz Broadcast         — per-entity TransformSnapshot to all clients.
+// Architecture
+// ------------
+//   Memory  — entt::registry holding TransformComponent, NetworkIdComponent, etc.
+//   Physics — PhysicsSystem::update() steps the authoritative Bullet world.
+//   Network — ENet receives PlayerInputPackets, sends TransformSnapshots.
+//   Loop    — Fixed 10 Hz tick using std::chrono::steady_clock (no GLFW/V-sync).
 
+#include <entt/entt.hpp>
+#include "../Physics/PhysicsSystem.h"
+#include "../ECS/Components/TransformComponent.h"
+#include "../ECS/Components/NetworkIdComponent.h"
 #include "../Network/NetworkPackets.h"
 #include "../Network/SharedMovement.h"
 #include "ServerNPCManager.h"
@@ -143,6 +146,23 @@ static void broadcast(ENetHost* host, Network::PacketType type,
 }
 
 // ---------------------------------------------------------------------------
+// Helper: create a registry entity with TransformComponent + NetworkIdComponent
+// ---------------------------------------------------------------------------
+
+static entt::entity spawnEntity(entt::registry& registry,
+                                 uint32_t networkId,
+                                 glm::vec3 position,
+                                 const std::string& modelType,
+                                 bool isNPC = false) {
+    auto entity = registry.create();
+    registry.emplace<TransformComponent>(entity,
+        TransformComponent{position, glm::vec3(0.0f), 1.0f});
+    registry.emplace<NetworkIdComponent>(entity,
+        NetworkIdComponent{networkId, modelType, isNPC, 0});
+    return entity;
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 
@@ -179,9 +199,28 @@ int main() {
         terrain.load(hmPath, 0, -1);
     }
 
-    // --- Entity State ---
-    std::unordered_map<ENetPeer*, uint32_t>          peerToId;
-    std::unordered_map<uint32_t, ServerEntityState>  entities;
+    // -------------------------------------------------------------------------
+    // ECS Registry — the master data store for all server entities.
+    // PhysicsSystem operates directly on TransformComponent via this registry.
+    // -------------------------------------------------------------------------
+    entt::registry registry;
+
+    // -------------------------------------------------------------------------
+    // Physics System — authoritative Bullet simulation.
+    // Bound to the registry so update() reads/writes TransformComponent directly.
+    // -------------------------------------------------------------------------
+    PhysicsSystem physicsSystem;
+    physicsSystem.setRegistry(registry);
+    physicsSystem.init();
+    physicsSystem.addGroundPlane(0.0f);
+
+    // -------------------------------------------------------------------------
+    // Network tracking maps
+    //   peerToNetworkId    — peer → network ID (for input routing on receive)
+    //   networkIdToEntity  — network ID → entt entity (for entity lookup)
+    // -------------------------------------------------------------------------
+    std::unordered_map<ENetPeer*, uint32_t>       peerToNetworkId;
+    std::unordered_map<uint32_t, entt::entity>    networkIdToEntity;
     uint32_t nextNetworkId = 100;
 
     // --- NPC Loading ---
@@ -205,20 +244,17 @@ int main() {
 
         for (auto& d : defs) {
             uint32_t nid = nextNetworkId++;
-            ServerEntityState st;
-            st.position  = d.startPos;
-            st.modelType = d.modelType;
-            st.isNPC     = true;
-            // Clamp initial height
-            if (terrain.valid) {
-                st.position.y = terrain.getHeight(st.position.x, st.position.z);
-            }
-            entities[nid] = st;
+            glm::vec3 pos = d.startPos;
+            if (terrain.valid)
+                pos.y = terrain.getHeight(pos.x, pos.z);
+
+            auto entity = spawnEntity(registry, nid, pos, d.modelType, /*isNPC=*/true);
+            networkIdToEntity[nid] = entity;
             npcManager.registerNPC(nid, d.scriptType);
+
             std::cout << "[Server] NPC " << nid << " (" << d.modelType
-                      << ") spawned at (" << st.position.x << ", "
-                      << st.position.y << ", " << st.position.z << ") — "
-                      << d.scriptType << "\n";
+                      << ") spawned at (" << pos.x << ", " << pos.y << ", "
+                      << pos.z << ") — " << d.scriptType << "\n";
         }
     }
 
@@ -237,19 +273,18 @@ int main() {
             switch (event.type) {
 
             // =============================================================
-            // CONNECT — assign networkId, send Welcome, exchange Spawns
+            // CONNECT — create registry entity, send Welcome, exchange Spawns
             // =============================================================
             case ENET_EVENT_TYPE_CONNECT: {
                 uint32_t newId = nextNetworkId++;
-                peerToId[event.peer] = newId;
+                peerToNetworkId[event.peer] = newId;
 
-                ServerEntityState st;
-                st.position  = glm::vec3(100.0f, 3.0f, -80.0f);
-                st.modelType = "player";
+                glm::vec3 spawnPos(100.0f, 3.0f, -80.0f);
                 if (terrain.valid)
-                    st.position.y = terrain.getHeight(st.position.x,
-                                                      st.position.z);
-                entities[newId] = st;
+                    spawnPos.y = terrain.getHeight(spawnPos.x, spawnPos.z);
+
+                auto entity = spawnEntity(registry, newId, spawnPos, "player");
+                networkIdToEntity[newId] = entity;
 
                 std::cout << "[Server] Client connected — networkId " << newId
                           << " from " << event.peer->address.host << ":"
@@ -262,25 +297,28 @@ int main() {
                        &welcome, sizeof(welcome), true);
 
                 // 2) Send SpawnPacket for every existing entity to the new peer.
-                for (auto& [eid, est] : entities) {
+                auto view = registry.view<TransformComponent, NetworkIdComponent>();
+                for (auto e : view) {
+                    auto& tc  = view.get<TransformComponent>(e);
+                    auto& nid = view.get<NetworkIdComponent>(e);
                     Network::SpawnPacket sp;
-                    sp.networkId = eid;
-                    sp.position  = est.position;
-                    std::strncpy(sp.modelType, est.modelType.c_str(),
+                    sp.networkId = nid.id;
+                    sp.position  = tc.position;
+                    std::strncpy(sp.modelType, nid.modelType.c_str(),
                                  Network::kModelTypeLen - 1);
                     sp.modelType[Network::kModelTypeLen - 1] = '\0';
                     sendTo(event.peer, Network::PacketType::Spawn,
                            &sp, sizeof(sp), true);
                 }
 
-                // 3) Broadcast SpawnPacket for the *new* player to all others.
+                // 3) Broadcast SpawnPacket for the new player to existing peers.
                 Network::SpawnPacket newSp;
                 newSp.networkId = newId;
-                newSp.position  = st.position;
-                std::strncpy(newSp.modelType, st.modelType.c_str(),
+                newSp.position  = spawnPos;
+                std::strncpy(newSp.modelType, "player",
                              Network::kModelTypeLen - 1);
                 newSp.modelType[Network::kModelTypeLen - 1] = '\0';
-                for (auto& [peer, pid] : peerToId) {
+                for (auto& [peer, pid] : peerToNetworkId) {
                     if (peer != event.peer) {
                         sendTo(peer, Network::PacketType::Spawn,
                                &newSp, sizeof(newSp), true);
@@ -290,19 +328,23 @@ int main() {
             }
 
             // =============================================================
-            // DISCONNECT — remove peer, broadcast Despawn
+            // DISCONNECT — destroy registry entity, broadcast Despawn
             // =============================================================
             case ENET_EVENT_TYPE_DISCONNECT: {
-                auto it = peerToId.find(event.peer);
-                if (it != peerToId.end()) {
+                auto it = peerToNetworkId.find(event.peer);
+                if (it != peerToNetworkId.end()) {
                     uint32_t removedId = it->second;
-                    peerToId.erase(it);
-                    entities.erase(removedId);
+                    peerToNetworkId.erase(it);
+
+                    auto eit = networkIdToEntity.find(removedId);
+                    if (eit != networkIdToEntity.end()) {
+                        registry.destroy(eit->second);
+                        networkIdToEntity.erase(eit);
+                    }
 
                     std::cout << "[Server] Client disconnected — networkId "
                               << removedId << "\n";
 
-                    // Broadcast DespawnPacket to remaining clients.
                     Network::DespawnPacket dp;
                     dp.networkId = removedId;
                     broadcast(server, Network::PacketType::Despawn,
@@ -314,7 +356,7 @@ int main() {
             }
 
             // =============================================================
-            // RECEIVE — process PlayerInputPacket
+            // RECEIVE — process PlayerInputPacket, validate and apply movement
             // =============================================================
             case ENET_EVENT_TYPE_RECEIVE: {
                 if (event.packet->dataLength >= 1) {
@@ -329,51 +371,41 @@ int main() {
                         Network::PlayerInputPacket input;
                         std::memcpy(&input, payload, sizeof(input));
 
-                        // Find the sender's networkId.
-                        auto pit = peerToId.find(event.peer);
-                        if (pit != peerToId.end()) {
+                        auto pit = peerToNetworkId.find(event.peer);
+                        if (pit != peerToNetworkId.end()) {
                             uint32_t nid = pit->second;
-                            auto eit = entities.find(nid);
-                            if (eit != entities.end()) {
-                                auto& est = eit->second;
+                            auto eit = networkIdToEntity.find(nid);
+                            if (eit != networkIdToEntity.end()) {
+                                auto entity = eit->second;
+                                auto& tc  = registry.get<TransformComponent>(entity);
+                                auto& nidComp = registry.get<NetworkIdComponent>(entity);
 
-                                // ------------------------------------------------
                                 // Client-authoritative, server-validated model.
-                                // Accept the client's physics-driven position
-                                // directly (with basic speed validation).
-                                // ------------------------------------------------
-                                glm::vec3 delta = input.position - est.position;
+                                // Accept client's physics-driven position with speed check.
+                                glm::vec3 delta = input.position - tc.position;
                                 float distSq = glm::dot(delta, delta);
-                                // Scale max allowed distance by deltaTime so
-                                // clients at any frame rate are treated fairly.
-                                // kMaxSpeed is in units/second.
                                 static constexpr float kMaxSpeed = 200.0f;
                                 float maxDist = kMaxSpeed * std::max(input.deltaTime, 0.001f);
                                 if (distSq <= maxDist * maxDist) {
-                                    est.position = input.position;
-                                    est.rotation = input.rotation;
+                                    tc.position = input.position;
+                                    tc.rotation = input.rotation;
                                 } else {
-                                    // Reject the move — use SharedMovement as
-                                    // a fallback to keep the entity moving.
+                                    // Reject — use SharedMovement as fallback.
                                     float fallbackTh = terrain.valid
-                                        ? terrain.getHeight(est.position.x,
-                                                            est.position.z)
+                                        ? terrain.getHeight(tc.position.x, tc.position.z)
                                         : SharedMovement::kNoTerrainHeight;
                                     SharedMovement::applyInput(
-                                        input, est.position, est.rotation, fallbackTh);
+                                        input, tc.position, tc.rotation, fallbackTh);
                                 }
 
-                                // Terrain height clamping (single lookup).
+                                // Terrain height clamping.
                                 if (terrain.valid) {
-                                    est.position.y = terrain.getHeight(
-                                        est.position.x, est.position.z);
+                                    tc.position.y = terrain.getHeight(
+                                        tc.position.x, tc.position.z);
                                 }
 
-                                if (input.sequenceNumber >
-                                    est.lastProcessedInputSequence) {
-                                    est.lastProcessedInputSequence =
-                                        input.sequenceNumber;
-                                }
+                                if (input.sequenceNumber > nidComp.lastInputSeq)
+                                    nidComp.lastInputSeq = input.sequenceNumber;
                             }
                         }
                     }
@@ -395,30 +427,38 @@ int main() {
             lastTick = now;
             serverTime += kTickInterval;
 
-            // ----- NPC AI tick -----
+            // ----- NPC AI tick — generate synthetic inputs -----
             std::unordered_map<uint32_t, Network::PlayerInputPacket> npcInputs;
             npcManager.tick(kTickInterval, npcInputs);
             for (auto& [nid, inp] : npcInputs) {
-                auto eit = entities.find(nid);
-                if (eit != entities.end()) {
-                    auto& est = eit->second;
+                auto eit = networkIdToEntity.find(nid);
+                if (eit != networkIdToEntity.end()) {
+                    auto& tc = registry.get<TransformComponent>(eit->second);
                     float th = terrain.valid
-                        ? terrain.getHeight(est.position.x, est.position.z)
+                        ? terrain.getHeight(tc.position.x, tc.position.z)
                         : SharedMovement::kNoTerrainHeight;
-                    SharedMovement::applyInput(inp, est.position,
-                                               est.rotation, th);
+                    SharedMovement::applyInput(inp, tc.position, tc.rotation, th);
                 }
             }
 
-            // ----- Broadcast all entity snapshots -----
-            for (auto& [eid, est] : entities) {
+            // ----- Step authoritative physics simulation -----
+            // PhysicsSystem reads kinematic TransformComponents → updates Bullet,
+            // then writes back dynamic body positions to TransformComponents.
+            physicsSystem.update(kTickInterval);
+
+            // ----- Broadcast all entity snapshots from the registry -----
+            auto view = registry.view<TransformComponent, NetworkIdComponent>();
+            for (auto entity : view) {
+                auto& tc  = view.get<TransformComponent>(entity);
+                auto& nid = view.get<NetworkIdComponent>(entity);
+
                 Network::TransformSnapshot snap;
-                snap.networkId     = eid;
+                snap.networkId      = nid.id;
                 snap.sequenceNumber = sequenceNum++;
                 snap.timestamp      = serverTime;
-                snap.position       = est.position;
-                snap.rotation       = est.rotation;
-                snap.lastProcessedInputSequence = est.lastProcessedInputSequence;
+                snap.position       = tc.position;
+                snap.rotation       = tc.rotation;
+                snap.lastProcessedInputSequence = nid.lastInputSeq;
 
                 broadcast(server, Network::PacketType::TransformSnapshot,
                           &snap, sizeof(snap));
@@ -441,6 +481,7 @@ int main() {
 
     // --- Cleanup ---
     std::cout << "[Server] Shutting down...\n";
+    physicsSystem.shutdown();
     enet_host_destroy(server);
     enet_deinitialize();
 
