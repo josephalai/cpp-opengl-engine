@@ -3,6 +3,7 @@
 #include "PlayerMovementSystem.h"
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/InputStateComponent.h"
+#include "../Events/EventBus.h"
 #include "../Input/InputMaster.h"
 #include "../Physics/PhysicsSystem.h"
 #include "../Terrain/Terrain.h"
@@ -13,14 +14,41 @@ PlayerMovementSystem::PlayerMovementSystem(entt::registry& registry)
     : registry_(registry)
 {}
 
+void PlayerMovementSystem::init() {
+    EventBus::instance().subscribe<PlayerMoveCommandEvent>(
+        [this](const PlayerMoveCommandEvent& cmd) {
+            pendingCmd_ = cmd;
+        });
+}
+
 void PlayerMovementSystem::update(float deltaTime) {
     auto view = registry_.view<TransformComponent, InputStateComponent>();
     for (auto entity : view) {
         auto& tc    = view.get<TransformComponent>(entity);
         auto& input = view.get<InputStateComponent>(entity);
 
-        // --- Poll inputs (or skip if EventBus mode is active) ---
-        if (!input.useEventBus) {
+        // --- Poll inputs (or apply EventBus command if EventBus mode is active) ---
+        if (input.useEventBus) {
+            // Replicate InputComponent::applyMovementCommand() logic using the
+            // latest command stored by the EventBus handler.
+            const auto& cmd = pendingCmd_;
+
+            if      (cmd.forward > 0.0f) input.currentSpeed =  input.runSpeed * input.speedHack;
+            else if (cmd.forward < 0.0f) input.currentSpeed = -input.runSpeed * input.speedHack;
+            else                         input.currentSpeed = 0.0f;
+
+            if      (cmd.turn > 0.0f) input.currentTurnSpeed =  input.turnSpeed * input.speedHack / 2.0f;
+            else if (cmd.turn < 0.0f) input.currentTurnSpeed = -input.turnSpeed * input.speedHack / 2.0f;
+            else                      input.currentTurnSpeed = 0.0f;
+
+            if (cmd.sprint)      input.speedHack = 4.5f;
+            if (cmd.sprintReset) input.speedHack = 1.0f;
+
+            if (cmd.jump && !input.isInAir) {
+                input.upwardsSpeed = InputStateComponent::kJumpPower;
+                input.isInAir      = true;
+            }
+        } else {
             float fwd  = InputMaster::isKeyDown(W) ?  1.0f
                        : InputMaster::isKeyDown(S) ? -1.0f : 0.0f;
             float turn = InputMaster::isKeyDown(A) ?  1.0f
@@ -77,3 +105,4 @@ void PlayerMovementSystem::update(float deltaTime) {
         }
     }
 }
+

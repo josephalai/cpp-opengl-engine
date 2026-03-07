@@ -633,16 +633,11 @@ void Engine::buildSystems() {
     //   8. UISystem        — object picking + UiMaster render + constraints
 
     // InputDispatcher must run first so that PlayerMoveCommandEvent subscribers
-    // (e.g. Player) have up-to-date speed values before any other system runs.
+    // (e.g. PlayerMovementSystem) have up-to-date speed values before any other system runs.
     systems.push_back(std::make_unique<InputDispatcher>(picker));
 
-    // Subscribe the player to receive movement commands via the EventBus
-    // instead of polling InputMaster::isKeyDown() directly in checkInputs().
-    if (player) {
-        player->subscribeToEvents();
-    }
-
-    // Also subscribe the ECS InputStateComponent to the EventBus.
+    // Subscribe the ECS InputStateComponent to the EventBus so
+    // PlayerMovementSystem uses event-driven movement instead of polling.
     if (player) {
         auto* isc = registry.try_get<InputStateComponent>(player->getHandle());
         if (isc) {
@@ -659,7 +654,12 @@ void Engine::buildSystems() {
 
     // PlayerMovementSystem — ECS replacement for InputComponent::update().
     // Runs after InputSystem (camera) and PhysicsSystem, reads InputStateComponent.
-    systems.push_back(std::make_unique<PlayerMovementSystem>(registry));
+    // init() subscribes to PlayerMoveCommandEvent on the EventBus.
+    {
+        auto pms = std::make_unique<PlayerMovementSystem>(registry);
+        pms->init();
+        systems.push_back(std::move(pms));
+    }
 
     // Build the chunk manager from the first loaded terrain's texture config.
     // Initial scene entities are registered so they appear inside their chunk.
@@ -684,11 +684,13 @@ void Engine::buildSystems() {
             chunkManager, player, allTerrains, entities, scenes));
     }
 
-    // NetworkSystem connects to the headless server via ENet and interpolates
-    // all network entities.  The local Player entity IS the network entity —
-    // no separate dummy entity is needed.
+    // NetworkSystem connects to the headless server via ENet and pushes
+    // snapshots into both the legacy NetworkSyncComponent and the new
+    // NetworkSyncData ECS component.  The local Player entity IS the
+    // network entity — no separate dummy entity is needed.
     {
         auto netSys = std::make_unique<NetworkSystem>(
+            registry,
             serverIP_,
             player,
             // Spawn callback

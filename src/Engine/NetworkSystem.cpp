@@ -22,11 +22,13 @@
 // Construction
 // ---------------------------------------------------------------------------
 
-NetworkSystem::NetworkSystem(const std::string& serverIP,
+NetworkSystem::NetworkSystem(entt::registry&  registry,
+                             const std::string& serverIP,
                              Player*         localPlayer,
                              SpawnCallback   onSpawn,
                              DespawnCallback onDespawn)
-    : serverIP_(serverIP)
+    : registry_(registry)
+    , serverIP_(serverIP)
     , localPlayer_(localPlayer)
     , spawnCallback_(std::move(onSpawn))
     , despawnCallback_(std::move(onDespawn))
@@ -209,10 +211,32 @@ void NetworkSystem::update(float deltaTime) {
                         // === Remote entity — push into interp buffer ===
                         auto it = networkEntities_.find(snapshot.networkId);
                         if (it != networkEntities_.end() && it->second) {
+                            // Push into legacy NetworkSyncComponent (old code path).
                             auto* sync = it->second->getComponent<
                                 NetworkSyncComponent>();
                             if (sync) {
                                 sync->pushSnapshot(snapshot);
+                            }
+
+                            // Push into ECS NetworkSyncData (new code path).
+                            entt::entity handle = it->second->getHandle();
+                            if (auto* nsd = registry_.try_get<NetworkSyncData>(handle)) {
+                                // Discard out-of-order packets.
+                                if (nsd->buffer.empty() ||
+                                    snapshot.sequenceNumber > nsd->buffer.back().sequenceNumber) {
+                                    nsd->buffer.push_back(snapshot);
+
+                                    // Clamp buffer to maxBufferSize.
+                                    while (nsd->buffer.size() > nsd->maxBufferSize) {
+                                        nsd->buffer.pop_front();
+                                    }
+
+                                    // Sync playback clock on 2nd snapshot.
+                                    if (!nsd->started && nsd->buffer.size() >= 2) {
+                                        nsd->renderTime = nsd->buffer.back().timestamp;
+                                        nsd->started    = true;
+                                    }
+                                }
                             }
                         }
                     }
@@ -230,14 +254,6 @@ void NetworkSystem::update(float deltaTime) {
             case ENET_EVENT_TYPE_NONE:
                 break;
         }
-    }
-
-    // -----------------------------------------------------------------
-    // 3. Drive interpolation on remote entities
-    // -----------------------------------------------------------------
-    for (auto& [nid, ent] : networkEntities_) {
-        if (nid == localPlayerId_ || !ent) continue;
-        ent->updateComponents(deltaTime);
     }
 }
 
