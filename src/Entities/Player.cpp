@@ -21,8 +21,8 @@ void Player::move(Terrain *terrain) {
     if (inputComponent_) {
         inputComponent_->setTerrain(terrain);
     }
-    float dt = DisplayManager::getFrameTimeSeconds();
-    updateComponents(dt);
+    // Movement is now handled by PlayerMovementSystem (ECS).
+    // updateComponents(dt) intentionally removed to avoid double-movement.
 }
 
 void Player::setPhysicsSystem(PhysicsSystem* ps) {
