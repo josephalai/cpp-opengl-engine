@@ -40,7 +40,6 @@
 #include "PlayerMovementSystem.h"
 #include "NetworkInterpolationSystem.h"
 #include "../Network/NetworkPackets.h"
-#include "../Entities/Components/NetworkSyncComponent.h"
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/InputStateComponent.h"
 #include "../ECS/Components/NetworkSyncData.h"
@@ -521,11 +520,7 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
     const float remoteScale = player ? player->getScale() : 1.0f;
     auto* ent = new Entity(registry, remoteModel, bb, position, glm::vec3(0.0f), remoteScale);
 
-    // Attach the interpolation component so the entity can receive and
-    // smoothly interpolate server transform snapshots.
-    ent->addComponent<NetworkSyncComponent>();
-
-    // Also emplace the new ECS NetworkSyncData so NetworkInterpolationSystem can drive it.
+    // Emplace the ECS NetworkSyncData so NetworkInterpolationSystem can drive it.
     registry.emplace<NetworkSyncData>(ent->getHandle());
 
     entities.push_back(ent);
@@ -627,7 +622,7 @@ void Engine::buildSystems() {
     //   2. PhysicsSystem   — step simulation, sync transforms
     //   3. InputSystem     — camera movement, picker, GUI animations
     //   4. StreamingSystem — update chunk loading, refresh entity/terrain lists
-    //   5. NetworkSystem   — ENet packet polling + NetworkSyncComponent interpolation
+    //   5. NetworkSystem   — ENet packet polling + NetworkSyncData interpolation
     //   6. RenderSystem    — FBO + main scene render (frustum-culled)
     //   7. AnimationSystem — sync positions + animated character render
     //   8. UISystem        — object picking + UiMaster render + constraints
@@ -685,8 +680,7 @@ void Engine::buildSystems() {
     }
 
     // NetworkSystem connects to the headless server via ENet and pushes
-    // snapshots into both the legacy NetworkSyncComponent and the new
-    // NetworkSyncData ECS component.  The local Player entity IS the
+    // snapshots into the NetworkSyncData ECS component.  The local Player entity IS the
     // network entity — no separate dummy entity is needed.
     {
         auto netSys = std::make_unique<NetworkSystem>(
@@ -710,7 +704,7 @@ void Engine::buildSystems() {
         systems.push_back(std::move(netSys));
     }
 
-    // NetworkInterpolationSystem — ECS replacement for NetworkSyncComponent::update().
+    // NetworkInterpolationSystem — ECS replacement for legacy interpolation.
     // Runs after NetworkSystem has pushed snapshots, before RenderSystem draws.
     systems.push_back(std::make_unique<NetworkInterpolationSystem>(registry));
 

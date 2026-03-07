@@ -8,7 +8,7 @@
 //   2. Poll ENet — handle Welcome, Spawn, Despawn, TransformSnapshot packets.
 //   3. For the local player: apply server reconciliation to the actual Player
 //      entity when the server disagrees significantly.
-//   4. For remote entities: push snapshots into their NetworkSyncComponent
+//   4. For remote entities: push snapshots into their NetworkSyncData
 //      buffer for smooth interpolation.
 
 #include "NetworkSystem.h"
@@ -211,14 +211,7 @@ void NetworkSystem::update(float deltaTime) {
                         // === Remote entity — push into interp buffer ===
                         auto it = networkEntities_.find(snapshot.networkId);
                         if (it != networkEntities_.end() && it->second) {
-                            // Push into legacy NetworkSyncComponent (old code path).
-                            auto* sync = it->second->getComponent<
-                                NetworkSyncComponent>();
-                            if (sync) {
-                                sync->pushSnapshot(snapshot);
-                            }
-
-                            // Push into ECS NetworkSyncData (new code path).
+                            // Push into ECS NetworkSyncData.
                             entt::entity handle = it->second->getHandle();
                             if (auto* nsd = registry_.try_get<NetworkSyncData>(handle)) {
                                 // Discard out-of-order packets.

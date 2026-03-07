@@ -8,15 +8,14 @@
 //   3. Maintains a map of networkId → Entity* for remote interpolation.
 //   4. Reads the actual Player's physics-driven position each frame and
 //      sends it to the server — no separate prediction math needed.
-//   5. For remote entities: pushes snapshots into their NetworkSyncComponent
-//      and NetworkSyncData buffers for smooth interpolation.
+//   5. For remote entities: pushes snapshots into their NetworkSyncData
+//      buffers for smooth interpolation.
 
 #ifndef ENGINE_NETWORKSYSTEM_H
 #define ENGINE_NETWORKSYSTEM_H
 
 #include "ISystem.h"
 #include "../Entities/Entity.h"
-#include "../Entities/Components/NetworkSyncComponent.h"
 #include "../ECS/Components/NetworkSyncData.h"
 #include "../Network/NetworkPackets.h"
 #include "../Input/InputMaster.h"
