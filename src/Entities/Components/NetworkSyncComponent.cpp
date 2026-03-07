@@ -29,11 +29,26 @@ void NetworkSyncComponent::pushSnapshot(const Network::TransformSnapshot& snapsh
     }
 
     // The first time we accumulate two snapshots we synchronise our playback
-    // clock to the server timeline so renderTime_ - interpolationDelay_ gives
-    // a targetTime that is slightly behind the earliest snapshot, allowing
-    // smooth ramp-up from the very first frame.
+    // clock to the server timeline.
+    //
+    // Setting renderTime_ = back.timestamp places targetTime exactly
+    // interpolationDelay_ seconds BEHIND the most-recent received snapshot:
+    //   targetTime = renderTime_ - interpolationDelay_
+    //              = back.timestamp - interpolationDelay_
+    //
+    // This guarantees a steady-state gap of interpolationDelay_ between
+    // targetTime and the latest received snapshot, so the client always has
+    // ~interpolationDelay_ worth of future snapshots buffered before it needs
+    // them.  With kInterpolationDelay = 0.20 s (2× the 0.10 s tick interval)
+    // the client can tolerate up to ~100 ms of one-way network latency without
+    // entering the starvation/extrapolation branch.
+    //
+    // Using buffer_.front().timestamp + interpolationDelay_ (the previous
+    // formula) only provided a 1-tick forward window, meaning any positive
+    // latency triggered extrapolation and the resulting jump-ahead / snap-back
+    // artefact reported as NPC/remote entities moving too fast.
     if (!started_ && buffer_.size() >= 2) {
-        renderTime_ = buffer_.front().timestamp + interpolationDelay_;
+        renderTime_ = buffer_.back().timestamp;
         started_    = true;
     }
 }
@@ -51,6 +66,14 @@ void NetworkSyncComponent::update(float deltaTime) {
     // Advance the playback clock at real-time speed.
     renderTime_ += deltaTime;
 
+    // --- CLOCK DRIFT CORRECTION ---
+    // Prevent renderTime_ from running too far ahead of the server timeline.
+    // If we've drifted, gently pull back to keep targetTime within the buffer.
+    const float maxRenderTime = buffer_.back().timestamp + interpolationDelay_ + 0.01f;
+    if (renderTime_ > maxRenderTime) {
+        renderTime_ = maxRenderTime;
+    }
+
     // The time we actually want to display (lagging interpolationDelay_ behind).
     const float targetTime = renderTime_ - interpolationDelay_;
 
@@ -61,29 +84,17 @@ void NetworkSyncComponent::update(float deltaTime) {
         applySnapshot(buffer_.front());
 
     // -----------------------------------------------------------------------
-    // Starvation / extrapolation case: targetTime is beyond our newest snapshot.
+    // Starvation case: targetTime is beyond our newest snapshot.
+    // Hold at the last known position rather than extrapolating.
+    //
+    // Velocity-based dead reckoning was tried here, but it consistently
+    // produces a "jump ahead + slingshot back" visual artefact whenever the
+    // remote entity changes speed or direction between ticks.  The artefact
+    // is more jarring than the mild "freeze" that a hold produces, so we
+    // use the conservative hold strategy instead.
     // -----------------------------------------------------------------------
     } else if (targetTime >= buffer_.back().timestamp) {
-        if (buffer_.size() >= 2) {
-            const auto& s0 = *(buffer_.end() - 2);
-            const auto& s1 = buffer_.back();
-            const float span = s1.timestamp - s0.timestamp;
-            if (span > 0.0f) {
-                // Velocity-based dead reckoning — cap over at ~1 tick to prevent
-                // runaway drift while the next snapshot is in transit.
-                const float over = std::min(targetTime - s1.timestamp, 0.1f);
-                const glm::vec3 velocity = (s1.position - s0.position) / span;
-                entity_->setPosition(s1.position + velocity * over);
-
-                // Hold at the last known rotation during extrapolation to avoid
-                // SLERP overshoot (t > 1) producing reversed orientations.
-                entity_->setRotation(s1.rotation);
-            } else {
-                applySnapshot(s1);
-            }
-        } else {
-            applySnapshot(buffer_.back());
-        }
+        applySnapshot(buffer_.back());
         pruneBuffer();
 
     // -----------------------------------------------------------------------
@@ -119,13 +130,21 @@ void NetworkSyncComponent::update(float deltaTime) {
     // Compute XZ movement speed for animation-state decisions (Walk/Run/Idle).
     // This block executes for ALL non-empty-buffer cases (hold, starvation, and
     // normal interpolation) because the if-else chain above has no early returns.
-    // previousPosition_ is therefore always kept up to date.
+    // On the very first update, seed previousPosition_ from the entity's actual
+    // position so the first frame doesn't produce a bogus speed spike caused by
+    // the default-initialised (0,0,0) sentinel.
     {
-        const glm::vec3 cur  = entity_->getPosition();
-        const glm::vec3 d    = cur - previousPosition_;
-        const float     dist = std::sqrt(d.x * d.x + d.z * d.z);
-        currentSpeed_        = (deltaTime > 0.0f) ? dist / deltaTime : 0.0f;
-        previousPosition_    = cur;
+        const glm::vec3 cur = entity_->getPosition();
+        if (!previousPositionInitialized_) {
+            previousPosition_         = cur;
+            previousPositionInitialized_ = true;
+            currentSpeed_             = 0.0f;
+        } else {
+            const glm::vec3 d    = cur - previousPosition_;
+            const float     dist = std::sqrt(d.x * d.x + d.z * d.z);
+            currentSpeed_        = (deltaTime > 0.0f) ? dist / deltaTime : 0.0f;
+        }
+        previousPosition_ = cur;
     }
 }
 
