@@ -28,6 +28,7 @@
 #include "../Guis/Text/FontMeshCreator/TextMeshData.h"
 #include "../Toolbox/Color.h"
 #include "../Animation/AnimationLoader.h"
+#include "../ECS/Components/AssimpModelComponent.h"
 #include "StringId.h"
 
 #include <fstream>
@@ -128,7 +129,6 @@ bool SceneLoader::load(
     Loader*                     loader,
     entt::registry&             registry,
     std::vector<Entity*>&       entities,
-    std::vector<AssimpEntity*>& scenes,
     std::vector<Light*>&        lights,
     std::vector<Terrain*>&      allTerrains,
     std::vector<GuiTexture*>&   guis,
@@ -707,7 +707,7 @@ bool SceneLoader::load(
     }
 
     // -----------------------------------------------------------------------
-    // Pass 7: assimp entities
+    // Pass 7: assimp entities — emplaced directly into the registry as AssimpModelComponent
     // -----------------------------------------------------------------------
     for (auto& ad : assimpDefs) {
         auto* mesh = new AssimpMesh(ad.path);
@@ -717,9 +717,10 @@ bool SceneLoader::load(
             ? randomPosition(primaryTerrain, ad.yOffset)
             : glm::vec3(ad.x, ad.y, ad.z);
         float sc = randomScale(ad.scaleMin, ad.scaleMax);
-        scenes.push_back(new AssimpEntity(mesh,
-            new BoundingBox(rawBb, BoundingBoxIndex::genUniqueId()),
-            pos, randomRotation(), sc));
+        auto h = registry.create();
+        registry.emplace<AssimpModelComponent>(h, mesh,
+            pos, randomRotation(), sc,
+            new BoundingBox(rawBb, BoundingBoxIndex::genUniqueId()));
     }
 
     // -----------------------------------------------------------------------
@@ -951,7 +952,6 @@ bool SceneLoader::load(
     // -----------------------------------------------------------------------
     std::cout << "[SceneLoader] Scene loaded: "
               << entities.size()        << " entities, "
-              << scenes.size()          << " assimp scenes, "
               << lights.size()          << " lights, "
               << allTerrains.size()     << " terrain tiles, "
               << guis.size()            << " GUI textures, "

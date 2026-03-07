@@ -4,7 +4,7 @@
 //
 // All render lists are built exclusively from registry.view<> queries:
 //   - registry.view<EntityOwnerComponent, ActiveChunkTag>()    → Entity* list
-//   - registry.view<AssimpModelComponent, ActiveChunkTag>()   → AssimpEntity* list
+//   - registry.view<AssimpModelComponent, ActiveChunkTag>()   → AssimpModelComponent list
 //   - registry.view<TerrainComponent,     ActiveChunkTag>()   → Terrain* list
 //   - registry.view<LightComponent>()                          → Light* list (always all)
 //
@@ -22,7 +22,6 @@
 #include "../ECS/Components/TerrainComponent.h"
 #include "../ECS/Components/ActiveChunkTag.h"
 #include "../Entities/Entity.h"
-#include "../Entities/AssimpEntity.h"
 #include "../Entities/Light.h"
 #include "../Terrain/Terrain.h"
 #include "../Interfaces/Interactive.h"
@@ -56,11 +55,11 @@ void RenderSystem::update(float /*deltaTime*/) {
     // -----------------------------------------------------------------------
     // Build Assimp scene list — only those tagged with ActiveChunkTag.
     // -----------------------------------------------------------------------
-    std::vector<AssimpEntity*> scenes;
+    std::vector<AssimpModelComponent> scenes;
     {
         auto view = registry_.view<AssimpModelComponent, ActiveChunkTag>();
         for (auto [e, am] : view.each()) {
-            if (am.entity) scenes.push_back(am.entity);
+            scenes.push_back(am);
         }
     }
 
@@ -88,15 +87,13 @@ void RenderSystem::update(float /*deltaTime*/) {
     }
 
     // -----------------------------------------------------------------------
-    // Build allBoxes (pickable Interactive* objects) from the active sets.
+    // Build allBoxes (pickable Interactive* objects) from the active Entity sets.
+    // Note: AssimpModelComponent objects are not Interactive and are not pickable.
     // -----------------------------------------------------------------------
     std::vector<Interactive*> allBoxes;
     {
         for (auto* e : entities) {
             if (e && e->getBoundingBox()) allBoxes.push_back(e);
-        }
-        for (auto* s : scenes) {
-            if (s && s->getBoundingBox()) allBoxes.push_back(s);
         }
     }
 

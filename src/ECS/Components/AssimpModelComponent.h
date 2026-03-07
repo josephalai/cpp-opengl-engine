@@ -1,31 +1,27 @@
 // src/ECS/Components/AssimpModelComponent.h
 //
-// EnTT component that represents an Assimp-loaded scene object.
-// This replaces the legacy AssimpComponent / AssimpEntity* side-vector.
+// Pure-data EnTT component that represents an Assimp-loaded scene object.
+// Replaces the legacy AssimpEntity* side-vector with a plain POD struct.
 //
-// Primary data:
-//   mesh   — the raw Assimp mesh (the authoritative geometry/material data)
-//
-// Compatibility shim (TODO: remove once MasterRenderer API is updated):
-//   entity — the legacy AssimpEntity wrapper kept alive for the current
-//             MasterRenderer::renderScene() API which takes AssimpEntity*.
-//             Once MasterRenderer is refactored to accept AssimpModelComponent
-//             data directly, this field will be removed.
-//             (BoundingBox and transform data are still accessed via entity.)
-//
-// Transform (position/rotation/scale) may be stored in a companion
-// TransformComponent on the same registry entity; for now the transform
-// is still carried inside AssimpEntity.
+// All transform data (position, rotation, scale) lives here directly so
+// that MasterRenderer, AssimpEntityRenderer, FrustumCuller, ChunkManager,
+// and StreamingSystem can read transform/geometry data without touching
+// any legacy OO wrapper.
 
 #ifndef ECS_ASSIMPMODELCOMPONENT_H
 #define ECS_ASSIMPMODELCOMPONENT_H
 
+#include <glm/glm.hpp>
+
 class AssimpMesh;
-class AssimpEntity;
+class BoundingBox;
 
 struct AssimpModelComponent {
-    AssimpMesh*   mesh   = nullptr; ///< primary mesh data (key ECS field)
-    AssimpEntity* entity = nullptr; ///< legacy wrapper kept for MasterRenderer compat
+    AssimpMesh*  mesh     = nullptr;            ///< Assimp geometry + material
+    glm::vec3    position = glm::vec3(0.0f);    ///< world-space position
+    glm::vec3    rotation = glm::vec3(0.0f);    ///< Euler rotation (degrees)
+    float        scale    = 1.0f;               ///< uniform scale factor
+    BoundingBox* box      = nullptr;            ///< optional AABB for culling/picking
 };
 
 #endif // ECS_ASSIMPMODELCOMPONENT_H

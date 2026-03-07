@@ -30,6 +30,7 @@
 #include "InstancedRenderer.h"
 #include "InstancedModel.h"
 #include "../Shaders/InstancedShader.h"
+#include "../ECS/Components/AssimpModelComponent.h"
 
 static const float FOVY = 45.0f;
 static const float NEAR_PLANE = 0.1f;
@@ -52,7 +53,7 @@ private:
 
     std::map<RawBoundingBox *, std::vector<Interactive *>> *boxes;
     std::map<TexturedModel *, std::vector<Entity *>> *entities;
-    std::map<AssimpMesh *, std::vector<AssimpEntity *>> *scenes;
+    std::map<AssimpMesh *, std::vector<AssimpModelComponent>> *scenes;
     std::vector<Terrain *> *terrains;
 
     glm::mat4 projectionMatrix;
@@ -97,11 +98,11 @@ public:
 
     void processEntity(Entity *entity);
 
-    void processAssimpEntity(AssimpEntity *scene);
+    void processAssimpEntity(const AssimpModelComponent& comp);
 
     void processBoundingBox(Interactive *entityWithBox);
 
-    void renderScene(std::vector<Entity *> entities, std::vector<AssimpEntity *> aEntities,
+    void renderScene(std::vector<Entity *> entities, std::vector<AssimpModelComponent> aEntities,
                      std::vector<Terrain *> terrains, std::vector<Light *> lights);
 
     void renderBoundingBoxes(std::vector<Interactive *> boxes);
@@ -131,7 +132,7 @@ public:
     void renderWater(Camera* cam, Light* sun);
 
     // --- Scene Graph ---
-    void renderSceneGraph(SceneGraph& graph, std::vector<AssimpEntity*> aEntities,
+    void renderSceneGraph(SceneGraph& graph, std::vector<AssimpModelComponent> aEntities,
                           std::vector<Terrain*> terrains, std::vector<Light*> lights);
 
     // --- PBR ---

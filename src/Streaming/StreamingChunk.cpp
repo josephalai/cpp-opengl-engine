@@ -3,7 +3,6 @@
 #include "StreamingChunk.h"
 #include "../Terrain/Terrain.h"
 #include "../Entities/Entity.h"
-#include "../Entities/AssimpEntity.h"
 #include "../RenderEngine/Loader.h"
 #include "../Textures/TerrainTexturePack.h"
 #include "../Textures/TerrainTexture.h"
@@ -29,7 +28,7 @@ void StreamingChunk::addEntity(Entity* e) {
     entities.push_back(e);
 }
 
-void StreamingChunk::addAssimpEntity(AssimpEntity* e) {
+void StreamingChunk::addAssimpEntity(entt::entity e) {
     assimpEntities.push_back(e);
 }
 

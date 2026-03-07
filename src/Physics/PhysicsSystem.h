@@ -9,7 +9,6 @@
 
 #include "../Engine/ISystem.h"
 #include "../Entities/Entity.h"
-#include "../Entities/AssimpEntity.h"
 #include "PhysicsComponents.h"
 
 #include <btBulletDynamicsCommon.h>
@@ -26,10 +25,9 @@ class Terrain;
 
 /// One record kept per registered entity.
 struct PhysicsEntry {
-    Entity*       entity   = nullptr;  ///< null for non-Entity registrations
-    AssimpEntity* aEntity  = nullptr;  ///< null for non-AssimpEntity registrations
-    btRigidBody*  body     = nullptr;
-    BodyType      bodyType = BodyType::Dynamic;
+    Entity*      entity   = nullptr;  ///< null for non-Entity registrations
+    btRigidBody* body     = nullptr;
+    BodyType     bodyType = BodyType::Dynamic;
 };
 
 class PhysicsSystem : public ISystem {

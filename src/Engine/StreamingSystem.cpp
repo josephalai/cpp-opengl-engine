@@ -4,10 +4,9 @@
 //
 // Instead of overwriting side-vectors, this system queries ChunkManager for
 // the currently loaded entity/scene/terrain sets and stamps ActiveChunkTag on
-// the registry entities that are inside active chunks.  Entities that leave
-// active chunks have the tag removed.  RenderSystem and AnimationSystem filter
-// their view<> queries with ActiveChunkTag to cull invisible objects without
-// ever touching a side-vector.
+// the corresponding registry entities.  Entities that leave active chunks have
+// the tag removed.  RenderSystem and AnimationSystem filter their view<>
+// queries with ActiveChunkTag to cull invisible objects without side-vectors.
 
 #include "StreamingSystem.h"
 #include "../ECS/Components/EntityOwnerComponent.h"
@@ -16,7 +15,6 @@
 #include "../ECS/Components/ActiveChunkTag.h"
 #include "../Entities/Player.h"
 #include "../Entities/Entity.h"
-#include "../Entities/AssimpEntity.h"
 #include "../Terrain/Terrain.h"
 #include <unordered_set>
 
@@ -43,12 +41,12 @@ void StreamingSystem::update(float /*deltaTime*/) {
     // Build O(1)-lookup sets from ChunkManager's active lists.
     // -----------------------------------------------------------------------
     auto activeEntities = chunkManager_->getActiveEntities();
-    auto activeScenes   = chunkManager_->getActiveAssimpEntities();
+    auto activeScenes   = chunkManager_->getActiveAssimpEntities();   // entt::entity handles
     auto activeTerrains = chunkManager_->getActiveTerrains();
 
-    const std::unordered_set<Entity*>       entitySet(activeEntities.begin(),  activeEntities.end());
-    const std::unordered_set<AssimpEntity*> sceneSet (activeScenes.begin(),    activeScenes.end());
-    const std::unordered_set<Terrain*>      terrainSet(activeTerrains.begin(), activeTerrains.end());
+    const std::unordered_set<Entity*>      entitySet (activeEntities.begin(), activeEntities.end());
+    const std::unordered_set<entt::entity> sceneSet  (activeScenes.begin(),   activeScenes.end());
+    const std::unordered_set<Terrain*>     terrainSet(activeTerrains.begin(), activeTerrains.end());
 
     // -----------------------------------------------------------------------
     // Stamp or remove ActiveChunkTag — Entity owners
@@ -64,10 +62,12 @@ void StreamingSystem::update(float /*deltaTime*/) {
 
     // -----------------------------------------------------------------------
     // Stamp or remove ActiveChunkTag — Assimp scene objects
+    // ChunkManager tracks them by entt::entity handle, so we can stamp/remove
+    // directly without comparing legacy pointers.
     // -----------------------------------------------------------------------
     auto sView = registry_.view<AssimpModelComponent>();
     for (auto [e, am] : sView.each()) {
-        if (sceneSet.count(am.entity)) {
+        if (sceneSet.count(e)) {
             registry_.emplace_or_replace<ActiveChunkTag>(e);
         } else {
             registry_.remove<ActiveChunkTag>(e);

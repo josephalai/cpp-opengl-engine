@@ -3,7 +3,6 @@
 #include "FrustumCuller.h"
 #include "../Entities/Camera.h"
 #include "../Entities/Entity.h"
-#include "../Entities/AssimpEntity.h"
 #include "../Terrain/Terrain.h"
 #include "../BoundingBox/BoundingBox.h"
 #include <glm/glm.hpp>
@@ -56,33 +55,31 @@ std::vector<Entity*> FrustumCuller::cull(const std::vector<Entity*>& entities) c
     return visible;
 }
 
-std::vector<AssimpEntity*> FrustumCuller::cull(const std::vector<AssimpEntity*>& entities) const {
-    std::vector<AssimpEntity*> visible;
-    visible.reserve(entities.size());
+std::vector<AssimpModelComponent> FrustumCuller::cull(const std::vector<AssimpModelComponent>& components) const {
+    std::vector<AssimpModelComponent> visible;
+    visible.reserve(components.size());
 
-    for (AssimpEntity* e : entities) {
-        if (!e) continue;
-
-        BoundingBox* box = e->getBoundingBox();
+    for (const AssimpModelComponent& comp : components) {
+        BoundingBox* box = comp.box;
         if (!box) {
-            visible.push_back(e);
+            visible.push_back(comp);
             continue;
         }
 
         BoundingAABB aabb = box->getAABB();
         if (!aabb.valid) {
-            visible.push_back(e);
+            visible.push_back(comp);
             continue;
         }
 
         // Transform local AABB by position and scale (rotation ignored per spec — see Entity cull above).
-        float scale = e->getScale();
-        glm::vec3 pos = e->getPosition();
+        float scale = comp.scale;
+        glm::vec3 pos = comp.position;
         glm::vec3 worldMin = pos + aabb.min * scale;
         glm::vec3 worldMax = pos + aabb.max * scale;
 
         if (frustum_.isAABBVisible(worldMin, worldMax)) {
-            visible.push_back(e);
+            visible.push_back(comp);
         }
     }
     return visible;

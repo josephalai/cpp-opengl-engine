@@ -4,12 +4,13 @@
 
 #ifndef ENGINE_ASSIMPENTITYRENDERER_H
 #define ENGINE_ASSIMPENTITYRENDERER_H
-#include "../Entities/AssimpEntity.h"
+#include "../ECS/Components/AssimpModelComponent.h"
 #include "../Toolbox/Maths.h"
 #include "AssimpEntityLoader.h"
 #include <iostream>
 #include <cstdio>
 #include <map>
+#include <vector>
 
 class AssimpEntityRenderer {
 private:
@@ -19,18 +20,16 @@ public:
     AssimpEntityRenderer(AssimpStaticShader *shader);
 
     /**
-     * @brief accepts a map[model]std::vector<Entity *>, and traverses through
-     *        it, and draws them -- so as not to copy objects.
-     * @param scenes
+     * @brief accepts a map[mesh]vector<AssimpModelComponent> and renders each batch.
+     * @param scenes  Batched scene components grouped by AssimpMesh*.
      */
-    void render(std::map<AssimpMesh *, std::vector<AssimpEntity *>> *scenes);
-
+    void render(std::map<AssimpMesh *, std::vector<AssimpModelComponent>> *scenes);
 
     /**
-     * @brief sets the initial transformation (view) matrix.
-     * @param scene
+     * @brief uploads the transformation matrix and material for one scene component.
+     * @param comp  The pure-data component to render.
      */
-    void prepareInstance(AssimpEntity *scene);
+    void prepareInstance(const AssimpModelComponent& comp);
 
 };
 #endif //ENGINE_ASSIMPENTITYRENDERER_H

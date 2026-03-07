@@ -126,7 +126,6 @@ void Engine::loadScene() {
     // Nothing lives outside the registry after this function returns.
     // -----------------------------------------------------------------------
     std::vector<Entity*>         tmpEntities;
-    std::vector<AssimpEntity*>   tmpScenes;
     std::vector<Light*>          tmpLights;
     std::vector<Terrain*>        tmpTerrains;
     std::vector<AnimatedEntity*> tmpAnimated;
@@ -141,7 +140,7 @@ void Engine::loadScene() {
             probe.close();
             sceneLoaded = SceneLoaderJson::load(jsonPath, loader,
                               registry,
-                              tmpEntities, tmpScenes, tmpLights,
+                              tmpEntities, tmpLights,
                               tmpTerrains, guis, texts, waterTiles,
                               primaryTerrain, player, playerCamera,
                               tmpAnimated,
@@ -154,7 +153,7 @@ void Engine::loadScene() {
     if (!sceneLoaded) {
         sceneLoaded = SceneLoader::load(cfgPath, loader,
                           registry,
-                          tmpEntities, tmpScenes, tmpLights,
+                          tmpEntities, tmpLights,
                           tmpTerrains, guis, texts, waterTiles,
                           primaryTerrain, player, playerCamera,
                           tmpAnimated,
@@ -170,11 +169,7 @@ void Engine::loadScene() {
         registry.emplace<EntityOwnerComponent>(e->getHandle(), e);
     }
 
-    // AssimpEntity* → AssimpModelComponent (holds AssimpMesh* + legacy entity*)
-    for (auto* s : tmpScenes) {
-        auto h = registry.create();
-        registry.emplace<AssimpModelComponent>(h, s->getModel(), s);
-    }
+    // AssimpModelComponent entities are emplaced directly by the loaders.
 
     // Light* → LightComponent (stored by value — Light data copied inline)
     for (auto* l : tmpLights) {
@@ -703,7 +698,7 @@ void Engine::buildSystems() {
         {
             auto sView = registry.view<AssimpModelComponent>();
             for (auto [h, am] : sView.each()) {
-                if (am.entity) chunkManager->registerAssimpEntity(am.entity, am.entity->getPosition());
+                chunkManager->registerAssimpEntity(h, am.position);
             }
         }
         systems.push_back(std::make_unique<StreamingSystem>(

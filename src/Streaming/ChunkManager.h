@@ -8,6 +8,7 @@
 
 #include "StreamingChunk.h"
 #include "../Terrain/Terrain.h"
+#include <entt/entt.hpp>
 #include <unordered_map>
 #include <vector>
 #include <string>
@@ -17,7 +18,6 @@ class Loader;
 class TerrainTexturePack;
 class TerrainTexture;
 class Entity;
-class AssimpEntity;
 
 class ChunkManager {
 public:
@@ -40,8 +40,8 @@ public:
     /// Remove an entity from whichever chunk currently holds it.
     void removeEntity(Entity* e);
 
-    /// Register an AssimpEntity in the appropriate chunk.
-    void registerAssimpEntity(AssimpEntity* e, const glm::vec3& worldPos);
+    /// Register an ECS Assimp entity handle in the appropriate chunk.
+    void registerAssimpEntity(entt::entity e, const glm::vec3& worldPos);
 
     /// Register a pre-existing (SceneLoader-owned) terrain tile so the
     /// ChunkManager knows its grid cell and won't create a duplicate.
@@ -55,11 +55,11 @@ public:
     void refreshEntityPositions();
 
     /// Collect all Terrain pointers from LOADED chunks.
-    std::vector<Terrain*>      getActiveTerrains()      const;
+    std::vector<Terrain*>        getActiveTerrains()      const;
     /// Collect all Entity pointers from LOADED chunks.
-    std::vector<Entity*>       getActiveEntities()       const;
-    /// Collect all AssimpEntity pointers from LOADED chunks.
-    std::vector<AssimpEntity*> getActiveAssimpEntities() const;
+    std::vector<Entity*>         getActiveEntities()       const;
+    /// Collect all ECS Assimp entity handles from LOADED chunks.
+    std::vector<entt::entity>    getActiveAssimpEntities() const;
 
     /// Unload all chunks and release resources.
     void shutdown();

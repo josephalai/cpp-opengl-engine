@@ -3,7 +3,6 @@
 #include "ChunkManager.h"
 #include "../Terrain/Terrain.h"
 #include "../Entities/Entity.h"
-#include "../Entities/AssimpEntity.h"
 #include <cmath>
 #include <algorithm>
 
@@ -135,7 +134,7 @@ void ChunkManager::refreshEntityPositions() {
     }
 }
 
-void ChunkManager::registerAssimpEntity(AssimpEntity* e, const glm::vec3& worldPos) {
+void ChunkManager::registerAssimpEntity(entt::entity e, const glm::vec3& worldPos) {
     int cx = static_cast<int>(std::floor(worldPos.x / kTerrainSize));
     int cz = static_cast<int>(std::floor(worldPos.z / kTerrainSize));
     auto key = std::make_pair(cx, cz);
@@ -171,8 +170,8 @@ std::vector<Entity*> ChunkManager::getActiveEntities() const {
     return result;
 }
 
-std::vector<AssimpEntity*> ChunkManager::getActiveAssimpEntities() const {
-    std::vector<AssimpEntity*> result;
+std::vector<entt::entity> ChunkManager::getActiveAssimpEntities() const {
+    std::vector<entt::entity> result;
     for (const auto& [key, chunk] : chunks_) {
         if (chunk->state == StreamingChunk::State::LOADED) {
             result.insert(result.end(),

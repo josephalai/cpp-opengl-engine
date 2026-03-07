@@ -80,10 +80,9 @@ void PhysicsSystem::update(float deltaTime) {
     // Sync kinematic bodies FROM entities TO physics world
     for (auto& e : entries_) {
         if (e.bodyType != BodyType::Kinematic) continue;
-        glm::vec3 pos = e.entity ? e.entity->getPosition()
-                                  : (e.aEntity ? e.aEntity->getPosition() : glm::vec3(0));
-        glm::vec3 rot = e.entity ? e.entity->getRotation()
-                                  : (e.aEntity ? e.aEntity->getRotation() : glm::vec3(0));
+        if (!e.entity) continue;
+        glm::vec3 pos = e.entity->getPosition();
+        glm::vec3 rot = e.entity->getRotation();
 
         glm::quat q = glm::quat(glm::radians(rot));
         btTransform t;
@@ -105,17 +104,13 @@ void PhysicsSystem::update(float deltaTime) {
     // Sync dynamic body transforms → entities
     for (auto& e : entries_) {
         if (e.bodyType != BodyType::Dynamic) continue;
+        if (!e.entity) continue;
         btTransform t;
         e.body->getMotionState()->getWorldTransform(t);
         glm::vec3 pos = btToGlm(t.getOrigin());
         glm::vec3 rot = btQuatToEulerDeg(t.getRotation());
-        if (e.entity) {
-            e.entity->setPosition(pos);
-            e.entity->setRotation(rot);
-        } else if (e.aEntity) {
-            e.aEntity->setPosition(pos);
-            e.aEntity->setRotation(rot);
-        }
+        e.entity->setPosition(pos);
+        e.entity->setRotation(rot);
     }
 
     // Optionally draw debug wireframes

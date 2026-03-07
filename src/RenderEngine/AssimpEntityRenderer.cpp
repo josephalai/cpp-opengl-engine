@@ -7,35 +7,29 @@ AssimpEntityRenderer::AssimpEntityRenderer(AssimpStaticShader *shader) {
 }
 
 /**
- * @brief accepts a map[model]std::vector<Entity *>, and traverses through
- *        it, and draws them -- so as not to copy objects.
- * @param scenes
+ * @brief accepts a map[mesh]vector<AssimpModelComponent> and renders each batch.
+ * @param scenes  Batched scene components grouped by AssimpMesh*.
  */
-void AssimpEntityRenderer::render(std::map<AssimpMesh *, std::vector<AssimpEntity *>> *scenes) {
-    std::map<AssimpMesh *, std::vector<AssimpEntity *>>::iterator it = scenes->begin();
-    AssimpMesh *model;
-    while (it != scenes->end()) {
-        model = it->first;
-        std::vector<AssimpEntity *> batch = scenes->find(model)->second;
-        batch = scenes->find(model)->second;
-        for (AssimpEntity *scene : batch) {
-            prepareInstance(scene);
-            // draw elements
+void AssimpEntityRenderer::render(std::map<AssimpMesh *, std::vector<AssimpModelComponent>> *scenes) {
+    for (auto it = scenes->begin(); it != scenes->end(); ++it) {
+        AssimpMesh* model = it->first;
+        for (const AssimpModelComponent& comp : it->second) {
+            prepareInstance(comp);
             model->render(shader);
         }
-        it++;
     }
 }
 
 
 /**
- * @brief sets the initial transformation (view) matrix.
- * @param scene
+ * @brief uploads the transformation matrix and material for one scene component.
+ * @param comp  The pure-data component to render.
  */
-void AssimpEntityRenderer::prepareInstance(AssimpEntity *scene) {
-    // creates the matrices to be passed into the shader
-    glm::mat4 transformationMatrix = Maths::createTransformationMatrix(scene->getPosition(), scene->getRotation(),
-                                                                       scene->getScale());
+void AssimpEntityRenderer::prepareInstance(const AssimpModelComponent& comp) {
+    glm::mat4 transformationMatrix = Maths::createTransformationMatrix(
+        comp.position, comp.rotation, comp.scale);
     shader->loadTransformationMatrix(transformationMatrix);
-    shader->loadMaterial(scene->getModel()->getMaterial());
+    if (comp.mesh) {
+        shader->loadMaterial(comp.mesh->getMaterial());
+    }
 }

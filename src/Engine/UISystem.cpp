@@ -20,10 +20,8 @@
 #include "../Entities/Player.h"
 #include "../RenderEngine/DisplayManager.h"
 #include "../ECS/Components/EntityOwnerComponent.h"
-#include "../ECS/Components/AssimpModelComponent.h"
 #include "../Interfaces/Interactive.h"
 #include "../Entities/Entity.h"
-#include "../Entities/AssimpEntity.h"
 
 UISystem::UISystem(MasterRenderer*            renderer,
                    entt::registry&            registry,
@@ -43,15 +41,12 @@ void UISystem::update(float /*deltaTime*/) {
     // Handle object picking on left-click
     if (InputMaster::hasPendingClick() && InputMaster::mouseClicked(LeftClick)) {
         // Build allBoxes from registry on demand for picking.
+        // Only Entity objects (which implement Interactive) are pickable.
         std::vector<Interactive*> allBoxes;
         {
             auto eView = registry_.view<EntityOwnerComponent>();
             for (auto [e, eoc] : eView.each()) {
                 if (eoc.ptr && eoc.ptr->getBoundingBox()) allBoxes.push_back(eoc.ptr);
-            }
-            auto sView = registry_.view<AssimpModelComponent>();
-            for (auto [e, am] : sView.each()) {
-                if (am.entity && am.entity->getBoundingBox()) allBoxes.push_back(am.entity);
             }
         }
 

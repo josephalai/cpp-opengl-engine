@@ -19,7 +19,7 @@ MasterRenderer::MasterRenderer(PlayerCamera *cameraInput, Loader *loader) : shad
                                                             bShader(new BoundingBoxShader()){
     RenderStyle::enableCulling();
     entities = new std::map<TexturedModel *, std::vector<Entity *>>;
-    scenes = new std::map<AssimpMesh *, std::vector<AssimpEntity *>>;
+    scenes = new std::map<AssimpMesh *, std::vector<AssimpModelComponent>>;
     terrains = new std::vector<Terrain *>;
     boxes = new std::map<RawBoundingBox *, std::vector<Interactive *>>;
     terrainRenderer = new TerrainRenderer(terrainShader, this->projectionMatrix);
@@ -131,14 +131,15 @@ void MasterRenderer::processEntity(Entity *entity) {
     }
 }
 
-void MasterRenderer::processAssimpEntity(AssimpEntity *scene) {
-    AssimpMesh *model = scene->getModel();
+void MasterRenderer::processAssimpEntity(const AssimpModelComponent& comp) {
+    AssimpMesh *model = comp.mesh;
+    if (!model) return;
     auto batchIterator = scenes->find(model);
     if (batchIterator != scenes->end()) {
-        batchIterator->second.push_back(scene);
+        batchIterator->second.push_back(comp);
     } else {
-        std::vector<AssimpEntity *> newBatch;
-        newBatch.push_back(scene);
+        std::vector<AssimpModelComponent> newBatch;
+        newBatch.push_back(comp);
         (*scenes)[model] = newBatch;
     }
 }
@@ -155,7 +156,7 @@ void MasterRenderer::processBoundingBox(Interactive *entityWithBox) {
     }
 }
 
-void MasterRenderer::renderScene(std::vector<Entity *> entities, std::vector<AssimpEntity *> aEntities,
+void MasterRenderer::renderScene(std::vector<Entity *> entities, std::vector<AssimpModelComponent> aEntities,
                                  std::vector<Terrain *> terrains, std::vector<Light *> lights) {
     for (Terrain *ter : terrains) {
         processTerrain(ter);
@@ -165,8 +166,8 @@ void MasterRenderer::renderScene(std::vector<Entity *> entities, std::vector<Ass
         processEntity(ent);
     }
 
-    for (AssimpEntity *scene : aEntities) {
-        processAssimpEntity(scene);
+    for (const AssimpModelComponent& comp : aEntities) {
+        processAssimpEntity(comp);
     }
 
     render(lights);
@@ -254,7 +255,7 @@ void MasterRenderer::renderWater(Camera* cam, Light* sun) {
 // Scene Graph
 // ---------------------------------------------------------------------------
 
-void MasterRenderer::renderSceneGraph(SceneGraph& graph, std::vector<AssimpEntity*> aEntities,
+void MasterRenderer::renderSceneGraph(SceneGraph& graph, std::vector<AssimpModelComponent> aEntities,
                                        std::vector<Terrain*> terrains, std::vector<Light*> lights) {
     graph.update();
     std::vector<Entity*> sgEntities = graph.collectEntities();

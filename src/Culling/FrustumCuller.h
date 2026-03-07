@@ -6,12 +6,12 @@
 #define ENGINE_FRUSTUMCULLER_H
 
 #include "Frustum.h"
+#include "../ECS/Components/AssimpModelComponent.h"
 #include <vector>
 #include <glm/glm.hpp>
 
 class Camera;
 class Entity;
-class AssimpEntity;
 class Terrain;
 
 class FrustumCuller {
@@ -23,8 +23,8 @@ public:
     /// Entities without a valid BoundingBox AABB are always included.
     std::vector<Entity*> cull(const std::vector<Entity*>& entities) const;
 
-    /// Same for Assimp-loaded scene entities.
-    std::vector<AssimpEntity*> cull(const std::vector<AssimpEntity*>& entities) const;
+    /// Same for Assimp-loaded scene components.
+    std::vector<AssimpModelComponent> cull(const std::vector<AssimpModelComponent>& components) const;
 
     /// Return only the terrain tiles whose world-space extent intersects the frustum.
     /// Each tile occupies [x, x+800] x [-500, 500] x [z, z+800].
