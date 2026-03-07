@@ -8,11 +8,19 @@ std::string HOME_PATH =
 #ifdef RESOURCE_ROOT
     RESOURCE_ROOT
 #else
+    // Fallback: resolve the current working directory at runtime.
+    // POSIX only (Linux / macOS); on Windows _fullpath is used instead.
     []() -> std::string {
+#ifdef _WIN32
+        char buf[4096];
+        char* raw = _fullpath(buf, ".", 4096);
+        return raw ? raw : ".";
+#else
         char* raw = realpath(".", nullptr);
         std::string path = raw ? raw : ".";
         free(raw);
         return path;
+#endif
     }()
 #endif
     ;

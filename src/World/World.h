@@ -7,7 +7,9 @@
 
 #include <cstdlib>
 #include <cmath>
+#ifndef HEADLESS_SERVER
 #include "GLFW/glfw3.h"
+#endif
 #include <utility>
 #include <vector>
 #include <map>

@@ -3,10 +3,14 @@
 //
 
 #include "PhysicsSystem.h"
+#include "../ECS/Components/TransformComponent.h"
+
+#ifndef HEADLESS_SERVER
 #include "PhysicsDebugDrawer.h"
 #include "../Entities/Player.h"
 #include "../Terrain/Terrain.h"
 #include "../Input/InputMaster.h"
+#endif
 
 #include <BulletCollision/CollisionShapes/btHeightfieldTerrainShape.h>
 
@@ -43,6 +47,11 @@ PhysicsSystem::~PhysicsSystem() {
 }
 
 void PhysicsSystem::init() {
+    if (!registry_) {
+        std::cerr << "[PhysicsSystem] WARNING: setRegistry() not called before init()."
+                     " TransformComponent sync will be disabled.\n";
+    }
+
     collisionConfig_ = new btDefaultCollisionConfiguration();
     dispatcher_      = new btCollisionDispatcher(collisionConfig_);
     broadphase_      = new btDbvtBroadphase();
@@ -57,16 +66,19 @@ void PhysicsSystem::init() {
     broadphase_->getOverlappingPairCache()->setInternalGhostPairCallback(
         new btGhostPairCallback());
 
-    // Create and register debug drawer
+#ifndef HEADLESS_SERVER
+    // Create and register debug drawer (requires an active OpenGL context)
     debugDrawer_ = new PhysicsDebugDrawer();
     debugDrawer_->init();
     dynamicsWorld_->setDebugDrawer(debugDrawer_);
+#endif
 }
 
 void PhysicsSystem::update(float deltaTime) {
     if (!dynamicsWorld_) return;
 
-    // F3 toggles physics debug rendering
+#ifndef HEADLESS_SERVER
+    // F3 toggles physics debug rendering (client only — requires InputMaster/GLFW)
     static bool f3WasDown = false;
     bool f3IsDown = InputMaster::isKeyDown(F3);
     if (f3IsDown && !f3WasDown) {
@@ -76,12 +88,19 @@ void PhysicsSystem::update(float deltaTime) {
             : btIDebugDraw::DBG_NoDebug);
     }
     f3WasDown = f3IsDown;
+#endif
 
-    // Sync kinematic bodies FROM entities TO physics world
+    // Sync kinematic bodies FROM TransformComponent/registry TO physics world
     for (auto& e : entries_) {
         if (e.bodyType != BodyType::Kinematic) continue;
-        glm::vec3 pos = e.entity ? e.entity->getPosition() : glm::vec3(0);
-        glm::vec3 rot = e.entity ? e.entity->getRotation() : glm::vec3(0);
+        glm::vec3 pos(0.0f), rot(0.0f);
+
+        if (registry_ && e.entityHandle != entt::null) {
+            if (auto* tc = registry_->try_get<TransformComponent>(e.entityHandle)) {
+                pos = tc->position;
+                rot = tc->rotation;
+            }
+        }
 
         glm::quat q = glm::quat(glm::radians(rot));
         btTransform t;
@@ -95,28 +114,35 @@ void PhysicsSystem::update(float deltaTime) {
     // Step simulation
     dynamicsWorld_->stepSimulation(deltaTime, 10);
 
-    // Sync character controller ghost transform → player
+#ifndef HEADLESS_SERVER
+    // Sync character controller ghost transform → player (client only)
     if (characterController_ && playerPtr_) {
         syncCharacterToPlayer();
     }
+#endif
 
-    // Sync dynamic body transforms → entities
+    // Sync dynamic body transforms FROM physics world TO TransformComponent/registry
     for (auto& e : entries_) {
         if (e.bodyType != BodyType::Dynamic) continue;
         btTransform t;
         e.body->getMotionState()->getWorldTransform(t);
         glm::vec3 pos = btToGlm(t.getOrigin());
         glm::vec3 rot = btQuatToEulerDeg(t.getRotation());
-        if (e.entity) {
-            e.entity->setPosition(pos);
-            e.entity->setRotation(rot);
+
+        if (registry_ && e.entityHandle != entt::null) {
+            if (auto* tc = registry_->try_get<TransformComponent>(e.entityHandle)) {
+                tc->position = pos;
+                tc->rotation = rot;
+            }
         }
     }
 
-    // Optionally draw debug wireframes
+#ifndef HEADLESS_SERVER
+    // Optionally draw debug wireframes (client only)
     if (debugDrawEnabled_ && debugDrawer_) {
         dynamicsWorld_->debugDrawWorld();
     }
+#endif
 }
 
 void PhysicsSystem::shutdown() {
@@ -134,10 +160,12 @@ void PhysicsSystem::shutdown() {
             delete b->getMotionState();
             delete b;
         }
+#ifndef HEADLESS_SERVER
         if (characterController_) {
             dynamicsWorld_->removeAction(characterController_);
             dynamicsWorld_->removeCollisionObject(ghostObject_);
         }
+#endif
     }
     entries_.clear();
     groundBodies_.clear();
@@ -152,11 +180,14 @@ void PhysicsSystem::shutdown() {
     compoundShapes_.clear();
     groundShapes_.clear();
 
+#ifndef HEADLESS_SERVER
     delete characterController_; characterController_ = nullptr;
     delete ghostObject_;          ghostObject_         = nullptr;
     delete capsuleShape_;         capsuleShape_        = nullptr;
 
     delete debugDrawer_;  debugDrawer_ = nullptr;
+#endif
+
     delete dynamicsWorld_; dynamicsWorld_ = nullptr;
     delete solver_;        solver_        = nullptr;
     delete broadphase_;    broadphase_    = nullptr;
@@ -185,25 +216,14 @@ btCollisionShape* PhysicsSystem::createShape(const PhysicsBodyDef& def) {
 }
 
 // ---------------------------------------------------------------------------
-// Public API
+// Internal implementation — shared by ECS-native and legacy Entity* APIs
 // ---------------------------------------------------------------------------
 
-void PhysicsSystem::addStaticBody(Entity* entity, ColliderShape shape,
-                                   glm::vec3 halfExtents, float friction,
-                                   float restitution) {
-    if (!dynamicsWorld_ || !entity) return;
-    PhysicsBodyDef def;
-    def.type        = BodyType::Static;
-    def.shape       = shape;
-    def.mass        = 0.0f;
-    def.halfExtents = halfExtents;
-    def.friction    = friction;
-    def.restitution = restitution;
-    addDynamicBody(entity, def);  // mass=0 → static in Bullet
-}
-
-void PhysicsSystem::addDynamicBody(Entity* entity, const PhysicsBodyDef& def) {
-    if (!dynamicsWorld_ || !entity) return;
+void PhysicsSystem::addDynamicBodyInternal(entt::entity entity,
+                                            const PhysicsBodyDef& def,
+                                            glm::vec3 pos,
+                                            glm::vec3 rot) {
+    if (!dynamicsWorld_) return;
 
     // Build the primitive base shape.
     btCollisionShape* baseShape = createShape(def);
@@ -224,14 +244,10 @@ void PhysicsSystem::addDynamicBody(Entity* entity, const PhysicsBodyDef& def) {
     childT.setOrigin(btVector3(0.0f, yOffset, 0.0f));
     compound->addChildShape(childT, baseShape);
 
-    // Store in separate lists: compoundShapes_ are deleted before shapes_ (children)
-    // in shutdown(), ensuring btCompoundShape is destroyed before its child shapes.
     compoundShapes_.push_back(compound);
     shapes_.push_back(baseShape);
 
-    glm::vec3 pos = entity->getPosition();
-    glm::vec3 rot = entity->getRotation();
-    glm::quat q   = glm::quat(glm::radians(rot));
+    glm::quat q = glm::quat(glm::radians(rot));
 
     btTransform startTransform;
     startTransform.setIdentity();
@@ -258,23 +274,61 @@ void PhysicsSystem::addDynamicBody(Entity* entity, const PhysicsBodyDef& def) {
     dynamicsWorld_->addRigidBody(body);
 
     PhysicsEntry entry;
-    entry.entity   = entity;
+    entry.entityHandle = entity;
     entry.body     = body;
     entry.bodyType = def.type;
     entries_.push_back(entry);
 }
 
-void PhysicsSystem::addKinematicBody(Entity* entity, const PhysicsBodyDef& def) {
-    if (!entity) return;
+// ---------------------------------------------------------------------------
+// Public ECS-native API (server + client)
+// ---------------------------------------------------------------------------
+
+void PhysicsSystem::addStaticBody(entt::entity entity, ColliderShape shape,
+                                   glm::vec3 halfExtents, float friction,
+                                   float restitution) {
+    if (!dynamicsWorld_) return;
+    PhysicsBodyDef def;
+    def.type        = BodyType::Static;
+    def.shape       = shape;
+    def.mass        = 0.0f;
+    def.halfExtents = halfExtents;
+    def.friction    = friction;
+    def.restitution = restitution;
+    // Call the internal method directly to avoid the registry read in addDynamicBody.
+    glm::vec3 pos(0.0f), rot(0.0f);
+    if (registry_ && entity != entt::null) {
+        if (auto* tc = registry_->try_get<TransformComponent>(entity)) {
+            pos = tc->position;
+            rot = tc->rotation;
+        }
+    }
+    addDynamicBodyInternal(entity, def, pos, rot);
+}
+
+void PhysicsSystem::addDynamicBody(entt::entity entity, const PhysicsBodyDef& def) {
+    if (!dynamicsWorld_) return;
+    glm::vec3 pos(0.0f), rot(0.0f);
+    if (registry_ && entity != entt::null) {
+        if (auto* tc = registry_->try_get<TransformComponent>(entity)) {
+            pos = tc->position;
+            rot = tc->rotation;
+        }
+    }
+    addDynamicBodyInternal(entity, def, pos, rot);
+}
+
+void PhysicsSystem::addKinematicBody(entt::entity entity, const PhysicsBodyDef& def) {
+    if (!dynamicsWorld_) return;
     PhysicsBodyDef kDef = def;
     kDef.type = BodyType::Kinematic;
     addDynamicBody(entity, kDef);
 }
 
-void PhysicsSystem::removeRigidBody(Entity* entity) {
-    if (!dynamicsWorld_ || !entity) return;
+void PhysicsSystem::removeRigidBody(entt::entity entity) {
+    if (!dynamicsWorld_) return;
     for (auto it = entries_.begin(); it != entries_.end(); ++it) {
-        if (it->entity == entity) {
+        if (it->entityHandle == entity) {
             dynamicsWorld_->removeRigidBody(it->body);
             delete it->body->getMotionState();
             delete it->body;
@@ -283,6 +337,10 @@ void PhysicsSystem::removeRigidBody(Entity* entity) {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Terrain collider (client + server via forward-declared Terrain)
+// ---------------------------------------------------------------------------
 
 void PhysicsSystem::addGroundPlane(float yHeight) {
     if (!dynamicsWorld_) return;
@@ -305,14 +363,13 @@ void PhysicsSystem::addGroundPlane(float yHeight) {
 }
 
 void PhysicsSystem::addTerrainCollider(Terrain* terrain) {
+#ifndef HEADLESS_SERVER
     if (!dynamicsWorld_ || !terrain) return;
 
     const auto& h2d = terrain->heights;
     int vertexCount = static_cast<int>(h2d.size());
-    if (vertexCount < 2) return;  // guards against division by zero below (stickScale = terrainSize / (vertexCount-1))
+    if (vertexCount < 2) return;
 
-    // Flatten the 2D heights[x][z] grid into a 1D row-major buffer.
-    // Bullet's btHeightfieldTerrainShape indexes as data[stickZ * stickWidth + stickX].
     terrainHeightBuffers_.emplace_back(vertexCount * vertexCount);
     auto& buf = terrainHeightBuffers_.back();
 
@@ -327,27 +384,21 @@ void PhysicsSystem::addTerrainCollider(Terrain* terrain) {
         }
     }
 
-    // Create the heightfield shape.  heightScale=1.0 because the buffer already
-    // contains world-space Y values (not normalised pixel values).
     auto* shape = new btHeightfieldTerrainShape(
         vertexCount, vertexCount,
         buf.data(),
         /*heightScale=*/1.0f,
         minH, maxH,
-        /*upAxis=*/1,   // Y-up
+        /*upAxis=*/1,
         PHY_FLOAT,
         /*flipQuadEdges=*/false);
 
-    // Scale each heightfield "stick" to span kTerrainSize / (vertexCount-1) world units
-    // so the shape covers exactly the same world area as the visual terrain mesh.
     float terrainSize = terrain->getSize();
     float stickScale  = terrainSize / static_cast<float>(vertexCount - 1);
     shape->setLocalScaling(btVector3(stickScale, 1.0f, stickScale));
 
     groundShapes_.push_back(shape);
 
-    // Bullet automatically centres the shape at localOrigin Y = (minH + maxH) / 2.
-    // Place the rigid body so the tile covers [terrainX, terrainX + terrainSize].
     btTransform t;
     t.setIdentity();
     t.setOrigin(btVector3(
@@ -363,6 +414,47 @@ void PhysicsSystem::addTerrainCollider(Terrain* terrain) {
     auto* body = new btRigidBody(ci);
     dynamicsWorld_->addRigidBody(body);
     groundBodies_.push_back(body);
+#endif // !HEADLESS_SERVER
+}
+
+// ---------------------------------------------------------------------------
+// Legacy OOP convenience wrappers — client only (#ifndef HEADLESS_SERVER)
+// ---------------------------------------------------------------------------
+
+#ifndef HEADLESS_SERVER
+
+void PhysicsSystem::addStaticBody(Entity* entity, ColliderShape shape,
+                                   glm::vec3 halfExtents, float friction,
+                                   float restitution) {
+    if (!entity) return;
+    PhysicsBodyDef def;
+    def.type        = BodyType::Static;
+    def.shape       = shape;
+    def.mass        = 0.0f;
+    def.halfExtents = halfExtents;
+    def.friction    = friction;
+    def.restitution = restitution;
+    addDynamicBodyInternal(entity->getHandle(), def,
+                           entity->getPosition(), entity->getRotation());
+}
+
+void PhysicsSystem::addDynamicBody(Entity* entity, const PhysicsBodyDef& def) {
+    if (!entity) return;
+    // Read initial pose directly from Entity (which mirrors TransformComponent).
+    addDynamicBodyInternal(entity->getHandle(), def,
+                           entity->getPosition(), entity->getRotation());
+}
+
+void PhysicsSystem::addKinematicBody(Entity* entity, const PhysicsBodyDef& def) {
+    if (!entity) return;
+    PhysicsBodyDef kDef = def;
+    kDef.type = BodyType::Kinematic;
+    addDynamicBody(entity, kDef);
+}
+
+void PhysicsSystem::removeRigidBody(Entity* entity) {
+    if (!entity) return;
+    removeRigidBody(entity->getHandle());
 }
 
 void PhysicsSystem::setCharacterController(Player* player,
@@ -372,15 +464,12 @@ void PhysicsSystem::setCharacterController(Player* player,
     playerPtr_ = player;
 
     capsuleShape_ = new btCapsuleShape(capsuleRadius, capsuleHeight);
-    // Half total height = cylinder half-height + hemisphere radius on each end.
-    // Used to shift the capsule's centre up from the entity's foot origin.
     capsuleHalfHeight_ = capsuleHeight * 0.5f + capsuleRadius;
 
     ghostObject_ = new btPairCachingGhostObject();
     btTransform t;
     t.setIdentity();
     glm::vec3 pos = player->getPosition();
-    // Shift the ghost up so the bottom of the capsule rests at the player's feet.
     t.setOrigin(btVector3(pos.x, pos.y + capsuleHalfHeight_, pos.z));
     ghostObject_->setWorldTransform(t);
     ghostObject_->setCollisionShape(capsuleShape_);
@@ -401,19 +490,12 @@ void PhysicsSystem::syncCharacterToPlayer() {
     if (!ghostObject_ || !playerPtr_) return;
     const btTransform& t = ghostObject_->getWorldTransform();
     glm::vec3 pos = btToGlm(t.getOrigin());
-    // Subtract the foot-to-centre offset to recover the entity's foot position.
     pos.y -= capsuleHalfHeight_;
     playerPtr_->setPosition(pos);
 }
 
 void PhysicsSystem::setPlayerWalkDirection(float vx, float vz, bool wantsJump) {
     if (!characterController_) return;
-    // vx/vz are per-frame displacements (velocity × dt) supplied by Player::move().
-    // btKinematicCharacterController::setWalkDirection in Bullet 3.x applies the
-    // vector directly each tick without internal dt scaling, so the caller must
-    // supply an appropriately-scaled value.  Calling with (0,0,0) when idle is
-    // required — Bullet persists the previous walk direction otherwise and the
-    // character keeps drifting.
     characterController_->setWalkDirection(btVector3(vx, 0.0f, vz));
     if (wantsJump && characterController_->canJump()) {
         characterController_->jump();
@@ -425,3 +507,5 @@ void PhysicsSystem::renderDebug(const glm::mat4& view, const glm::mat4& projecti
         debugDrawer_->flushLines(view, projection);
     }
 }
+
+#endif // !HEADLESS_SERVER
