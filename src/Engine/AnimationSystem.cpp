@@ -1,4 +1,11 @@
 // src/Engine/AnimationSystem.cpp
+//
+// Phase 2 Step 3 note — Future EnTT migration:
+//   AnimatedEntity is not yet fully componentised.  A future Phase 3 step
+//   will introduce an AnimationComponent (holding AnimatedModel*, controller,
+//   modelOffset, isLocalPlayer, pairedEntity) and migrate AnimationSystem to
+//   iterate via registry.view<TransformComponent, AnimationComponent>().
+//   Until then, this system reads from the legacy animatedEntities vector.
 
 #include "AnimationSystem.h"
 #include "../RenderEngine/AnimatedRenderer.h"

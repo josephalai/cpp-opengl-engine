@@ -14,6 +14,10 @@
 #include "NetworkSystem.h"
 #include "../Entities/Player.h"
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
+
 #include <iostream>
 #include <cstring>
 #include <cmath>
@@ -233,11 +237,89 @@ void NetworkSystem::update(float deltaTime) {
     }
 
     // -----------------------------------------------------------------
-    // 3. Drive interpolation on remote entities
+    // 3. Drive interpolation on remote entities (formerly NetworkSyncComponent::update())
     // -----------------------------------------------------------------
     for (auto& [nid, ent] : networkEntities_) {
         if (nid == localPlayerId_ || !ent) continue;
-        ent->updateComponents(deltaTime);
+
+        auto* sync = ent->getComponent<NetworkSyncComponent>();
+        if (!sync || sync->buffer_.empty()) continue;
+
+        // Advance the playback clock at real-time speed.
+        sync->renderTime_ += deltaTime;
+
+        // Clock drift correction: prevent renderTime_ from running too far
+        // ahead of the server timeline.
+        const float maxRenderTime =
+            sync->buffer_.back().timestamp + sync->interpolationDelay_ + 0.01f;
+        if (sync->renderTime_ > maxRenderTime) {
+            sync->renderTime_ = maxRenderTime;
+        }
+
+        // The time we actually want to display (lagging interpolationDelay_ behind).
+        const float targetTime = sync->renderTime_ - sync->interpolationDelay_;
+
+        // Helper lambda: apply a single snapshot's position+rotation to the entity.
+        auto applySnapshot = [&](const Network::TransformSnapshot& s) {
+            ent->setPosition(s.position);
+            ent->setRotation(s.rotation);
+        };
+
+        // Helper lambda: prune stale snapshots from the front of the buffer.
+        auto pruneBuffer = [&]() {
+            const float keepFrom =
+                (sync->renderTime_ - sync->interpolationDelay_) - sync->interpolationDelay_;
+            while (sync->buffer_.size() > 2 &&
+                   sync->buffer_.front().timestamp < keepFrom) {
+                sync->buffer_.pop_front();
+            }
+        };
+
+        if (sync->buffer_.size() == 1 || targetTime <= sync->buffer_.front().timestamp) {
+            // Hold case: only one snapshot or targetTime is before the earliest.
+            applySnapshot(sync->buffer_.front());
+
+        } else if (targetTime >= sync->buffer_.back().timestamp) {
+            // Starvation case: hold at the last known position rather than
+            // extrapolating (extrapolation causes a "jump ahead + snap back" artefact).
+            applySnapshot(sync->buffer_.back());
+            pruneBuffer();
+
+        } else {
+            // Normal case: LERP position + SLERP rotation between bracketing snapshots.
+            for (std::size_t i = 0; i + 1 < sync->buffer_.size(); ++i) {
+                const auto& s0 = sync->buffer_[i];
+                const auto& s1 = sync->buffer_[i + 1];
+                if (s0.timestamp <= targetTime && targetTime <= s1.timestamp) {
+                    const float span = s1.timestamp - s0.timestamp;
+                    const float t    = (span > 0.0f)
+                        ? glm::clamp((targetTime - s0.timestamp) / span, 0.0f, 1.0f)
+                        : 0.0f;
+
+                    ent->setPosition(glm::mix(s0.position, s1.position, t));
+
+                    const glm::quat q0 = glm::quat(glm::radians(s0.rotation));
+                    const glm::quat q1 = glm::quat(glm::radians(s1.rotation));
+                    const glm::quat qi = glm::slerp(q0, q1, t);
+                    ent->setRotation(glm::degrees(glm::eulerAngles(qi)));
+                    break;
+                }
+            }
+            pruneBuffer();
+        }
+
+        // Compute XZ movement speed for animation-state decisions (Walk/Run/Idle).
+        const glm::vec3 cur = ent->getPosition();
+        if (!sync->previousPositionInitialized_) {
+            sync->previousPosition_            = cur;
+            sync->previousPositionInitialized_ = true;
+            sync->currentSpeed_                = 0.0f;
+        } else {
+            const glm::vec3 d    = cur - sync->previousPosition_;
+            const float     dist = std::sqrt(d.x * d.x + d.z * d.z);
+            sync->currentSpeed_  = (deltaTime > 0.0f) ? dist / deltaTime : 0.0f;
+        }
+        sync->previousPosition_ = cur;
     }
 }
 

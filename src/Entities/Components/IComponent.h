@@ -3,7 +3,12 @@
 //
 // Components are attached to an Entity via Entity::addComponent<T>().
 // Each component holds a back-pointer to its owning Entity so it can
-// read and mutate entity state (position, rotation, etc.) each frame.
+// be initialised with entity context.
+//
+// Phase 2 Step 3: The pure-virtual update() has been removed.  Per-frame
+// logic now lives exclusively in ISystem subclasses (PhysicsSystem,
+// InputSystem, NetworkSystem, etc.) that iterate EnTT registry views.
+// Components are pure data — they store state but contain no tick logic.
 //
 // Circular-include note: Entity.h includes this header; therefore this
 // header must forward-declare Entity rather than including Entity.h.
@@ -26,9 +31,6 @@ public:
     /// Called once after the component is attached to its entity.
     /// Override to perform one-time setup (e.g. subscribe to events).
     virtual void init() {}
-
-    /// Called every frame with the current frame delta-time (seconds).
-    virtual void update(float deltaTime) = 0;
 
     /// Data-driven initialisation: load component variables from a JSON object.
     /// Override in concrete components to support prefab-based instantiation.

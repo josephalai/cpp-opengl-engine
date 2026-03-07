@@ -1,4 +1,11 @@
 // src/Engine/RenderSystem.cpp
+//
+// Phase 2 Step 3 note — Future EnTT migration:
+//   Currently RenderSystem iterates the legacy entity vectors (entities_,
+//   scenes_, etc.).  A future Phase 3 step will replace these with:
+//     registry.view<TransformComponent, RenderComponent>()
+//   to batch draw calls over contiguous ECS memory pools.  The legacy
+//   entity vectors will be removed once all renderer paths are ported.
 
 #include "RenderSystem.h"
 #include "../RenderEngine/MasterRenderer.h"

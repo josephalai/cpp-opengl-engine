@@ -1,15 +1,20 @@
 // src/Entities/Components/NetworkSyncComponent.h
 //
-// Component that drives an Entity's position and rotation from an incoming
-// stream of authoritative server snapshots (TransformSnapshot packets).
+// Pure-data component that holds the state needed for remote-entity
+// interpolation driven by server snapshots.
+//
+// Phase 2 Step 3: update() has been removed.  The interpolation logic
+// (formerly in update()) now lives in NetworkSystem::update(), which reads
+// and writes the public data fields below using registry.view<> iteration
+// (or direct component access via ent->getComponent<>() during migration).
 //
 // KEY CONCEPT — Entity Interpolation:
-//   Remote entities do NOT snap directly to the newest snapshot.  Instead, the
-//   component maintains a small playback clock that lags kInterpolationDelay
-//   seconds behind the latest received snapshot.  Each frame it finds the two
-//   snapshots that bracket the current playback time and uses glm::mix (LERP)
-//   for position and glm::slerp (quaternion) for rotation to produce smooth,
-//   stutter-free movement even at a 10 Hz server tick rate.
+//   Remote entities do NOT snap directly to the newest snapshot.  Instead,
+//   the component maintains a small playback clock that lags kInterpolationDelay
+//   seconds behind the latest received snapshot.  Each frame the NetworkSystem
+//   finds the two snapshots that bracket the current playback time and uses
+//   glm::mix (LERP) for position and glm::slerp (quaternion) for rotation to
+//   produce smooth, stutter-free movement even at a 10 Hz server tick rate.
 //
 // CLOCK SYNCHRONISATION:
 //   On receiving the second snapshot the playback clock is seeded as:
@@ -20,13 +25,10 @@
 //   kInterpolationDelay = 2 × tick_interval (0.20 s) the client tolerates up
 //   to ~100 ms of one-way network latency before the starvation branch fires.
 //
-// Edge cases handled:
+// Edge cases handled (all logic in NetworkSystem::update()):
 //   • Buffer empty        → entity is not moved (safe no-op).
 //   • Only 1 snapshot     → entity is held at that position.
 //   • Buffer starvation   → hold at the last known snapshot position.
-//                           (Extrapolation was removed because it caused a
-//                           visible "jump ahead + slingshot back" artefact
-//                           whenever the remote entity changed speed/direction.)
 //   • Normal interpolation→ smooth LERP/SLERP between bracketing snapshots.
 
 #ifndef ENGINE_NETWORKSYNCCOMPONENT_H
@@ -44,7 +46,6 @@ public:
     // IComponent interface
     // -------------------------------------------------------------------------
     void init()   override {}
-    void update(float deltaTime) override;
 
     /// JSON initialisation — load tuning parameters from a prefab.
     /// Supported keys:
@@ -63,8 +64,8 @@ public:
     void pushSnapshot(const Network::TransformSnapshot& snapshot);
 
     /// Returns the most recently computed XZ movement speed (units/sec).
-    /// Computed each frame after position is applied; used by AnimationSystem
-    /// to drive Walk/Run/Idle transitions for remote characters.
+    /// Computed each frame by NetworkSystem after position is applied; used by
+    /// AnimationSystem to drive Walk/Run/Idle transitions for remote characters.
     float getCurrentSpeed() const { return currentSpeed_; }
 
     // -------------------------------------------------------------------------
@@ -72,24 +73,20 @@ public:
     // -------------------------------------------------------------------------
 
     /// How far behind the most-recent snapshot the render clock trails (seconds).
-    /// A value of 2× the server tick interval guarantees we almost always have
-    /// two bracketing snapshots available for smooth interpolation.
     static constexpr float kInterpolationDelay = 0.20f;
 
-    /// Maximum number of snapshots to retain in the buffer.  Older entries are
-    /// dropped on push when the buffer exceeds this size, preventing unbounded
-    /// memory growth if snapshots arrive faster than they are consumed.
+    /// Maximum number of snapshots to retain in the buffer.
     static constexpr std::size_t kMaxBufferSize = 20;
 
-private:
+    // -------------------------------------------------------------------------
+    // Pure data — read/written by NetworkSystem each frame
+    // -------------------------------------------------------------------------
     std::deque<Network::TransformSnapshot> buffer_;
 
-    // Per-instance tuning (initialised from the static defaults; JSON can override)
     float       interpolationDelay_ = kInterpolationDelay;
     std::size_t maxBufferSize_      = kMaxBufferSize;
 
     /// Monotonically advancing render-playback clock (seconds).
-    /// Starts at 0 and is incremented by deltaTime each frame.
     float renderTime_ = 0.0f;
 
     /// True once at least two snapshots have been received and the playback
@@ -100,22 +97,11 @@ private:
     glm::vec3 previousPosition_ = glm::vec3(0.0f);
 
     /// True once previousPosition_ has been seeded from the entity's actual
-    /// spawn position.  Prevents a bogus speed spike on the very first frame
-    /// (when previousPosition_ would otherwise be the default origin).
+    /// spawn position.
     bool previousPositionInitialized_ = false;
 
     /// Most recently computed XZ movement speed (units/sec).
     float currentSpeed_ = 0.0f;
-
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
-    /// Remove stale snapshots that are no longer needed for interpolation.
-    void pruneBuffer();
-
-    /// Apply position + rotation from a single snapshot (used for hold/snap).
-    void applySnapshot(const Network::TransformSnapshot& s);
 };
 
 #endif // ENGINE_NETWORKSYNCCOMPONENT_H

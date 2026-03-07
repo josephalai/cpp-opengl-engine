@@ -1,8 +1,12 @@
 //
-// InputComponent.h — Keyboard-polling and character-movement component.
+// InputComponent.h — Pure-data keyboard-movement component.
 //
-// Extracted from Player so that movement logic lives in a reusable
-// IComponent rather than directly in the Entity subclass.
+// Phase 2 Step 3: update() has been removed.  The per-frame movement
+// application logic now lives in InputSystem::update(), which reads the
+// public data fields below and applies rotation / physics walk-direction
+// each frame.  The EventBus subscription (subscribeToEvents()) remains here
+// because it wires an internal applyMovementCommand() callback that only
+// needs to update the component's data fields, not touch any entity transform.
 //
 
 #ifndef ENGINE_INPUTCOMPONENT_H
@@ -22,7 +26,6 @@ public:
     // IComponent interface
     // -------------------------------------------------------------------------
     void init() override;
-    void update(float deltaTime) override;
 
     /// JSON initialisation — load movement tuning from a prefab.
     /// Supported keys:
@@ -44,22 +47,19 @@ public:
     /// component relies on PlayerMoveCommandEvent from the EventBus.
     void subscribeToEvents();
 
-private:
     // -------------------------------------------------------------------------
-    // Movement constants (mirror of old Player constants)
+    // Input polling (used by InputSystem when EventBus is not active)
     // -------------------------------------------------------------------------
-    static float SPEED_HACK;
-    static constexpr float kDefaultRunSpeed  = 20.0f;
-    static constexpr float kDefaultTurnSpeed = 160.0f;
-    static constexpr float kGravity    = -50.0f;
-    static constexpr float kJumpPower  = 30.0f;
-
-    // Per-instance overrides (JSON-configurable; initialised from static defaults)
-    float runSpeed_  = kDefaultRunSpeed;
-    float turnSpeed_ = kDefaultTurnSpeed;
+    void checkInputs();
 
     // -------------------------------------------------------------------------
-    // Per-frame state
+    // Movement constants
+    // -------------------------------------------------------------------------
+    static constexpr float kGravity   = -50.0f;
+    static constexpr float kJumpPower = 30.0f;
+
+    // -------------------------------------------------------------------------
+    // Pure data — read/written by InputSystem each frame
     // -------------------------------------------------------------------------
     float currentSpeed_     = 0.0f;
     float currentTurnSpeed_ = 0.0f;
@@ -67,16 +67,26 @@ private:
     bool  isInAir_          = false;
 
     // -------------------------------------------------------------------------
-    // Dependencies
+    // Dependencies (set once at init; read by InputSystem)
     // -------------------------------------------------------------------------
     Terrain*       terrain_       = nullptr;
     PhysicsSystem* physicsSystem_ = nullptr;
     bool           useEventBus_   = false;
 
+private:
     // -------------------------------------------------------------------------
-    // Helpers
+    // Movement tuning (JSON-configurable)
     // -------------------------------------------------------------------------
-    void checkInputs();
+    static float SPEED_HACK;
+    static constexpr float kDefaultRunSpeed  = 20.0f;
+    static constexpr float kDefaultTurnSpeed = 160.0f;
+
+    float runSpeed_  = kDefaultRunSpeed;
+    float turnSpeed_ = kDefaultTurnSpeed;
+
+    // -------------------------------------------------------------------------
+    // Helpers — called internally by checkInputs() / EventBus handler
+    // -------------------------------------------------------------------------
     void applyMovementCommand(float forward, float turn,
                               bool jump, bool sprint, bool sprintReset);
     void jump();

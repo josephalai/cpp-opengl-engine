@@ -149,13 +149,6 @@ public:
         return nullptr;
     }
 
-    /// Tick all attached components.  Call once per frame.
-    virtual void updateComponents(float deltaTime) {
-        for (auto& entry : components_) {
-            entry.ptr->update(deltaTime);
-        }
-    }
-
 private:
     // -----------------------------------------------------------------------
     // ECS handle — all data lives in the registry components above.

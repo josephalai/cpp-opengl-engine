@@ -13,16 +13,15 @@ Player::Player(entt::registry& registry, TexturedModel *model, BoundingBox *box,
 }
 
 /**
- * @brief move (Main Loop), takes the terrain and moves the character based on the
- *        inputs. It delegates to the InputComponent via updateComponents().
+ * @brief move — sets terrain context on the InputComponent so the legacy
+ *        terrain-height path has the data it needs.  Per-frame movement
+ *        (rotation, physics walk-direction) is now applied by InputSystem.
  * @param terrain
  */
 void Player::move(Terrain *terrain) {
     if (inputComponent_) {
         inputComponent_->setTerrain(terrain);
     }
-    float dt = DisplayManager::getFrameTimeSeconds();
-    updateComponents(dt);
 }
 
 void Player::setPhysicsSystem(PhysicsSystem* ps) {

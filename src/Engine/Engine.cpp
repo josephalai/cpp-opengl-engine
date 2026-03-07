@@ -627,7 +627,8 @@ void Engine::buildSystems() {
     }
 
     systems.push_back(std::make_unique<InputSystem>(
-        playerCamera, primaryTerrain, picker, sampleModifiedGui, pNameText));
+        playerCamera, primaryTerrain, picker, sampleModifiedGui, pNameText,
+        player, physicsSystem));
 
     // Build the chunk manager from the first loaded terrain's texture config.
     // Initial scene entities are registered so they appear inside their chunk.
