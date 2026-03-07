@@ -17,6 +17,7 @@
 #include "../Physics/PhysicsSystem.h"
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/NetworkIdComponent.h"
+#include "../ECS/Components/InputQueueComponent.h"
 #include "../Network/NetworkPackets.h"
 #include "../Network/SharedMovement.h"
 #include "ServerNPCManager.h"
@@ -159,6 +160,9 @@ static entt::entity spawnEntity(entt::registry& registry,
         TransformComponent{position, glm::vec3(0.0f), 1.0f});
     registry.emplace<NetworkIdComponent>(entity,
         NetworkIdComponent{networkId, modelType, isNPC, 0});
+    // [Phase 3.3] Every entity gets an input queue so the tick loop can
+    // drain it through SharedMovement::applyInput() each server tick.
+    registry.emplace<InputQueueComponent>(entity);
     return entity;
 }
 
@@ -356,7 +360,10 @@ int main() {
             }
 
             // =============================================================
-            // RECEIVE — process PlayerInputPacket, validate and apply movement
+            // RECEIVE — buffer PlayerInputPacket into entity's input queue
+            // [Phase 3.3] The server no longer reads or trusts client
+            // coordinates.  Inputs are queued here and processed
+            // authoritatively by SharedMovement::applyInput() in the tick.
             // =============================================================
             case ENET_EVENT_TYPE_RECEIVE: {
                 if (event.packet->dataLength >= 1) {
@@ -377,37 +384,16 @@ int main() {
                             auto eit = networkIdToEntity.find(nid);
                             if (eit != networkIdToEntity.end()) {
                                 auto entity = eit->second;
-                                auto& tc  = registry.get<TransformComponent>(entity);
-                                auto& nidComp = registry.get<NetworkIdComponent>(entity);
-
-                                // Client-authoritative, server-validated model.
-                                // Accept client's physics-driven position with speed check.
-                                glm::vec3 delta = input.position - tc.position;
-                                float distSq = glm::dot(delta, delta);
-                                static constexpr float kMaxSpeed = 200.0f;
-                                float maxDist = kMaxSpeed * std::max(input.deltaTime, 0.001f);
-                                if (distSq <= maxDist * maxDist) {
-                                    tc.position = input.position;
-                                    tc.rotation = input.rotation;
-                                } else {
-                                    // Reject — use SharedMovement as fallback.
-                                    float fallbackTh = terrain.valid
-                                        ? terrain.getHeight(tc.position.x, tc.position.z)
-                                        : SharedMovement::kNoTerrainHeight;
-                                    SharedMovement::applyInput(
-                                        input, tc.position, tc.rotation, fallbackTh);
-                                }
-
-                                // Terrain height clamping.
-                                if (terrain.valid) {
-                                    tc.position.y = terrain.getHeight(
-                                        tc.position.x, tc.position.z);
-                                }
-
-                                if (input.sequenceNumber > nidComp.lastInputSeq)
-                                    nidComp.lastInputSeq = input.sequenceNumber;
+                                // Append to the entity's input queue; the
+                                // tick loop drains it with SharedMovement.
+                                auto& queue = registry.get<InputQueueComponent>(entity);
+                                queue.inputs.push_back(input);
                             }
                         }
+
+                        // [Phase 3.3] Removed: old position-based speed-check anti-cheat.
+                        // Client no longer sends coordinates, making the distance
+                        // validation (distSq <= maxDist*maxDist) obsolete.
                     }
                 }
                 enet_packet_destroy(event.packet);
@@ -433,11 +419,35 @@ int main() {
             for (auto& [nid, inp] : npcInputs) {
                 auto eit = networkIdToEntity.find(nid);
                 if (eit != networkIdToEntity.end()) {
-                    auto& tc = registry.get<TransformComponent>(eit->second);
-                    float th = terrain.valid
-                        ? terrain.getHeight(tc.position.x, tc.position.z)
-                        : SharedMovement::kNoTerrainHeight;
-                    SharedMovement::applyInput(inp, tc.position, tc.rotation, th);
+                    auto& queue = registry.get<InputQueueComponent>(eit->second);
+                    queue.inputs.push_back(inp);
+                }
+            }
+
+            // ----- [Phase 3.3] Drain all entity input queues authoritatively -----
+            // For every entity that received inputs since the last tick, feed
+            // each queued input through SharedMovement::applyInput() to produce
+            // the server's authoritative position.  Client coordinates are never
+            // read — only button states + cameraYaw arrive over the wire.
+            {
+                auto inputView = registry.view<TransformComponent,
+                                               NetworkIdComponent,
+                                               InputQueueComponent>();
+                for (auto entity : inputView) {
+                    auto& tc      = inputView.get<TransformComponent>(entity);
+                    auto& nidComp = inputView.get<NetworkIdComponent>(entity);
+                    auto& queue   = inputView.get<InputQueueComponent>(entity);
+
+                    for (const auto& inp : queue.inputs) {
+                        float th = terrain.valid
+                            ? terrain.getHeight(tc.position.x, tc.position.z)
+                            : SharedMovement::kNoTerrainHeight;
+                        SharedMovement::applyInput(inp, tc.position, tc.rotation, th);
+
+                        if (inp.sequenceNumber > nidComp.lastInputSeq)
+                            nidComp.lastInputSeq = inp.sequenceNumber;
+                    }
+                    queue.inputs.clear();
                 }
             }
 

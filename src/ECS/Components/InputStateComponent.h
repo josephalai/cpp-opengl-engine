@@ -10,6 +10,9 @@ class PhysicsSystem;
 /// Replaces the old InputComponent (IComponent subclass) in the ECS migration.
 /// A future PlayerMovementSystem will query registry.view<TransformComponent, InputStateComponent>()
 /// each frame to apply movement logic.
+///
+/// [Phase 3.2] Network input flags mirror PlayerInputPacket exactly so the
+/// local prediction path and the server authoritative path share the same data.
 struct InputStateComponent {
     // --- Movement tuning (JSON-configurable) ---
     float runSpeed  = 20.0f;
@@ -30,6 +33,15 @@ struct InputStateComponent {
     // a global/singleton approach is cleaner than putting statics in a POD component.
     // For now we store it per-entity; the System can treat it as shared.
     float speedHack = 1.0f;
+
+    // --- Network input flags (Phase 3.2) — mirrors PlayerInputPacket ---
+    // These are polled by NetworkSystem each frame to build the outgoing packet.
+    bool  moveForward  = false; ///< W key pressed this frame.
+    bool  moveBackward = false; ///< S key pressed this frame.
+    bool  moveLeft     = false; ///< A key pressed this frame.
+    bool  moveRight    = false; ///< D key pressed this frame.
+    bool  jump         = false; ///< Space key pressed this frame.
+    float cameraYaw    = 0.0f;  ///< Absolute camera yaw (degrees) for movement direction.
 
     // --- Dependencies (non-owning pointers, set during init) ---
     Terrain*       terrain       = nullptr;

@@ -69,23 +69,21 @@ void NetworkSystem::update(float deltaTime) {
     if (!client_) return;
 
     // -----------------------------------------------------------------
-    // 1. Send the local player's actual physics-driven position to the
-    //    server.  The Player entity has already been moved by the
-    //    PhysicsSystem (Bullet) before this system runs.
+    // 1. Send the local player's input flags to the server.
+    //    [Phase 3.2] The client NEVER sends its position/rotation over
+    //    the wire.  Only raw button states and the camera yaw are sent.
+    //    The server independently simulates movement using SharedMovement.
     // -----------------------------------------------------------------
     if (localPlayer_ && serverPeer_) {
-        float forward = InputMaster::isKeyDown(W) ?  1.0f
-                      : InputMaster::isKeyDown(S) ? -1.0f : 0.0f;
-        float turn    = InputMaster::isKeyDown(A) ?  1.0f
-                      : InputMaster::isKeyDown(D) ? -1.0f : 0.0f;
-
         Network::PlayerInputPacket input;
         input.sequenceNumber = ++inputSequenceNumber_;
-        input.forward        = forward;
-        input.turn           = turn;
         input.deltaTime      = deltaTime;
-        input.position       = localPlayer_->getPosition();
-        input.rotation       = localPlayer_->getRotation();
+        input.cameraYaw      = localPlayer_->getRotation().y;
+        input.moveForward    = InputMaster::isKeyDown(W);
+        input.moveBackward   = InputMaster::isKeyDown(S);
+        input.moveLeft       = InputMaster::isKeyDown(A);
+        input.moveRight      = InputMaster::isKeyDown(D);
+        input.jump           = InputMaster::isKeyDown(Space);
 
         auto buf = Network::serialise(Network::PacketType::PlayerInput,
                                       input);
