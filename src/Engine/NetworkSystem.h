@@ -8,15 +8,15 @@
 //   3. Maintains a map of networkId → Entity* for remote interpolation.
 //   4. Reads the actual Player's physics-driven position each frame and
 //      sends it to the server — no separate prediction math needed.
-//   5. For remote entities: pushes snapshots into their NetworkSyncComponent
-//      buffer for smooth interpolation.
+//   5. For remote entities: pushes snapshots into their NetworkSyncData
+//      buffers for smooth interpolation.
 
 #ifndef ENGINE_NETWORKSYSTEM_H
 #define ENGINE_NETWORKSYSTEM_H
 
 #include "ISystem.h"
 #include "../Entities/Entity.h"
-#include "../Entities/Components/NetworkSyncComponent.h"
+#include "../ECS/Components/NetworkSyncData.h"
 #include "../Network/NetworkPackets.h"
 #include "../Input/InputMaster.h"
 #include <vector>
@@ -26,6 +26,7 @@
 #include <functional>
 #include <enet/enet.h>
 #include <glm/glm.hpp>
+#include <entt/entt.hpp>
 
 class Player;
 
@@ -38,9 +39,10 @@ public:
                                                   const glm::vec3& position)>;
     using DespawnCallback = std::function<void(uint32_t networkId, Entity* e)>;
 
-    /// Construct with the server IP, a pointer to the local Player, and
-    /// optional entity callbacks.
-    explicit NetworkSystem(const std::string& serverIP,
+    /// Construct with the registry (for ECS component access), the server IP,
+    /// a pointer to the local Player, and optional entity callbacks.
+    explicit NetworkSystem(entt::registry&  registry,
+                           const std::string& serverIP,
                            Player*         localPlayer,
                            SpawnCallback   onSpawn   = nullptr,
                            DespawnCallback onDespawn = nullptr);
@@ -59,6 +61,9 @@ public:
     uint32_t localPlayerId() const { return localPlayerId_; }
 
 private:
+    // --- Registry (for ECS component access) ---
+    entt::registry& registry_;
+
     // --- Entity Map (Phase 7) ---
     std::unordered_map<uint32_t, Entity*> networkEntities_;
 

@@ -8,7 +8,6 @@
 #include "glm/glm.hpp"
 #include "../Input/InputMaster.h"
 #include "../RenderEngine/DisplayManager.h"
-#include "../Interfaces/Interactive.h"
 #include <map>
 #include "../Toolbox/Color.h"
 

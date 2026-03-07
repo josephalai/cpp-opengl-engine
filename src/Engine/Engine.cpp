@@ -37,8 +37,12 @@
 #include "../Atmosphere/FogSettings.h"
 #include "../Shadows/ShadowMap.h"
 #include "NetworkSystem.h"
+#include "PlayerMovementSystem.h"
+#include "NetworkInterpolationSystem.h"
 #include "../Network/NetworkPackets.h"
-#include "../Entities/Components/NetworkSyncComponent.h"
+#include "../ECS/Components/TransformComponent.h"
+#include "../ECS/Components/InputStateComponent.h"
+#include "../ECS/Components/NetworkSyncData.h"
 #include "../Toolbox/Maths.h"
 #include <enet/enet.h>
 #include <thread>
@@ -68,6 +72,21 @@ void Engine::init() {
     initGui();
     initFramebuffersAndPickers();
     buildSystems();
+
+    // --- ECS Phase 2 Step 3 verification ---
+    {
+        auto viewT = registry.view<TransformComponent>();
+        auto viewI = registry.view<InputStateComponent>();
+        auto viewN = registry.view<NetworkSyncData>();
+        int countT = 0, countI = 0, countN = 0;
+        for (auto e : viewT) { (void)e; ++countT; }
+        for (auto e : viewI) { (void)e; ++countI; }
+        for (auto e : viewN) { (void)e; ++countN; }
+        std::cout << "[ECS] Phase 2 Step 3 complete: "
+                  << countT << " TransformComponent, "
+                  << countI << " InputStateComponent, "
+                  << countN << " NetworkSyncData in registry.\n";
+    }
 }
 
 void Engine::initFonts() {
@@ -113,7 +132,8 @@ void Engine::loadScene() {
         if (probe.is_open()) {
             probe.close();
             sceneLoaded = SceneLoaderJson::load(jsonPath, loader,
-                              entities, scenes, lights,
+                              registry,
+                              entities, lights,
                               allTerrains, guis, texts, waterTiles,
                               primaryTerrain, player, playerCamera,
                               animatedEntities,
@@ -125,7 +145,8 @@ void Engine::loadScene() {
     }
     if (!sceneLoaded) {
         sceneLoaded = SceneLoader::load(cfgPath, loader,
-                          entities, scenes, lights,
+                          registry,
+                          entities, lights,
                           allTerrains, guis, texts, waterTiles,
                           primaryTerrain, player, playerCamera,
                           animatedEntities,
@@ -217,7 +238,7 @@ void Engine::loadScene() {
                 auto* pBox  = loader->loadToVAO(bbData);
                 auto* model = new TexturedModel(loader->loadToVAO(stallData),
                     new ModelTexture("stallTexture", PNG, Material{2.0f, 2.0f}));
-                player = new Player(model,
+                player = new Player(registry, model,
                     new BoundingBox(pBox, BoundingBoxIndex::genUniqueId()),
                     glm::vec3(100.0f, 3.0f, -50.0f),
                     glm::vec3(0.0f, 180.0f, 0.0f), 1.0f);
@@ -244,6 +265,13 @@ void Engine::loadScene() {
     if (player) {
         physicsSystem->setCharacterController(player, 1.0f, 3.0f);
         player->setPhysicsSystem(physicsSystem);
+    }
+
+    // Emplace the new ECS InputStateComponent so PlayerMovementSystem can drive it.
+    if (player) {
+        auto& isc     = registry.emplace_or_replace<InputStateComponent>(player->getHandle());
+        isc.terrain       = primaryTerrain;
+        isc.physicsSystem = physicsSystem;
     }
 }
 
@@ -375,15 +403,6 @@ void Engine::initFramebuffersAndPickers() {
 
     picker = new TerrainPicker(playerCamera, renderer->getProjectionMatrix(), primaryTerrain);
 
-    for (auto e : entities) {
-        if (e->getBoundingBox() != nullptr) {
-            allBoxes.push_back(e);
-        }
-    }
-    allBoxes.reserve(entities.size() + scenes.size());
-    allBoxes.insert(allBoxes.end(), entities.begin(), entities.end());
-    allBoxes.insert(allBoxes.end(), scenes.begin(), scenes.end());
-
     // Wire keyboard-driven animation transitions for every animated character.
     // SceneLoader registered no-op lambdas; replace with real input-driven ones.
     // setupDefaultTransitions is safe to call when not all clip states exist —
@@ -490,14 +509,12 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
     // invisible stall at scale=0 in scene.cfg) stays hidden on remote clients.
     // The actual visual is provided by the AnimatedEntity created below.
     const float remoteScale = player ? player->getScale() : 1.0f;
-    auto* ent = new Entity(remoteModel, bb, position, glm::vec3(0.0f), remoteScale);
+    auto* ent = new Entity(registry, remoteModel, bb, position, glm::vec3(0.0f), remoteScale);
 
-    // Attach the interpolation component so the entity can receive and
-    // smoothly interpolate server transform snapshots.
-    ent->addComponent<NetworkSyncComponent>();
+    // Emplace the ECS NetworkSyncData so NetworkInterpolationSystem can drive it.
+    registry.emplace<NetworkSyncData>(ent->getHandle());
 
     entities.push_back(ent);
-    allBoxes.push_back(ent);   // Keep allBoxes in sync for RenderSystem/UISystem
 
     // Register with ChunkManager so the StreamingSystem includes this entity
     // in the active render list.
@@ -578,13 +595,6 @@ void Engine::onNetworkDespawn(uint32_t /*networkId*/, Entity* e) {
         chunkManager->removeEntity(e);
     }
 
-    // Remove from allBoxes to prevent dangling pointer
-    auto boxIt = std::find(allBoxes.begin(), allBoxes.end(),
-                           static_cast<Interactive*>(e));
-    if (boxIt != allBoxes.end()) {
-        allBoxes.erase(boxIt);
-    }
-
     // Free the entity to prevent memory leaks.
     delete e;
 }
@@ -595,19 +605,22 @@ void Engine::buildSystems() {
     //   2. PhysicsSystem   — step simulation, sync transforms
     //   3. InputSystem     — camera movement, picker, GUI animations
     //   4. StreamingSystem — update chunk loading, refresh entity/terrain lists
-    //   5. NetworkSystem   — ENet packet polling + NetworkSyncComponent interpolation
+    //   5. NetworkSystem   — ENet packet polling + NetworkSyncData interpolation
     //   6. RenderSystem    — FBO + main scene render (frustum-culled)
     //   7. AnimationSystem — sync positions + animated character render
     //   8. UISystem        — object picking + UiMaster render + constraints
 
     // InputDispatcher must run first so that PlayerMoveCommandEvent subscribers
-    // (e.g. Player) have up-to-date speed values before any other system runs.
+    // (e.g. PlayerMovementSystem) have up-to-date speed values before any other system runs.
     systems.push_back(std::make_unique<InputDispatcher>(picker));
 
-    // Subscribe the player to receive movement commands via the EventBus
-    // instead of polling InputMaster::isKeyDown() directly in checkInputs().
+    // Subscribe the ECS InputStateComponent to the EventBus so
+    // PlayerMovementSystem uses event-driven movement instead of polling.
     if (player) {
-        player->subscribeToEvents();
+        auto* isc = registry.try_get<InputStateComponent>(player->getHandle());
+        if (isc) {
+            isc->useEventBus = true;
+        }
     }
 
     if (physicsSystem) {
@@ -616,6 +629,15 @@ void Engine::buildSystems() {
 
     systems.push_back(std::make_unique<InputSystem>(
         playerCamera, primaryTerrain, picker, sampleModifiedGui, pNameText));
+
+    // PlayerMovementSystem — ECS replacement for InputComponent::update().
+    // Runs after InputSystem (camera) and PhysicsSystem, reads InputStateComponent.
+    // init() subscribes to PlayerMoveCommandEvent on the EventBus.
+    {
+        auto pms = std::make_unique<PlayerMovementSystem>(registry);
+        pms->init();
+        systems.push_back(std::move(pms));
+    }
 
     // Build the chunk manager from the first loaded terrain's texture config.
     // Initial scene entities are registered so they appear inside their chunk.
@@ -633,18 +655,16 @@ void Engine::buildSystems() {
         for (auto* e : entities) {
             if (e) chunkManager->registerEntity(e, e->getPosition());
         }
-        for (auto* s : scenes) {
-            if (s) chunkManager->registerAssimpEntity(s, s->getPosition());
-        }
         systems.push_back(std::make_unique<StreamingSystem>(
-            chunkManager, player, allTerrains, entities, scenes));
+            chunkManager, player, allTerrains, entities));
     }
 
-    // NetworkSystem connects to the headless server via ENet and interpolates
-    // all network entities.  The local Player entity IS the network entity —
-    // no separate dummy entity is needed.
+    // NetworkSystem connects to the headless server via ENet and pushes
+    // snapshots into the NetworkSyncData ECS component.  The local Player entity IS the
+    // network entity — no separate dummy entity is needed.
     {
         auto netSys = std::make_unique<NetworkSystem>(
+            registry,
             serverIP_,
             player,
             // Spawn callback
@@ -664,16 +684,20 @@ void Engine::buildSystems() {
         systems.push_back(std::move(netSys));
     }
 
+    // NetworkInterpolationSystem — ECS replacement for legacy interpolation.
+    // Runs after NetworkSystem has pushed snapshots, before RenderSystem draws.
+    systems.push_back(std::make_unique<NetworkInterpolationSystem>(registry));
+
     systems.push_back(std::make_unique<RenderSystem>(
-        renderer, reflectFbo, entities, scenes, allTerrains, lights, allBoxes,
-        playerCamera, renderer->getProjectionMatrix(), instancedTreeModel));
+        renderer, reflectFbo, entities, allTerrains, lights,
+        registry, playerCamera, renderer->getProjectionMatrix(), instancedTreeModel));
 
     systems.push_back(std::make_unique<AnimationSystem>(
         animRenderer, animatedEntities, player, lights,
         playerCamera, renderer->getProjectionMatrix()));
 
     systems.push_back(std::make_unique<UISystem>(
-        renderer, allBoxes, clickColorText, masterContainer,
+        renderer, entities, clickColorText, masterContainer,
         guiRenderer, guis));
 }
 

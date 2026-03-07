@@ -17,13 +17,13 @@
 #include "../RenderEngine/DisplayManager.h"
 
 UISystem::UISystem(MasterRenderer*            renderer,
-                   std::vector<Interactive*>& allBoxes,
+                   std::vector<Entity*>&      entities,
                    GUIText*                   clickColorText,
                    GuiComponent*              masterContainer,
                    GuiRenderer*               guiRenderer,
                    std::vector<GuiTexture*>&  guis)
     : renderer_(renderer)
-    , allBoxes_(allBoxes)
+    , entities_(entities)
     , clickColorText_(clickColorText)
     , masterContainer_(masterContainer)
     , guiRenderer_(guiRenderer)
@@ -33,7 +33,7 @@ UISystem::UISystem(MasterRenderer*            renderer,
 void UISystem::update(float /*deltaTime*/) {
     // Handle object picking on left-click
     if (InputMaster::hasPendingClick() && InputMaster::mouseClicked(LeftClick)) {
-        renderer_->renderBoundingBoxes(allBoxes_);
+        renderer_->renderBoundingBoxes(entities_);
         Color clickColor = Picker::getColor();
         int element      = BoundingBoxIndex::getIndexByColor(clickColor);
 
@@ -43,7 +43,7 @@ void UISystem::update(float /*deltaTime*/) {
                 clickColor);
         }
 
-        Interactive* pClickedModel = InteractiveModel::getInteractiveBox(element);
+        Entity* pClickedModel = InteractiveModel::getInteractiveBox(element);
         if (pClickedModel) {
             if (auto* p = dynamic_cast<Player*>(pClickedModel)) {
                 if (!p->hasMaterial()) {

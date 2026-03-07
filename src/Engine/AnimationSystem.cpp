@@ -4,7 +4,7 @@
 #include "../RenderEngine/AnimatedRenderer.h"
 #include "../Entities/Player.h"
 #include "../Entities/Entity.h"
-#include "../Entities/Components/NetworkSyncComponent.h"
+#include "../ECS/Components/NetworkSyncData.h"
 #include "../Input/InputMaster.h"
 #include "../RenderEngine/DisplayManager.h"
 #include <iostream>
@@ -35,7 +35,7 @@ void AnimationSystem::update(float deltaTime) {
         }
     }
 
-    // Sync remote animated entities from their paired Entity (NetworkSyncComponent)
+    // Sync remote animated entities from their paired Entity (NetworkSyncData)
     // and drive animation state transitions based on computed movement speed.
     for (auto* ae : entities_) {
         if (!ae || ae->isLocalPlayer) continue;
@@ -44,9 +44,10 @@ void AnimationSystem::update(float deltaTime) {
             ae->rotation = ae->pairedEntity->getRotation();
         }
         if (ae->controller && ae->pairedEntity) {
-            auto* sync = ae->pairedEntity->getComponent<NetworkSyncComponent>();
-            if (sync) {
-                const float speed = sync->getCurrentSpeed();
+            auto& reg = ae->pairedEntity->getRegistry();
+            auto* nsd = reg.try_get<NetworkSyncData>(ae->pairedEntity->getHandle());
+            if (nsd) {
+                const float speed = nsd->currentSpeed;
                 if (speed > 1.0f) {
                     ae->controller->requestTransition("Run");
                 } else if (speed > 0.1f) {

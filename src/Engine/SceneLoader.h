@@ -14,7 +14,6 @@
 
 #include "../RenderEngine/Loader.h"
 #include "../Entities/Entity.h"
-#include "../Entities/AssimpEntity.h"
 #include "../Entities/Player.h"
 #include "../Entities/PlayerCamera.h"
 #include "../Entities/Light.h"
@@ -28,6 +27,7 @@
 #include "../Water/WaterTile.h"
 #include "../RenderEngine/AnimatedRenderer.h"
 #include "../Physics/PhysicsComponents.h"
+#include <entt/entt.hpp>
 
 /// Reads src/Resources/Tutorial/scene.cfg and loads the described 3-D scene
 /// content into the vectors/pointers passed by reference.  Returns true on
@@ -56,8 +56,8 @@ public:
     static bool load(
         const std::string&          configPath,
         Loader*                     loader,
+        entt::registry&             registry,
         std::vector<Entity*>&       entities,
-        std::vector<AssimpEntity*>& scenes,
         std::vector<Light*>&        lights,
         std::vector<Terrain*>&      allTerrains,
         std::vector<GuiTexture*>&   guis,

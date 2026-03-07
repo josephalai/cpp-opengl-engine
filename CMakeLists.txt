@@ -26,6 +26,16 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(nlohmann_json)
 
 # =============================================================================
+# EnTT — header-only ECS library (fetched automatically via FetchContent)
+# =============================================================================
+FetchContent_Declare(
+    entt
+    GIT_REPOSITORY https://github.com/skypjack/entt.git
+    GIT_TAG        v3.14.0
+)
+FetchContent_MakeAvailable(entt)
+
+# =============================================================================
 # Source file collection
 # =============================================================================
 
@@ -91,6 +101,9 @@ target_include_directories(client_engine PRIVATE ${enet_SOURCE_DIR}/include)
 # nlohmann/json — header-only (FetchContent populates nlohmann_json_SOURCE_DIR)
 target_include_directories(client_engine PRIVATE ${nlohmann_json_SOURCE_DIR}/include)
 
+# EnTT — header-only ECS library
+target_include_directories(client_engine PRIVATE ${entt_SOURCE_DIR}/src)
+
 # Link all client dependencies
 target_link_libraries(client_engine PRIVATE
     glfw
@@ -129,6 +142,7 @@ target_include_directories(headless_server PRIVATE
     ${CMAKE_SOURCE_DIR}/deps/glm
     ${enet_SOURCE_DIR}/include
     ${nlohmann_json_SOURCE_DIR}/include
+    ${entt_SOURCE_DIR}/src
 )
 
 target_compile_definitions(headless_server PRIVATE RESOURCE_ROOT="${CMAKE_SOURCE_DIR}")

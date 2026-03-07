@@ -20,6 +20,7 @@
 //
 
 #include "SceneLoader.h"
+#include "../ECS/Components/AssimpModelComponent.h"
 #include "../Util/FileSystem.h"
 #include "../RenderEngine/DisplayManager.h"
 #include "../Util/LightUtil.h"
@@ -126,8 +127,8 @@ static std::string optVal(const std::string& tok, const std::string& key) {
 bool SceneLoader::load(
     const std::string&          configPath,
     Loader*                     loader,
+    entt::registry&             registry,
     std::vector<Entity*>&       entities,
-    std::vector<AssimpEntity*>& scenes,
     std::vector<Light*>&        lights,
     std::vector<Terrain*>&      allTerrains,
     std::vector<GuiTexture*>&   guis,
@@ -666,6 +667,7 @@ bool SceneLoader::load(
         entityAliasByIndex[aliasId].push_back(static_cast<int>(entities.size()));
 
         entities.push_back(new Entity(
+            registry,
             lm.model,
             new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
             glm::vec3(ed.x, yVal, ed.z),
@@ -693,11 +695,11 @@ bool SceneLoader::load(
             entityAliasByIndex[aliasId].push_back(static_cast<int>(entities.size()));
             if (rd.useAtlas) {
                 int idx = (rand() % 4) + 1;   // atlas row 1-4
-                entities.push_back(new Entity(lm.model,
+                entities.push_back(new Entity(registry, lm.model,
                     new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
                     idx, pos, rot, sc));
             } else {
-                entities.push_back(new Entity(lm.model,
+                entities.push_back(new Entity(registry, lm.model,
                     new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
                     pos, rot, sc));
             }
@@ -715,9 +717,11 @@ bool SceneLoader::load(
             ? randomPosition(primaryTerrain, ad.yOffset)
             : glm::vec3(ad.x, ad.y, ad.z);
         float sc = randomScale(ad.scaleMin, ad.scaleMax);
-        scenes.push_back(new AssimpEntity(mesh,
-            new BoundingBox(rawBb, BoundingBoxIndex::genUniqueId()),
-            pos, randomRotation(), sc));
+        auto assimpEnt = registry.create();
+        registry.emplace<AssimpModelComponent>(assimpEnt, AssimpModelComponent{
+            mesh, pos, randomRotation(), sc,
+            new BoundingBox(rawBb, BoundingBoxIndex::genUniqueId())
+        });
     }
 
     // -----------------------------------------------------------------------
@@ -728,6 +732,7 @@ bool SceneLoader::load(
         if (it != modelMap.end()) {
             auto& lm = it->second;
             player = new Player(
+                registry,
                 lm.model,
                 new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
                 glm::vec3(playerDef.x, playerDef.y, playerDef.z),
@@ -948,7 +953,7 @@ bool SceneLoader::load(
     // -----------------------------------------------------------------------
     std::cout << "[SceneLoader] Scene loaded: "
               << entities.size()        << " entities, "
-              << scenes.size()          << " assimp scenes, "
+              << assimpDefs.size()          << " assimp scenes, "
               << lights.size()          << " lights, "
               << allTerrains.size()     << " terrain tiles, "
               << guis.size()            << " GUI textures, "

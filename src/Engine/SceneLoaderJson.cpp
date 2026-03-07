@@ -10,6 +10,7 @@
 // ComponentPool (Phase 1, Step 2) is used automatically via Entity::addComponent.
 
 #include "SceneLoaderJson.h"
+#include "../ECS/Components/AssimpModelComponent.h"
 #include "../Util/FileSystem.h"
 #include "../RenderEngine/DisplayManager.h"
 #include "../Util/LightUtil.h"
@@ -85,8 +86,8 @@ float parseJsonY(const nlohmann::json& val, float& yOffset) {
 bool SceneLoaderJson::load(
     const std::string&             jsonPath,
     Loader*                        loader,
+    entt::registry&                registry,
     std::vector<Entity*>&          entities,
-    std::vector<AssimpEntity*>&    scenes,
     std::vector<Light*>&           lights,
     std::vector<Terrain*>&         allTerrains,
     std::vector<GuiTexture*>&      guis,
@@ -273,6 +274,7 @@ bool SceneLoaderJson::load(
             float sc = e.value("scale", 1.0f);
             entityAliasByIndex[aliasId].push_back(static_cast<int>(entities.size()));
             entities.push_back(new Entity(
+                registry,
                 lm.model,
                 new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
                 glm::vec3(x, yVal, z), glm::vec3(rx, ry, rz), sc));
@@ -304,11 +306,11 @@ bool SceneLoaderJson::load(
                 entityAliasByIndex[aliasId].push_back(static_cast<int>(entities.size()));
                 if (useAtlas) {
                     int idx = (rand() % 4) + 1;
-                    entities.push_back(new Entity(lm.model,
+                    entities.push_back(new Entity(registry, lm.model,
                         new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
                         idx, pos, rot, sc));
                 } else {
-                    entities.push_back(new Entity(lm.model,
+                    entities.push_back(new Entity(registry, lm.model,
                         new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
                         pos, rot, sc));
                 }
@@ -332,9 +334,11 @@ bool SceneLoaderJson::load(
             auto* rawBb  = loader->loadToVAO(bbData);
             glm::vec3 pos = rndPos ? gRandomPosition(primaryTerrain, yOff) : glm::vec3(ax, ay, az);
             float sc = gRandomScale(scMin, scMax);
-            scenes.push_back(new AssimpEntity(mesh,
-                new BoundingBox(rawBb, BoundingBoxIndex::genUniqueId()),
-                pos, gRandomRotation(), sc));
+            auto assimpEnt = registry.create();
+            registry.emplace<AssimpModelComponent>(assimpEnt, AssimpModelComponent{
+                mesh, pos, gRandomRotation(), sc,
+                new BoundingBox(rawBb, BoundingBoxIndex::genUniqueId())
+            });
         }
     }
 
@@ -349,6 +353,7 @@ bool SceneLoaderJson::load(
         if (it != modelMap.end()) {
             auto& lm = it->second;
             player = new Player(
+                registry,
                 lm.model,
                 new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
                 glm::vec3(p.value("x", 0.0f), p.value("y", 0.0f), p.value("z", 0.0f)),
@@ -561,7 +566,7 @@ bool SceneLoaderJson::load(
     // -----------------------------------------------------------------------
     std::cout << "[SceneLoaderJson] Scene loaded: "
               << entities.size()         << " entities, "
-              << scenes.size()           << " assimp scenes, "
+              << registry.view<AssimpModelComponent>().size() << " assimp scenes, "
               << lights.size()           << " lights, "
               << allTerrains.size()      << " terrain tiles, "
               << guis.size()             << " GUI textures, "

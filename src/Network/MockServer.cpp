@@ -15,58 +15,6 @@ MockServer& MockServer::instance() {
 }
 
 // ---------------------------------------------------------------------------
-// registerComponent
-// ---------------------------------------------------------------------------
-
-void MockServer::registerComponent(NetworkSyncComponent* comp) {
-    if (!comp) return;
-    components_.push_back(comp);
-
-    // Prime the buffer with an initial snapshot at the starting position so
-    // the component has something to hold at before the first tick fires.
-    Network::TransformSnapshot initial;
-    initial.sequenceNumber = sequenceNum_++;
-    initial.timestamp      = serverTime_;
-    initial.position       = generatePosition(serverTime_);
-    initial.rotation       = generateRotation(serverTime_);
-    comp->pushSnapshot(initial);
-}
-
-// ---------------------------------------------------------------------------
-// update — called every render frame
-// ---------------------------------------------------------------------------
-
-void MockServer::update(float deltaTime) {
-    if (components_.empty()) return;
-
-    serverTime_       += deltaTime;
-    tickAccumulator_  += deltaTime;
-
-    if (tickAccumulator_ >= kTickInterval) {
-        tickAccumulator_ -= kTickInterval;
-        dispatchSnapshot();
-    }
-}
-
-// ---------------------------------------------------------------------------
-// dispatchSnapshot — fire one server tick
-// ---------------------------------------------------------------------------
-
-void MockServer::dispatchSnapshot() {
-    Network::TransformSnapshot snap;
-    snap.sequenceNumber = sequenceNum_++;
-    snap.timestamp      = serverTime_;
-    snap.position       = generatePosition(serverTime_);
-    snap.rotation       = generateRotation(serverTime_);
-
-    for (NetworkSyncComponent* comp : components_) {
-        if (comp) {
-            comp->pushSnapshot(snap);
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Path generators
 // ---------------------------------------------------------------------------
 

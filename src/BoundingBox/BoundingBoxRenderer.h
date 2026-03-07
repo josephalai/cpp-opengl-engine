@@ -19,7 +19,7 @@ private:
 public:
     explicit BoundingBoxRenderer(BoundingBoxShader *shader, glm::mat4 projectionMatrix);
 
-    void render(std::map<RawBoundingBox *, std::vector<Interactive *>> *entities);
+    void render(std::map<RawBoundingBox *, std::vector<Entity *>> *entities);
 
 private:
     void prepareRawBoundingBox(RawBoundingBox *box);
@@ -33,7 +33,7 @@ private:
      * @brief sets the initial transformation (view) matrix.
      * @param entity
      */
-    void prepareInstance(Interactive *entity);
+    void prepareInstance(Entity *entity);
 };
 
 
