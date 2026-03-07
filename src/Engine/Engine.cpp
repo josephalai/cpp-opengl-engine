@@ -41,8 +41,10 @@
 #include "../Entities/Components/NetworkSyncComponent.h"
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/EntityOwnerComponent.h"
-#include "../ECS/Components/AssimpComponent.h"
+#include "../ECS/Components/AssimpModelComponent.h"
 #include "../ECS/Components/LightComponent.h"
+#include "../ECS/Components/TerrainComponent.h"
+#include "../ECS/Components/ActiveChunkTag.h"
 #include "../Streaming/ChunkManager.h"
 #include "../Toolbox/Maths.h"
 #include <enet/enet.h>
@@ -121,10 +123,12 @@ void Engine::loadScene() {
     // Temporary accumulators — used only during loading.  After loading,
     // their contents are migrated into the EnTT registry as pure components so
     // that Systems can discover them via registry.view<> instead of side-vectors.
+    // Nothing lives outside the registry after this function returns.
     // -----------------------------------------------------------------------
     std::vector<Entity*>         tmpEntities;
     std::vector<AssimpEntity*>   tmpScenes;
     std::vector<Light*>          tmpLights;
+    std::vector<Terrain*>        tmpTerrains;
     std::vector<AnimatedEntity*> tmpAnimated;
 
     std::vector<SceneLoader::PhysicsBodyCfg>   physicsBodyCfgs;
@@ -138,7 +142,7 @@ void Engine::loadScene() {
             sceneLoaded = SceneLoaderJson::load(jsonPath, loader,
                               registry,
                               tmpEntities, tmpScenes, tmpLights,
-                              allTerrains, guis, texts, waterTiles,
+                              tmpTerrains, guis, texts, waterTiles,
                               primaryTerrain, player, playerCamera,
                               tmpAnimated,
                               physicsBodyCfgs, physicsGroundCfgs);
@@ -151,7 +155,7 @@ void Engine::loadScene() {
         sceneLoaded = SceneLoader::load(cfgPath, loader,
                           registry,
                           tmpEntities, tmpScenes, tmpLights,
-                          allTerrains, guis, texts, waterTiles,
+                          tmpTerrains, guis, texts, waterTiles,
                           primaryTerrain, player, playerCamera,
                           tmpAnimated,
                           physicsBodyCfgs, physicsGroundCfgs);
@@ -161,21 +165,29 @@ void Engine::loadScene() {
     // Migrate temporaries → registry components
     // -----------------------------------------------------------------------
 
-    // Entity* → EntityOwnerComponent so RenderSystem can discover them via view
+    // Entity* → EntityOwnerComponent so Systems can discover them via view
     for (auto* e : tmpEntities) {
         registry.emplace<EntityOwnerComponent>(e->getHandle(), e);
     }
 
-    // AssimpEntity* → AssimpComponent (registry entity per scene object)
+    // AssimpEntity* → AssimpModelComponent (holds AssimpMesh* + legacy entity*)
     for (auto* s : tmpScenes) {
         auto h = registry.create();
-        registry.emplace<AssimpComponent>(h, s);
+        registry.emplace<AssimpModelComponent>(h, s->getModel(), s);
     }
 
-    // Light* → LightComponent (registry entity per light; component takes ownership)
+    // Light* → LightComponent (stored by value — Light data copied inline)
     for (auto* l : tmpLights) {
         auto h = registry.create();
-        registry.emplace<LightComponent>(h, l);
+        auto& lc = registry.emplace<LightComponent>(h);
+        lc.light = *l;  // copy Light data into the component by value
+        delete l;       // original heap object no longer needed
+    }
+
+    // Terrain* → TerrainComponent
+    for (auto* t : tmpTerrains) {
+        auto h = registry.create();
+        registry.emplace<TerrainComponent>(h, t);
     }
 
     // AnimatedEntity* → AnimatedEntity component (copy fields into registry)
@@ -234,7 +246,7 @@ void Engine::loadScene() {
     if (!sceneLoaded || !player || !playerCamera) {
         std::cerr << "[Engine] SceneLoader failed or missing player — using minimal defaults\n";
 
-        if (allTerrains.empty()) {
+        if (registry.view<TerrainComponent>().begin() == registry.view<TerrainComponent>().end()) {
             auto* bgTex  = new TerrainTexture(loader->loadTexture("MultiTextureTerrain/grass")->getId());
             auto* rTex   = new TerrainTexture(loader->loadTexture("MultiTextureTerrain/dirt")->getId());
             auto* gTex   = new TerrainTexture(loader->loadTexture("MultiTextureTerrain/blueflowers")->getId());
@@ -242,18 +254,19 @@ void Engine::loadScene() {
             auto* pack   = new TerrainTexturePack(bgTex, rTex, gTex, bTex);
             auto* blend  = new TerrainTexture(loader->loadTexture("MultiTextureTerrain/blendMap")->getId());
             primaryTerrain = new Terrain(0, -1, loader, pack, blend, terrainHeightmapFile);
-            allTerrains.push_back(primaryTerrain);
+            auto h = registry.create();
+            registry.emplace<TerrainComponent>(h, primaryTerrain);
         }
 
-        if (registry.view<LightComponent>().size_hint() == 0) {
-            auto* l = new Light(glm::vec3(0.0f, 1000.0f, -7000.0f),
-                                glm::vec3(0.4f, 0.4f, 0.4f), {
+        if (registry.view<LightComponent>().begin() == registry.view<LightComponent>().end()) {
+            auto h = registry.create();
+            auto& lc = registry.emplace<LightComponent>(h);
+            lc.light = Light(glm::vec3(0.0f, 1000.0f, -7000.0f),
+                             glm::vec3(0.4f, 0.4f, 0.4f), {
                 .ambient  = glm::vec3(0.2f, 0.2f, 0.2f),
                 .diffuse  = glm::vec3(0.5f, 0.5f, 0.5f),
                 .constant = Light::kDirectional,
             });
-            auto h = registry.create();
-            registry.emplace<LightComponent>(h, l);
         }
 
         if (!player) {
@@ -281,9 +294,12 @@ void Engine::loadScene() {
         }
     }
 
-    // Register heightfield colliders for all terrain tiles.
-    for (auto* t : allTerrains) {
-        physicsSystem->addTerrainCollider(t);
+    // Register heightfield colliders for all terrain tiles (from registry).
+    {
+        auto tView = registry.view<TerrainComponent>();
+        for (auto [e, tc] : tView.each()) {
+            if (tc.terrain) physicsSystem->addTerrainCollider(tc.terrain);
+        }
     }
 
     // Set up kinematic character controller for the player.
@@ -670,9 +686,12 @@ void Engine::buildSystems() {
                                         primaryTerrain->getTexturePack(),
                                         primaryTerrain->getBlendMap(),
                                         terrainHeightmapFile);
-        // Register existing terrain tiles so ChunkManager tracks them.
-        for (auto* t : allTerrains) {
-            if (t) chunkManager->registerTerrain(t);
+        // Register terrain tiles so ChunkManager tracks them.
+        {
+            auto tView = registry.view<TerrainComponent>();
+            for (auto [h, tc] : tView.each()) {
+                if (tc.terrain) chunkManager->registerTerrain(tc.terrain);
+            }
         }
         // Register entities from the registry into the chunk grid.
         {
@@ -682,13 +701,27 @@ void Engine::buildSystems() {
             }
         }
         {
-            auto sView = registry.view<AssimpComponent>();
-            for (auto [h, ac] : sView.each()) {
-                if (ac.entity) chunkManager->registerAssimpEntity(ac.entity, ac.entity->getPosition());
+            auto sView = registry.view<AssimpModelComponent>();
+            for (auto [h, am] : sView.each()) {
+                if (am.entity) chunkManager->registerAssimpEntity(am.entity, am.entity->getPosition());
             }
         }
         systems.push_back(std::make_unique<StreamingSystem>(
-            chunkManager, player, allTerrains));
+            chunkManager, player, registry));
+    } else {
+        // No streaming — tag all entities/terrains/scenes as permanently active.
+        {
+            auto v = registry.view<EntityOwnerComponent>();
+            for (auto e : v) registry.emplace_or_replace<ActiveChunkTag>(e);
+        }
+        {
+            auto v = registry.view<AssimpModelComponent>();
+            for (auto e : v) registry.emplace_or_replace<ActiveChunkTag>(e);
+        }
+        {
+            auto v = registry.view<TerrainComponent>();
+            for (auto e : v) registry.emplace_or_replace<ActiveChunkTag>(e);
+        }
     }
 
     // NetworkSystem connects to the headless server via ENet and interpolates
@@ -716,9 +749,8 @@ void Engine::buildSystems() {
     }
 
     systems.push_back(std::make_unique<RenderSystem>(
-        renderer, reflectFbo, registry, allTerrains,
-        playerCamera, renderer->getProjectionMatrix(), instancedTreeModel,
-        chunkManager));
+        renderer, reflectFbo, registry,
+        playerCamera, renderer->getProjectionMatrix(), instancedTreeModel));
 
     systems.push_back(std::make_unique<AnimationSystem>(
         animRenderer, registry, player,
@@ -784,13 +816,7 @@ void Engine::shutdown() {
         }
     }
 
-    // Clean up lights owned via LightComponent.
-    {
-        auto view = registry.view<LightComponent>();
-        for (auto [e, lc] : view.each()) {
-            delete lc.light;
-        }
-    }
+    // Lights are stored by value in LightComponent — no manual delete needed.
 
     delete animRenderer;
     loader->cleanUp();

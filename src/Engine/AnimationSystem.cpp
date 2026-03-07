@@ -98,12 +98,12 @@ void AnimationSystem::update(float deltaTime) {
         ptrs.push_back(&ae);
     }
 
-    // Build lights list from registry.
+    // Build lights list from registry (stored by value in LightComponent).
     std::vector<Light*> lights;
     {
         auto lightView = registry_.view<LightComponent>();
         for (auto [e, lc] : lightView.each()) {
-            if (lc.light) lights.push_back(lc.light);
+            lights.push_back(&lc.light);
         }
     }
 

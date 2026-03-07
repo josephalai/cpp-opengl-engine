@@ -26,8 +26,10 @@
 #include <entt/entt.hpp>
 #include <string>
 #include "../ECS/Components/EntityOwnerComponent.h"
-#include "../ECS/Components/AssimpComponent.h"
+#include "../ECS/Components/AssimpModelComponent.h"
 #include "../ECS/Components/LightComponent.h"
+#include "../ECS/Components/TerrainComponent.h"
+#include "../ECS/Components/ActiveChunkTag.h"
 
 class ChunkManager;
 class NetworkSystem;
@@ -88,7 +90,6 @@ private:
 
     std::vector<WaterTile> waterTiles;
 
-    std::vector<Terrain*> allTerrains;
     std::vector<GuiTexture*> guis;
     std::vector<GuiRect*> rects;
     std::vector<GUIText*> texts;

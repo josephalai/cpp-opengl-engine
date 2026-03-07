@@ -5,7 +5,7 @@
 #include "TextMeshData.h"
 #include "../../../Util/FileSystem.h"
 #include <ft2build.h>
-#include FT_FREETYPE_H"include/freetype/freetype.h""include/freetype/freetype.h"
+#include FT_FREETYPE_H
 
 #include <utility>
 

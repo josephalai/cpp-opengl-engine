@@ -1,101 +1,100 @@
 // src/Engine/RenderSystem.cpp
 //
-// Phase 2 Step 3 — Pure Systems.
-//   Entity, scene, light, and allBoxes lists are discovered each frame via
-//   registry.view<> queries instead of legacy side-vectors.
-//   If a ChunkManager is present, visible entities/scenes are fetched from
-//   the active streaming chunks; otherwise the full registry is iterated.
+// Phase 2 Step 3 — Mandate 3 + 4: Pure ECS rendering via ActiveChunkTag.
+//
+// All render lists are built exclusively from registry.view<> queries:
+//   - registry.view<EntityOwnerComponent, ActiveChunkTag>()    → Entity* list
+//   - registry.view<AssimpModelComponent, ActiveChunkTag>()   → AssimpEntity* list
+//   - registry.view<TerrainComponent,     ActiveChunkTag>()   → Terrain* list
+//   - registry.view<LightComponent>()                          → Light* list (always all)
+//
+// StreamingSystem stamps ActiveChunkTag each frame to control which entities
+// are visible.  When no StreamingSystem is present, all entities are permanently
+// tagged in Engine::buildSystems().
 
 #include "RenderSystem.h"
 #include "../RenderEngine/MasterRenderer.h"
 #include "../RenderEngine/FrameBuffers.h"
 #include "../RenderEngine/InstancedModel.h"
 #include "../ECS/Components/EntityOwnerComponent.h"
-#include "../ECS/Components/AssimpComponent.h"
+#include "../ECS/Components/AssimpModelComponent.h"
 #include "../ECS/Components/LightComponent.h"
-#include "../Streaming/ChunkManager.h"
+#include "../ECS/Components/TerrainComponent.h"
+#include "../ECS/Components/ActiveChunkTag.h"
 #include "../Entities/Entity.h"
 #include "../Entities/AssimpEntity.h"
 #include "../Entities/Light.h"
+#include "../Terrain/Terrain.h"
 #include "../Interfaces/Interactive.h"
 
-RenderSystem::RenderSystem(MasterRenderer*        renderer,
-                            FrameBuffers*          reflectFbo,
-                            entt::registry&        registry,
-                            std::vector<Terrain*>& allTerrains,
-                            Camera*                camera,
-                            const glm::mat4&       projectionMatrix,
-                            InstancedModel*        instancedModel,
-                            ChunkManager*          chunkManager)
+RenderSystem::RenderSystem(MasterRenderer*  renderer,
+                            FrameBuffers*    reflectFbo,
+                            entt::registry&  registry,
+                            Camera*          camera,
+                            const glm::mat4& projectionMatrix,
+                            InstancedModel*  instancedModel)
     : renderer_(renderer)
     , reflectFbo_(reflectFbo)
     , registry_(registry)
-    , allTerrains_(allTerrains)
     , camera_(camera)
     , projectionMatrix_(projectionMatrix)
     , instancedModel_(instancedModel)
-    , chunkManager_(chunkManager)
 {}
 
 void RenderSystem::update(float /*deltaTime*/) {
     // -----------------------------------------------------------------------
-    // Build entity list from registry (filtered by active streaming chunks
-    // when a ChunkManager is present).
+    // Build entity list — only entities tagged with ActiveChunkTag.
     // -----------------------------------------------------------------------
     std::vector<Entity*> entities;
-    if (chunkManager_) {
-        entities = chunkManager_->getActiveEntities();
-    } else {
-        auto view = registry_.view<EntityOwnerComponent>();
+    {
+        auto view = registry_.view<EntityOwnerComponent, ActiveChunkTag>();
         for (auto [e, eoc] : view.each()) {
             if (eoc.ptr) entities.push_back(eoc.ptr);
         }
     }
 
     // -----------------------------------------------------------------------
-    // Build scene (Assimp) list from registry.
+    // Build Assimp scene list — only those tagged with ActiveChunkTag.
     // -----------------------------------------------------------------------
     std::vector<AssimpEntity*> scenes;
-    if (chunkManager_) {
-        scenes = chunkManager_->getActiveAssimpEntities();
-    } else {
-        auto view = registry_.view<AssimpComponent>();
-        for (auto [e, ac] : view.each()) {
-            if (ac.entity) scenes.push_back(ac.entity);
+    {
+        auto view = registry_.view<AssimpModelComponent, ActiveChunkTag>();
+        for (auto [e, am] : view.each()) {
+            if (am.entity) scenes.push_back(am.entity);
         }
     }
 
     // -----------------------------------------------------------------------
-    // Build terrain list (from streaming or the fallback allTerrains ref).
+    // Build terrain list — only those tagged with ActiveChunkTag.
     // -----------------------------------------------------------------------
     std::vector<Terrain*> terrains;
-    if (chunkManager_) {
-        terrains = chunkManager_->getActiveTerrains();
-    } else {
-        terrains = allTerrains_;
+    {
+        auto view = registry_.view<TerrainComponent, ActiveChunkTag>();
+        for (auto [e, tc] : view.each()) {
+            if (tc.terrain) terrains.push_back(tc.terrain);
+        }
     }
 
     // -----------------------------------------------------------------------
-    // Build lights list from registry.
+    // Build lights list — lights are always rendered (no chunk culling for lights).
+    // Pointers are stable within this frame since the registry is not modified.
     // -----------------------------------------------------------------------
     std::vector<Light*> lights;
     {
         auto view = registry_.view<LightComponent>();
         for (auto [e, lc] : view.each()) {
-            if (lc.light) lights.push_back(lc.light);
+            lights.push_back(&lc.light);
         }
     }
 
     // -----------------------------------------------------------------------
-    // Build allBoxes (pickable Interactive* objects) from registry.
+    // Build allBoxes (pickable Interactive* objects) from the active sets.
     // -----------------------------------------------------------------------
     std::vector<Interactive*> allBoxes;
     {
-        // Entity* objects that have a non-null bounding box
         for (auto* e : entities) {
             if (e && e->getBoundingBox()) allBoxes.push_back(e);
         }
-        // AssimpEntity* objects that have a non-null bounding box
         for (auto* s : scenes) {
             if (s && s->getBoundingBox()) allBoxes.push_back(s);
         }
@@ -109,26 +108,26 @@ void RenderSystem::update(float /*deltaTime*/) {
         culler_.update(camera_, projectionMatrix_);
     }
 
-    // Cull entities, assimp scenes, and terrain tiles to only visible subsets.
+    // Cull to only frustum-visible subsets.
     auto visibleEntities  = camera_ ? culler_.cull(entities)         : entities;
     auto visibleScenes    = camera_ ? culler_.cull(scenes)           : scenes;
     auto visibleTerrains  = camera_ ? culler_.cullTerrains(terrains) : terrains;
 
-    // Render bounding boxes into the reflection FBO
+    // Render bounding boxes into the reflection FBO.
     reflectFbo_->bindReflectionFrameBuffer();
     renderer_->renderBoundingBoxes(allBoxes);
     reflectFbo_->unbindCurrentFrameBuffer();
 
-    // Main scene render (culled lists)
+    // Main scene render (culled lists).
     renderer_->renderScene(visibleEntities, visibleScenes, visibleTerrains, lights);
 
-    // Instanced rendering (e.g. 500 trees in one draw call)
+    // Instanced rendering (e.g. 500 trees in one draw call).
     if (instancedModel_ && instancedModel_->getInstanceCount() > 0) {
         renderer_->processInstancedEntity(instancedModel_, instancedModel_->getInstances());
         renderer_->renderInstanced(lights);
     }
 
-    // Water rendering — must run after opaque geometry
+    // Water rendering — must run after opaque geometry.
     renderer_->renderWater(camera_, lights.empty() ? nullptr : lights[0]);
 }
 

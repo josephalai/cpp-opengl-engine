@@ -20,7 +20,7 @@
 #include "../Entities/Player.h"
 #include "../RenderEngine/DisplayManager.h"
 #include "../ECS/Components/EntityOwnerComponent.h"
-#include "../ECS/Components/AssimpComponent.h"
+#include "../ECS/Components/AssimpModelComponent.h"
 #include "../Interfaces/Interactive.h"
 #include "../Entities/Entity.h"
 #include "../Entities/AssimpEntity.h"
@@ -49,9 +49,9 @@ void UISystem::update(float /*deltaTime*/) {
             for (auto [e, eoc] : eView.each()) {
                 if (eoc.ptr && eoc.ptr->getBoundingBox()) allBoxes.push_back(eoc.ptr);
             }
-            auto sView = registry_.view<AssimpComponent>();
-            for (auto [e, ac] : sView.each()) {
-                if (ac.entity && ac.entity->getBoundingBox()) allBoxes.push_back(ac.entity);
+            auto sView = registry_.view<AssimpModelComponent>();
+            for (auto [e, am] : sView.each()) {
+                if (am.entity && am.entity->getBoundingBox()) allBoxes.push_back(am.entity);
             }
         }
 
