@@ -29,6 +29,9 @@
 //   • Buffer empty        → entity is not moved (safe no-op).
 //   • Only 1 snapshot     → entity is held at that position.
 //   • Buffer starvation   → hold at the last known snapshot position.
+//                           (Extrapolation was removed because it caused a
+//                           visible "jump ahead + slingshot back" artefact
+//                           whenever the remote entity changed speed/direction.)
 //   • Normal interpolation→ smooth LERP/SLERP between bracketing snapshots.
 
 #ifndef ENGINE_NETWORKSYNCCOMPONENT_H
@@ -73,9 +76,13 @@ public:
     // -------------------------------------------------------------------------
 
     /// How far behind the most-recent snapshot the render clock trails (seconds).
+    /// A value of 2× the server tick interval guarantees we almost always have
+    /// two bracketing snapshots available for smooth interpolation.
     static constexpr float kInterpolationDelay = 0.20f;
 
-    /// Maximum number of snapshots to retain in the buffer.
+    /// Maximum number of snapshots to retain in the buffer.  Older entries are
+    /// dropped on push when the buffer exceeds this size, preventing unbounded
+    /// memory growth if snapshots arrive faster than they are consumed.
     static constexpr std::size_t kMaxBufferSize = 20;
 
     // -------------------------------------------------------------------------
@@ -87,6 +94,7 @@ public:
     std::size_t maxBufferSize_      = kMaxBufferSize;
 
     /// Monotonically advancing render-playback clock (seconds).
+    /// Incremented by deltaTime each frame in NetworkSystem::update().
     float renderTime_ = 0.0f;
 
     /// True once at least two snapshots have been received and the playback
@@ -97,7 +105,8 @@ public:
     glm::vec3 previousPosition_ = glm::vec3(0.0f);
 
     /// True once previousPosition_ has been seeded from the entity's actual
-    /// spawn position.
+    /// spawn position.  Prevents a bogus speed spike on the very first frame
+    /// (when previousPosition_ would otherwise be the default-initialised origin).
     bool previousPositionInitialized_ = false;
 
     /// Most recently computed XZ movement speed (units/sec).
