@@ -31,6 +31,11 @@ struct AnimatedEntity {
     /// Remote animated entities leave this false so AnimationSystem does not
     /// overwrite their positions with the local player's physics transform.
     bool                 isLocalPlayer = false;
+    /// True when this entity is responsible for deleting its model on cleanup.
+    /// Local-player entities own their model (set to true by SceneLoader).
+    /// Remote entities share the local player's model pointer and must NOT
+    /// delete it (set to false by Engine::onNetworkSpawn) to prevent double-free.
+    bool                 ownsModel     = false;
     /// For remote entities only: pointer to the Entity that carries the
     /// NetworkSyncComponent driving this animated character's world position.
     /// Null for local-player entities.

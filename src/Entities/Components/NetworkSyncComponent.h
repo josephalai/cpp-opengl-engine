@@ -23,8 +23,10 @@
 // Edge cases handled:
 //   • Buffer empty        → entity is not moved (safe no-op).
 //   • Only 1 snapshot     → entity is held at that position.
-//   • Buffer starvation   → velocity-based dead reckoning from the last two
-//                           snapshots (capped at ~1 tick to avoid runaway drift).
+//   • Buffer starvation   → hold at the last known snapshot position.
+//                           (Extrapolation was removed because it caused a
+//                           visible "jump ahead + slingshot back" artefact
+//                           whenever the remote entity changed speed/direction.)
 //   • Normal interpolation→ smooth LERP/SLERP between bracketing snapshots.
 
 #ifndef ENGINE_NETWORKSYNCCOMPONENT_H

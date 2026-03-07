@@ -134,8 +134,13 @@ void Engine::loadScene() {
 
     // All animated entities loaded by SceneLoader belong to the local player's
     // character(s).  Mark them so AnimationSystem doesn't treat them as remote.
+    // Also mark them as model owners so Engine::shutdown() knows to delete the
+    // model for these entities (remote entities share the pointer and must not).
     for (auto* ae : animatedEntities) {
-        if (ae) ae->isLocalPlayer = true;
+        if (ae) {
+            ae->isLocalPlayer = true;
+            ae->ownsModel     = true;
+        }
     }
 
     // Set up physics world and register bodies from config
@@ -714,7 +719,13 @@ void Engine::shutdown() {
     }
     for (auto* ae : animatedEntities) {
         if (ae) {
-            if (ae->model) { ae->model->cleanUp(); delete ae->model; }
+            // Only delete the model when this entity owns it.  Remote entities
+            // share the local player's AnimatedModel pointer; deleting it more
+            // than once causes the malloc double-free crash seen on quit.
+            if (ae->ownsModel && ae->model) {
+                ae->model->cleanUp();
+                delete ae->model;
+            }
             delete ae->controller;
             delete ae;
         }

@@ -76,29 +76,17 @@ void NetworkSyncComponent::update(float deltaTime) {
         applySnapshot(buffer_.front());
 
     // -----------------------------------------------------------------------
-    // Starvation / extrapolation case: targetTime is beyond our newest snapshot.
+    // Starvation case: targetTime is beyond our newest snapshot.
+    // Hold at the last known position rather than extrapolating.
+    //
+    // Velocity-based dead reckoning was tried here, but it consistently
+    // produces a "jump ahead + slingshot back" visual artefact whenever the
+    // remote entity changes speed or direction between ticks.  The artefact
+    // is more jarring than the mild "freeze" that a hold produces, so we
+    // use the conservative hold strategy instead.
     // -----------------------------------------------------------------------
     } else if (targetTime >= buffer_.back().timestamp) {
-        if (buffer_.size() >= 2) {
-            const auto& s0 = *(buffer_.end() - 2);
-            const auto& s1 = buffer_.back();
-            const float span = s1.timestamp - s0.timestamp;
-            if (span > 0.0f) {
-                // Velocity-based dead reckoning — cap over at ~1 tick to prevent
-                // runaway drift while the next snapshot is in transit.
-                const float over = std::min(targetTime - s1.timestamp, 0.1f);
-                const glm::vec3 velocity = (s1.position - s0.position) / span;
-                entity_->setPosition(s1.position + velocity * over);
-
-                // Hold at the last known rotation during extrapolation to avoid
-                // SLERP overshoot (t > 1) producing reversed orientations.
-                entity_->setRotation(s1.rotation);
-            } else {
-                applySnapshot(s1);
-            }
-        } else {
-            applySnapshot(buffer_.back());
-        }
+        applySnapshot(buffer_.back());
         pruneBuffer();
 
     // -----------------------------------------------------------------------
