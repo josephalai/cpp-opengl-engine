@@ -68,6 +68,18 @@ void Engine::init() {
     initGui();
     initFramebuffersAndPickers();
     buildSystems();
+
+    // --- ECS smoke test (Phase 2 Step 1) — remove after Step 2 lands ---
+    {
+        struct SmokePos { float x, y, z; };
+        auto testEntity = registry.create();
+        registry.emplace<SmokePos>(testEntity, 1.0f, 2.0f, 3.0f);
+        auto& pos = registry.get<SmokePos>(testEntity);
+        std::cout << "[ECS] Smoke test passed: entity "
+                  << static_cast<uint32_t>(testEntity)
+                  << " position = (" << pos.x << ", " << pos.y << ", " << pos.z << ")\n";
+        registry.destroy(testEntity);
+    }
 }
 
 void Engine::initFonts() {

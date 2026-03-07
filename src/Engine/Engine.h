@@ -23,6 +23,7 @@
 #include "../RenderEngine/InstancedModel.h"
 #include "ISystem.h"
 #include "../Physics/PhysicsSystem.h"
+#include <entt/entt.hpp>
 #include <string>
 
 class ChunkManager;
@@ -41,6 +42,10 @@ public:
 
     /// Clean up all resources and close display
     void shutdown();
+
+    /// Central ECS registry — all entity/component data lives here.
+    /// Public so that Systems can query and mutate components.
+    entt::registry registry;
 
 private:
     /// Load fonts and text objects
