@@ -51,8 +51,6 @@ private:
     static float SPEED_HACK;
     static constexpr float kDefaultRunSpeed  = 20.0f;
     static constexpr float kDefaultTurnSpeed = 160.0f;
-    static constexpr float kRunSpeed   = kDefaultRunSpeed;
-    static constexpr float kTurnSpeed  = kDefaultTurnSpeed;
     static constexpr float kGravity    = -50.0f;
     static constexpr float kJumpPower  = 30.0f;
 

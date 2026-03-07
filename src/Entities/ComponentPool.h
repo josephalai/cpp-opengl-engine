@@ -99,8 +99,7 @@ public:
     void release(T* ptr) {
         if (!ptr) return;
         size_t idx = static_cast<size_t>(ptr - storage_.data());
-        assert(idx < storage_.size() && active_[idx] &&
-               "[ComponentPool] release() called with invalid or double-free pointer");
+        assert(idx < storage_.size() && active_[idx]);
         active_[idx] = false;
         free_.push_back(idx);
     }
