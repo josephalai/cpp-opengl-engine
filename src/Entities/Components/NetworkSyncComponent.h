@@ -11,6 +11,15 @@
 //   for position and glm::slerp (quaternion) for rotation to produce smooth,
 //   stutter-free movement even at a 10 Hz server tick rate.
 //
+// CLOCK SYNCHRONISATION:
+//   On receiving the second snapshot the playback clock is seeded as:
+//     renderTime_ = buffer_.back().timestamp
+//   This places targetTime (= renderTime_ - kInterpolationDelay) exactly
+//   kInterpolationDelay seconds behind the most-recent snapshot, giving a
+//   steady-state forward buffer of kInterpolationDelay.  With
+//   kInterpolationDelay = 2 × tick_interval (0.20 s) the client tolerates up
+//   to ~100 ms of one-way network latency before the starvation branch fires.
+//
 // Edge cases handled:
 //   • Buffer empty        → entity is not moved (safe no-op).
 //   • Only 1 snapshot     → entity is held at that position.
@@ -87,6 +96,11 @@ private:
 
     /// Position from the previous frame — used to compute currentSpeed_.
     glm::vec3 previousPosition_ = glm::vec3(0.0f);
+
+    /// True once previousPosition_ has been seeded from the entity's actual
+    /// spawn position.  Prevents a bogus speed spike on the very first frame
+    /// (when previousPosition_ would otherwise be the default origin).
+    bool previousPositionInitialized_ = false;
 
     /// Most recently computed XZ movement speed (units/sec).
     float currentSpeed_ = 0.0f;

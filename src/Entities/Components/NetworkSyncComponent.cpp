@@ -29,11 +29,26 @@ void NetworkSyncComponent::pushSnapshot(const Network::TransformSnapshot& snapsh
     }
 
     // The first time we accumulate two snapshots we synchronise our playback
-    // clock to the server timeline so renderTime_ - interpolationDelay_ gives
-    // a targetTime that is slightly behind the earliest snapshot, allowing
-    // smooth ramp-up from the very first frame.
+    // clock to the server timeline.
+    //
+    // Setting renderTime_ = back.timestamp places targetTime exactly
+    // interpolationDelay_ seconds BEHIND the most-recent received snapshot:
+    //   targetTime = renderTime_ - interpolationDelay_
+    //              = back.timestamp - interpolationDelay_
+    //
+    // This guarantees a steady-state gap of interpolationDelay_ between
+    // targetTime and the latest received snapshot, so the client always has
+    // ~interpolationDelay_ worth of future snapshots buffered before it needs
+    // them.  With kInterpolationDelay = 0.20 s (2× the 0.10 s tick interval)
+    // the client can tolerate up to ~100 ms of one-way network latency without
+    // entering the starvation/extrapolation branch.
+    //
+    // Using buffer_.front().timestamp + interpolationDelay_ (the previous
+    // formula) only provided a 1-tick forward window, meaning any positive
+    // latency triggered extrapolation and the resulting jump-ahead / snap-back
+    // artefact reported as NPC/remote entities moving too fast.
     if (!started_ && buffer_.size() >= 2) {
-        renderTime_ = buffer_.front().timestamp + interpolationDelay_;
+        renderTime_ = buffer_.back().timestamp;
         started_    = true;
     }
 }
@@ -119,13 +134,21 @@ void NetworkSyncComponent::update(float deltaTime) {
     // Compute XZ movement speed for animation-state decisions (Walk/Run/Idle).
     // This block executes for ALL non-empty-buffer cases (hold, starvation, and
     // normal interpolation) because the if-else chain above has no early returns.
-    // previousPosition_ is therefore always kept up to date.
+    // On the very first update, seed previousPosition_ from the entity's actual
+    // position so the first frame doesn't produce a bogus speed spike caused by
+    // the default-initialised (0,0,0) sentinel.
     {
-        const glm::vec3 cur  = entity_->getPosition();
-        const glm::vec3 d    = cur - previousPosition_;
-        const float     dist = std::sqrt(d.x * d.x + d.z * d.z);
-        currentSpeed_        = (deltaTime > 0.0f) ? dist / deltaTime : 0.0f;
-        previousPosition_    = cur;
+        const glm::vec3 cur = entity_->getPosition();
+        if (!previousPositionInitialized_) {
+            previousPosition_         = cur;
+            previousPositionInitialized_ = true;
+            currentSpeed_             = 0.0f;
+        } else {
+            const glm::vec3 d    = cur - previousPosition_;
+            const float     dist = std::sqrt(d.x * d.x + d.z * d.z);
+            currentSpeed_        = (deltaTime > 0.0f) ? dist / deltaTime : 0.0f;
+        }
+        previousPosition_ = cur;
     }
 }
 
