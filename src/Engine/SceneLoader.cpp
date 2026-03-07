@@ -953,7 +953,7 @@ bool SceneLoader::load(
     // -----------------------------------------------------------------------
     std::cout << "[SceneLoader] Scene loaded: "
               << entities.size()        << " entities, "
-              << scenes.size()          << " assimp scenes, "
+              << assimpDefs.size()          << " assimp scenes, "
               << lights.size()          << " lights, "
               << allTerrains.size()     << " terrain tiles, "
               << guis.size()            << " GUI textures, "

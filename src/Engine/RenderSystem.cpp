@@ -38,7 +38,7 @@ void RenderSystem::update(float /*deltaTime*/) {
     // Collect Assimp model components from the registry.
     std::vector<AssimpModelComponent> allScenes;
     auto assimpView = registry_.view<AssimpModelComponent>();
-    allScenes.reserve(assimpView.size_hint());
+    // allScenes.reserve(assimpView.size_hint());
     for (auto e : assimpView) {
         allScenes.push_back(assimpView.get<AssimpModelComponent>(e));
     }

@@ -80,10 +80,8 @@ void PhysicsSystem::update(float deltaTime) {
     // Sync kinematic bodies FROM entities TO physics world
     for (auto& e : entries_) {
         if (e.bodyType != BodyType::Kinematic) continue;
-        glm::vec3 pos = e.entity ? e.entity->getPosition()
-                                  : (e.aEntity ? e.aEntity->getPosition() : glm::vec3(0));
-        glm::vec3 rot = e.entity ? e.entity->getRotation()
-                                  : (e.aEntity ? e.aEntity->getRotation() : glm::vec3(0));
+        glm::vec3 pos = e.entity ? e.entity->getPosition() : glm::vec3(0);
+        glm::vec3 rot = e.entity ? e.entity->getRotation() : glm::vec3(0);
 
         glm::quat q = glm::quat(glm::radians(rot));
         btTransform t;
@@ -112,9 +110,6 @@ void PhysicsSystem::update(float deltaTime) {
         if (e.entity) {
             e.entity->setPosition(pos);
             e.entity->setRotation(rot);
-        } else if (e.aEntity) {
-            e.aEntity->setPosition(pos);
-            e.aEntity->setRotation(rot);
         }
     }
 
