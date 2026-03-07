@@ -90,8 +90,6 @@ private:
     std::vector<Terrain*> allTerrains;
     std::vector<Light*> lights;
     std::vector<Entity*> entities;
-    std::vector<AssimpEntity*> scenes;
-    std::vector<Interactive*> allBoxes;
     std::vector<GuiTexture*> guis;
     std::vector<GuiRect*> rects;
     std::vector<GUIText*> texts;

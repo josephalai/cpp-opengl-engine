@@ -9,7 +9,6 @@
 
 class Terrain;
 class Entity;
-class AssimpEntity;
 class Loader;
 class TerrainTexturePack;
 class TerrainTexture;
@@ -24,7 +23,6 @@ public:
 
     Terrain*                    terrain  = nullptr;
     std::vector<Entity*>        entities;
-    std::vector<AssimpEntity*>  assimpEntities;
 
     StreamingChunk() = default;
     StreamingChunk(int gx, int gz) : gridX(gx), gridZ(gz) {}
@@ -40,7 +38,6 @@ public:
     void setExternalTerrain(Terrain* t);
 
     void addEntity(Entity* e);
-    void addAssimpEntity(AssimpEntity* e);
 
     /// Release all terrain and entity resources.
     void unload();

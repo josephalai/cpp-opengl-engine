@@ -4,24 +4,23 @@
 #include "../RenderEngine/MasterRenderer.h"
 #include "../RenderEngine/FrameBuffers.h"
 #include "../RenderEngine/InstancedModel.h"
+#include "../ECS/Components/AssimpModelComponent.h"
 
 RenderSystem::RenderSystem(MasterRenderer*            renderer,
                             FrameBuffers*              reflectFbo,
                             std::vector<Entity*>&      entities,
-                            std::vector<AssimpEntity*>& scenes,
                             std::vector<Terrain*>&     terrains,
                             std::vector<Light*>&       lights,
-                            std::vector<Interactive*>& allBoxes,
+                            entt::registry&            registry,
                             Camera*                    camera,
                             const glm::mat4&           projectionMatrix,
                             InstancedModel*            instancedModel)
     : renderer_(renderer)
     , reflectFbo_(reflectFbo)
     , entities_(entities)
-    , scenes_(scenes)
     , terrains_(terrains)
     , lights_(lights)
-    , allBoxes_(allBoxes)
+    , registry_(registry)
     , camera_(camera)
     , projectionMatrix_(projectionMatrix)
     , instancedModel_(instancedModel)
@@ -36,14 +35,22 @@ void RenderSystem::update(float /*deltaTime*/) {
         culler_.update(camera_, projectionMatrix_);
     }
 
+    // Collect Assimp model components from the registry.
+    std::vector<AssimpModelComponent> allScenes;
+    auto assimpView = registry_.view<AssimpModelComponent>();
+    allScenes.reserve(assimpView.size_hint());
+    for (auto e : assimpView) {
+        allScenes.push_back(assimpView.get<AssimpModelComponent>(e));
+    }
+
     // Cull entities, assimp scenes, and terrain tiles to only visible subsets.
     auto visibleEntities  = camera_ ? culler_.cull(entities_)         : entities_;
-    auto visibleScenes    = camera_ ? culler_.cull(scenes_)           : scenes_;
+    auto visibleScenes    = camera_ ? culler_.cull(allScenes)         : allScenes;
     auto visibleTerrains  = camera_ ? culler_.cullTerrains(terrains_) : terrains_;
 
-    // Render bounding boxes into the reflection FBO
+    // Render bounding boxes for entities that have them into the reflection FBO
     reflectFbo_->bindReflectionFrameBuffer();
-    renderer_->renderBoundingBoxes(allBoxes_);
+    renderer_->renderBoundingBoxes(entities_);
     reflectFbo_->unbindCurrentFrameBuffer();
 
     // Main scene render (culled lists)

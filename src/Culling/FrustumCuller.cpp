@@ -3,7 +3,7 @@
 #include "FrustumCuller.h"
 #include "../Entities/Camera.h"
 #include "../Entities/Entity.h"
-#include "../Entities/AssimpEntity.h"
+#include "../ECS/Components/AssimpModelComponent.h"
 #include "../Terrain/Terrain.h"
 #include "../BoundingBox/BoundingBox.h"
 #include <glm/glm.hpp>
@@ -56,33 +56,33 @@ std::vector<Entity*> FrustumCuller::cull(const std::vector<Entity*>& entities) c
     return visible;
 }
 
-std::vector<AssimpEntity*> FrustumCuller::cull(const std::vector<AssimpEntity*>& entities) const {
-    std::vector<AssimpEntity*> visible;
-    visible.reserve(entities.size());
+std::vector<AssimpModelComponent> FrustumCuller::cull(const std::vector<AssimpModelComponent>& comps) const {
+    std::vector<AssimpModelComponent> visible;
+    visible.reserve(comps.size());
 
-    for (AssimpEntity* e : entities) {
-        if (!e) continue;
-
-        BoundingBox* box = e->getBoundingBox();
-        if (!box) {
-            visible.push_back(e);
+    for (const AssimpModelComponent& comp : comps) {
+        if (!comp.mesh) {
+            visible.push_back(comp);
             continue;
         }
 
-        BoundingAABB aabb = box->getAABB();
+        if (!comp.box) {
+            visible.push_back(comp);
+            continue;
+        }
+
+        BoundingAABB aabb = comp.box->getAABB();
         if (!aabb.valid) {
-            visible.push_back(e);
+            visible.push_back(comp);
             continue;
         }
 
         // Transform local AABB by position and scale (rotation ignored per spec — see Entity cull above).
-        float scale = e->getScale();
-        glm::vec3 pos = e->getPosition();
-        glm::vec3 worldMin = pos + aabb.min * scale;
-        glm::vec3 worldMax = pos + aabb.max * scale;
+        glm::vec3 worldMin = comp.position + aabb.min * comp.scale;
+        glm::vec3 worldMax = comp.position + aabb.max * comp.scale;
 
         if (frustum_.isAABBVisible(worldMin, worldMax)) {
-            visible.push_back(e);
+            visible.push_back(comp);
         }
     }
     return visible;

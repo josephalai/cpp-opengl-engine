@@ -1,25 +1,21 @@
-//
-// Created by Joseph Alai on 7/28/21.
-//
 #include "AssimpEntityRenderer.h"
 AssimpEntityRenderer::AssimpEntityRenderer(AssimpStaticShader *shader) {
     this->shader = shader;
 }
 
 /**
- * @brief accepts a map[model]std::vector<Entity *>, and traverses through
- *        it, and draws them -- so as not to copy objects.
+ * @brief accepts a map[model]std::vector<AssimpModelComponent>, and traverses
+ *        through it, and draws them -- so as not to copy objects.
  * @param scenes
  */
-void AssimpEntityRenderer::render(std::map<AssimpMesh *, std::vector<AssimpEntity *>> *scenes) {
-    std::map<AssimpMesh *, std::vector<AssimpEntity *>>::iterator it = scenes->begin();
+void AssimpEntityRenderer::render(std::map<AssimpMesh *, std::vector<AssimpModelComponent>> *scenes) {
+    auto it = scenes->begin();
     AssimpMesh *model;
     while (it != scenes->end()) {
         model = it->first;
-        std::vector<AssimpEntity *> batch = scenes->find(model)->second;
-        batch = scenes->find(model)->second;
-        for (AssimpEntity *scene : batch) {
-            prepareInstance(scene);
+        std::vector<AssimpModelComponent>& batch = it->second;
+        for (const AssimpModelComponent& comp : batch) {
+            prepareInstance(comp);
             // draw elements
             model->render(shader);
         }
@@ -30,12 +26,12 @@ void AssimpEntityRenderer::render(std::map<AssimpMesh *, std::vector<AssimpEntit
 
 /**
  * @brief sets the initial transformation (view) matrix.
- * @param scene
+ * @param comp
  */
-void AssimpEntityRenderer::prepareInstance(AssimpEntity *scene) {
+void AssimpEntityRenderer::prepareInstance(const AssimpModelComponent& comp) {
     // creates the matrices to be passed into the shader
-    glm::mat4 transformationMatrix = Maths::createTransformationMatrix(scene->getPosition(), scene->getRotation(),
-                                                                       scene->getScale());
+    glm::mat4 transformationMatrix = Maths::createTransformationMatrix(comp.position, comp.rotation,
+                                                                       comp.scale);
     shader->loadTransformationMatrix(transformationMatrix);
-    shader->loadMaterial(scene->getModel()->getMaterial());
+    shader->loadMaterial(comp.mesh->getMaterial());
 }

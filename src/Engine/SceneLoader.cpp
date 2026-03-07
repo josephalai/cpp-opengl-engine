@@ -20,6 +20,7 @@
 //
 
 #include "SceneLoader.h"
+#include "../ECS/Components/AssimpModelComponent.h"
 #include "../Util/FileSystem.h"
 #include "../RenderEngine/DisplayManager.h"
 #include "../Util/LightUtil.h"
@@ -128,7 +129,6 @@ bool SceneLoader::load(
     Loader*                     loader,
     entt::registry&             registry,
     std::vector<Entity*>&       entities,
-    std::vector<AssimpEntity*>& scenes,
     std::vector<Light*>&        lights,
     std::vector<Terrain*>&      allTerrains,
     std::vector<GuiTexture*>&   guis,
@@ -717,9 +717,11 @@ bool SceneLoader::load(
             ? randomPosition(primaryTerrain, ad.yOffset)
             : glm::vec3(ad.x, ad.y, ad.z);
         float sc = randomScale(ad.scaleMin, ad.scaleMax);
-        scenes.push_back(new AssimpEntity(mesh,
-            new BoundingBox(rawBb, BoundingBoxIndex::genUniqueId()),
-            pos, randomRotation(), sc));
+        auto assimpEnt = registry.create();
+        registry.emplace<AssimpModelComponent>(assimpEnt, AssimpModelComponent{
+            mesh, pos, randomRotation(), sc,
+            new BoundingBox(rawBb, BoundingBoxIndex::genUniqueId())
+        });
     }
 
     // -----------------------------------------------------------------------

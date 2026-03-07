@@ -17,7 +17,6 @@ class Loader;
 class TerrainTexturePack;
 class TerrainTexture;
 class Entity;
-class AssimpEntity;
 
 class ChunkManager {
 public:
@@ -40,9 +39,6 @@ public:
     /// Remove an entity from whichever chunk currently holds it.
     void removeEntity(Entity* e);
 
-    /// Register an AssimpEntity in the appropriate chunk.
-    void registerAssimpEntity(AssimpEntity* e, const glm::vec3& worldPos);
-
     /// Register a pre-existing (SceneLoader-owned) terrain tile so the
     /// ChunkManager knows its grid cell and won't create a duplicate.
     /// The terrain is NOT deleted when the chunk is unloaded.
@@ -58,8 +54,6 @@ public:
     std::vector<Terrain*>      getActiveTerrains()      const;
     /// Collect all Entity pointers from LOADED chunks.
     std::vector<Entity*>       getActiveEntities()       const;
-    /// Collect all AssimpEntity pointers from LOADED chunks.
-    std::vector<AssimpEntity*> getActiveAssimpEntities() const;
 
     /// Unload all chunks and release resources.
     void shutdown();

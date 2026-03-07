@@ -6,13 +6,11 @@
 StreamingSystem::StreamingSystem(ChunkManager*               chunkManager,
                                   Player*                     player,
                                   std::vector<Terrain*>&      allTerrains,
-                                  std::vector<Entity*>&       entities,
-                                  std::vector<AssimpEntity*>& scenes)
+                                  std::vector<Entity*>&       entities)
     : chunkManager_(chunkManager)
     , player_(player)
     , allTerrains_(allTerrains)
     , entities_(entities)
-    , scenes_(scenes)
 {}
 
 void StreamingSystem::update(float /*deltaTime*/) {
@@ -28,7 +26,6 @@ void StreamingSystem::update(float /*deltaTime*/) {
     // Refresh the engine's scene lists with the currently loaded chunks.
     allTerrains_ = chunkManager_->getActiveTerrains();
     entities_    = chunkManager_->getActiveEntities();
-    scenes_      = chunkManager_->getActiveAssimpEntities();
 }
 
 void StreamingSystem::shutdown() {
