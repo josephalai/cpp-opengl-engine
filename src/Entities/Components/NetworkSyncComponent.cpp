@@ -66,6 +66,14 @@ void NetworkSyncComponent::update(float deltaTime) {
     // Advance the playback clock at real-time speed.
     renderTime_ += deltaTime;
 
+    // --- CLOCK DRIFT CORRECTION ---
+    // Prevent renderTime_ from running too far ahead of the server timeline.
+    // If we've drifted, gently pull back to keep targetTime within the buffer.
+    const float maxRenderTime = buffer_.back().timestamp + interpolationDelay_ + 0.01f;
+    if (renderTime_ > maxRenderTime) {
+        renderTime_ = maxRenderTime;
+    }
+
     // The time we actually want to display (lagging interpolationDelay_ behind).
     const float targetTime = renderTime_ - interpolationDelay_;
 
