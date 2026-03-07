@@ -10,14 +10,13 @@
 #include "../Culling/FrustumCuller.h"
 #include <vector>
 #include <glm/glm.hpp>
+#include <entt/entt.hpp>
 
 class MasterRenderer;
 class FrameBuffers;
 class Entity;
-class AssimpEntity;
 class Terrain;
 class Light;
-class Interactive;
 class Camera;
 class InstancedModel;
 
@@ -26,10 +25,9 @@ public:
     RenderSystem(MasterRenderer*           renderer,
                  FrameBuffers*             reflectFbo,
                  std::vector<Entity*>&     entities,
-                 std::vector<AssimpEntity*>& scenes,
                  std::vector<Terrain*>&    terrains,
                  std::vector<Light*>&      lights,
-                 std::vector<Interactive*>& allBoxes,
+                 entt::registry&           registry,
                  Camera*                   camera,
                  const glm::mat4&          projectionMatrix,
                  InstancedModel*           instancedModel = nullptr);
@@ -42,10 +40,9 @@ private:
     MasterRenderer*            renderer_;
     FrameBuffers*              reflectFbo_;
     std::vector<Entity*>&      entities_;
-    std::vector<AssimpEntity*>& scenes_;
     std::vector<Terrain*>&     terrains_;
     std::vector<Light*>&       lights_;
-    std::vector<Interactive*>& allBoxes_;
+    entt::registry&            registry_;
 
     Camera*         camera_;
     glm::mat4       projectionMatrix_;

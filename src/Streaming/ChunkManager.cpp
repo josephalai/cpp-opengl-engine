@@ -3,7 +3,6 @@
 #include "ChunkManager.h"
 #include "../Terrain/Terrain.h"
 #include "../Entities/Entity.h"
-#include "../Entities/AssimpEntity.h"
 #include <cmath>
 #include <algorithm>
 
@@ -135,22 +134,6 @@ void ChunkManager::refreshEntityPositions() {
     }
 }
 
-void ChunkManager::registerAssimpEntity(AssimpEntity* e, const glm::vec3& worldPos) {
-    int cx = static_cast<int>(std::floor(worldPos.x / kTerrainSize));
-    int cz = static_cast<int>(std::floor(worldPos.z / kTerrainSize));
-    auto key = std::make_pair(cx, cz);
-
-    auto it = chunks_.find(key);
-    if (it != chunks_.end()) {
-        it->second->addAssimpEntity(e);
-    } else {
-        auto* chunk = new StreamingChunk(cx, cz);
-        chunk->state = StreamingChunk::State::LOADED;
-        chunk->addAssimpEntity(e);
-        chunks_[key] = chunk;
-    }
-}
-
 std::vector<Terrain*> ChunkManager::getActiveTerrains() const {
     std::vector<Terrain*> result;
     for (const auto& [key, chunk] : chunks_) {
@@ -166,18 +149,6 @@ std::vector<Entity*> ChunkManager::getActiveEntities() const {
     for (const auto& [key, chunk] : chunks_) {
         if (chunk->state == StreamingChunk::State::LOADED) {
             result.insert(result.end(), chunk->entities.begin(), chunk->entities.end());
-        }
-    }
-    return result;
-}
-
-std::vector<AssimpEntity*> ChunkManager::getActiveAssimpEntities() const {
-    std::vector<AssimpEntity*> result;
-    for (const auto& [key, chunk] : chunks_) {
-        if (chunk->state == StreamingChunk::State::LOADED) {
-            result.insert(result.end(),
-                          chunk->assimpEntities.begin(),
-                          chunk->assimpEntities.end());
         }
     }
     return result;

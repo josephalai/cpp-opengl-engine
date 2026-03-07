@@ -50,9 +50,9 @@ private:
     AssimpEntityRenderer *sceneRenderer;
     BoundingBoxRenderer *bRenderer;
 
-    std::map<RawBoundingBox *, std::vector<Interactive *>> *boxes;
+    std::map<RawBoundingBox *, std::vector<Entity *>> *boxes;
     std::map<TexturedModel *, std::vector<Entity *>> *entities;
-    std::map<AssimpMesh *, std::vector<AssimpEntity *>> *scenes;
+    std::map<AssimpMesh *, std::vector<AssimpModelComponent>> *scenes;
     std::vector<Terrain *> *terrains;
 
     glm::mat4 projectionMatrix;
@@ -97,14 +97,14 @@ public:
 
     void processEntity(Entity *entity);
 
-    void processAssimpEntity(AssimpEntity *scene);
+    void processAssimpEntity(const AssimpModelComponent& comp);
 
-    void processBoundingBox(Interactive *entityWithBox);
+    void processBoundingBox(Entity *entity);
 
-    void renderScene(std::vector<Entity *> entities, std::vector<AssimpEntity *> aEntities,
+    void renderScene(std::vector<Entity *> entities, std::vector<AssimpModelComponent> aComps,
                      std::vector<Terrain *> terrains, std::vector<Light *> lights);
 
-    void renderBoundingBoxes(std::vector<Interactive *> boxes);
+    void renderBoundingBoxes(std::vector<Entity *> entities);
 
     void prepareBoundingBoxRender();
 
@@ -131,7 +131,7 @@ public:
     void renderWater(Camera* cam, Light* sun);
 
     // --- Scene Graph ---
-    void renderSceneGraph(SceneGraph& graph, std::vector<AssimpEntity*> aEntities,
+    void renderSceneGraph(SceneGraph& graph, std::vector<AssimpModelComponent> aComps,
                           std::vector<Terrain*> terrains, std::vector<Light*> lights);
 
     // --- PBR ---

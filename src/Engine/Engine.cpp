@@ -133,7 +133,7 @@ void Engine::loadScene() {
             probe.close();
             sceneLoaded = SceneLoaderJson::load(jsonPath, loader,
                               registry,
-                              entities, scenes, lights,
+                              entities, lights,
                               allTerrains, guis, texts, waterTiles,
                               primaryTerrain, player, playerCamera,
                               animatedEntities,
@@ -146,7 +146,7 @@ void Engine::loadScene() {
     if (!sceneLoaded) {
         sceneLoaded = SceneLoader::load(cfgPath, loader,
                           registry,
-                          entities, scenes, lights,
+                          entities, lights,
                           allTerrains, guis, texts, waterTiles,
                           primaryTerrain, player, playerCamera,
                           animatedEntities,
@@ -403,15 +403,6 @@ void Engine::initFramebuffersAndPickers() {
 
     picker = new TerrainPicker(playerCamera, renderer->getProjectionMatrix(), primaryTerrain);
 
-    for (auto e : entities) {
-        if (e->getBoundingBox() != nullptr) {
-            allBoxes.push_back(e);
-        }
-    }
-    allBoxes.reserve(entities.size() + scenes.size());
-    allBoxes.insert(allBoxes.end(), entities.begin(), entities.end());
-    allBoxes.insert(allBoxes.end(), scenes.begin(), scenes.end());
-
     // Wire keyboard-driven animation transitions for every animated character.
     // SceneLoader registered no-op lambdas; replace with real input-driven ones.
     // setupDefaultTransitions is safe to call when not all clip states exist —
@@ -524,7 +515,6 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
     registry.emplace<NetworkSyncData>(ent->getHandle());
 
     entities.push_back(ent);
-    allBoxes.push_back(ent);   // Keep allBoxes in sync for RenderSystem/UISystem
 
     // Register with ChunkManager so the StreamingSystem includes this entity
     // in the active render list.
@@ -605,13 +595,6 @@ void Engine::onNetworkDespawn(uint32_t /*networkId*/, Entity* e) {
         chunkManager->removeEntity(e);
     }
 
-    // Remove from allBoxes to prevent dangling pointer
-    auto boxIt = std::find(allBoxes.begin(), allBoxes.end(),
-                           static_cast<Interactive*>(e));
-    if (boxIt != allBoxes.end()) {
-        allBoxes.erase(boxIt);
-    }
-
     // Free the entity to prevent memory leaks.
     delete e;
 }
@@ -672,11 +655,8 @@ void Engine::buildSystems() {
         for (auto* e : entities) {
             if (e) chunkManager->registerEntity(e, e->getPosition());
         }
-        for (auto* s : scenes) {
-            if (s) chunkManager->registerAssimpEntity(s, s->getPosition());
-        }
         systems.push_back(std::make_unique<StreamingSystem>(
-            chunkManager, player, allTerrains, entities, scenes));
+            chunkManager, player, allTerrains, entities));
     }
 
     // NetworkSystem connects to the headless server via ENet and pushes
@@ -709,15 +689,15 @@ void Engine::buildSystems() {
     systems.push_back(std::make_unique<NetworkInterpolationSystem>(registry));
 
     systems.push_back(std::make_unique<RenderSystem>(
-        renderer, reflectFbo, entities, scenes, allTerrains, lights, allBoxes,
-        playerCamera, renderer->getProjectionMatrix(), instancedTreeModel));
+        renderer, reflectFbo, entities, allTerrains, lights,
+        registry, playerCamera, renderer->getProjectionMatrix(), instancedTreeModel));
 
     systems.push_back(std::make_unique<AnimationSystem>(
         animRenderer, animatedEntities, player, lights,
         playerCamera, renderer->getProjectionMatrix()));
 
     systems.push_back(std::make_unique<UISystem>(
-        renderer, allBoxes, clickColorText, masterContainer,
+        renderer, entities, clickColorText, masterContainer,
         guiRenderer, guis));
 }
 

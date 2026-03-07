@@ -10,7 +10,7 @@
 #include <glm/glm.hpp>
 
 class MasterRenderer;
-class Interactive;
+class Entity;
 class GUIText;
 class GuiComponent;
 class GuiRenderer;
@@ -19,7 +19,7 @@ class GuiTexture;
 class UISystem : public ISystem {
 public:
     UISystem(MasterRenderer*            renderer,
-             std::vector<Interactive*>& allBoxes,
+             std::vector<Entity*>&      entities,
              GUIText*                   clickColorText,
              GuiComponent*              masterContainer,
              GuiRenderer*               guiRenderer,
@@ -31,7 +31,7 @@ public:
 
 private:
     MasterRenderer*            renderer_;
-    std::vector<Interactive*>& allBoxes_;
+    std::vector<Entity*>&      entities_;
     GUIText*                   clickColorText_;
     GuiComponent*              masterContainer_;
     GuiRenderer*               guiRenderer_;

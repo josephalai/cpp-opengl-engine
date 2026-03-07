@@ -8,7 +8,8 @@
 #include "glm/glm.hpp"
 #include "../Models/TexturedModel.h"
 #include "../BoundingBox/BoundingBox.h"
-#include "../Interfaces/Interactive.h"
+#include "../Interfaces/Clickable.h"
+#include "../Interfaces/Positionable.h"
 #include "../BoundingBox/BoundingBoxIndex.h"
 #include <entt/entt.hpp>
 #include "../ECS/Components/TransformComponent.h"
@@ -16,7 +17,7 @@
 #include "../ECS/Components/ColliderComponent.h"
 #include "../ECS/Components/MaterialDataComponent.h"
 
-class Entity : public Interactive {
+class Entity : public Clickable, public Positionable {
 public:
 
     /**

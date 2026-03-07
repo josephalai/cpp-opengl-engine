@@ -33,7 +33,7 @@ ModelData OBJLoader::loadAssImp(
     const aiScene *scene = importer.ReadFile(FileSystem::Path(path),
                                              0/*aiProcess_JoinIdenticalVertices | aiProcess_SortByPType*/);
     if (!scene) {
-        fprintf(stderr, importer.GetErrorString());
+        fprintf(stderr, "%s", importer.GetErrorString());
         getchar();
     }
     const aiMesh *mesh = scene->mMeshes[0]; // In this simple example code we always use the 1rst mesh (in OBJ files there is often only one anyway)

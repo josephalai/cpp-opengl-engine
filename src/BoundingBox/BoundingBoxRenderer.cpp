@@ -21,7 +21,7 @@ BoundingBoxRenderer::BoundingBoxRenderer(BoundingBoxShader *shader, glm::mat4 pr
  *
  * @param entities
  */
-void BoundingBoxRenderer::render(std::map<RawBoundingBox *, std::vector<Interactive *>> *entities) {
+void BoundingBoxRenderer::render(std::map<RawBoundingBox *, std::vector<Entity *>> *entities) {
     auto itEntityMap = entities->begin();
     RawBoundingBox *pRawBox;
     while (itEntityMap != entities->end()) {
@@ -30,9 +30,9 @@ void BoundingBoxRenderer::render(std::map<RawBoundingBox *, std::vector<Interact
         pRawBox = itEntityMap->first;
         prepareRawBoundingBox(pRawBox);
 
-//        std::vector<Interactive *> batch = entities->find(pRawBox)->second;
-        std::vector<Interactive *> batch = itEntityMap->second;
-        for (Interactive *entity : batch) {
+//        std::vector<Entity *> batch = entities->find(pRawBox)->second;
+        std::vector<Entity *> batch = itEntityMap->second;
+        for (Entity *entity : batch) {
             prepareInstance(entity);
 
             // draw elements
@@ -76,7 +76,7 @@ void BoundingBoxRenderer::unbindBox(RawBoundingBox *box) {
     glBindVertexArray(0);
 }
 
-void BoundingBoxRenderer::prepareInstance(Interactive *entity) {
+void BoundingBoxRenderer::prepareInstance(Entity *entity) {
     shader->loadBoxColor(entity->getBoundingBox()->getBoxColor());
     glm::mat4 transformationMatrix = Maths::createTransformationMatrix(entity->getPosition(), entity->getRotation(),
                                                                        entity->getScale());
