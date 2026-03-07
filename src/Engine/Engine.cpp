@@ -37,9 +37,13 @@
 #include "../Atmosphere/FogSettings.h"
 #include "../Shadows/ShadowMap.h"
 #include "NetworkSystem.h"
+#include "PlayerMovementSystem.h"
+#include "NetworkInterpolationSystem.h"
 #include "../Network/NetworkPackets.h"
 #include "../Entities/Components/NetworkSyncComponent.h"
 #include "../ECS/Components/TransformComponent.h"
+#include "../ECS/Components/InputStateComponent.h"
+#include "../ECS/Components/NetworkSyncData.h"
 #include "../Toolbox/Maths.h"
 #include <enet/enet.h>
 #include <thread>
@@ -70,13 +74,19 @@ void Engine::init() {
     initFramebuffersAndPickers();
     buildSystems();
 
-    // --- ECS Phase 2 Step 2 verification ---
+    // --- ECS Phase 2 Step 3 verification ---
     {
-        auto view = registry.view<TransformComponent>();
-        int count = 0;
-        for (auto e : view) { (void)e; ++count; }
-        std::cout << "[ECS] Phase 2 Step 2 complete: " << count
-                  << " entities with TransformComponent in registry.\n";
+        auto viewT = registry.view<TransformComponent>();
+        auto viewI = registry.view<InputStateComponent>();
+        auto viewN = registry.view<NetworkSyncData>();
+        int countT = 0, countI = 0, countN = 0;
+        for (auto e : viewT) { (void)e; ++countT; }
+        for (auto e : viewI) { (void)e; ++countI; }
+        for (auto e : viewN) { (void)e; ++countN; }
+        std::cout << "[ECS] Phase 2 Step 3 complete: "
+                  << countT << " TransformComponent, "
+                  << countI << " InputStateComponent, "
+                  << countN << " NetworkSyncData in registry.\n";
     }
 }
 
@@ -256,6 +266,13 @@ void Engine::loadScene() {
     if (player) {
         physicsSystem->setCharacterController(player, 1.0f, 3.0f);
         player->setPhysicsSystem(physicsSystem);
+    }
+
+    // Emplace the new ECS InputStateComponent so PlayerMovementSystem can drive it.
+    if (player) {
+        auto& isc     = registry.emplace_or_replace<InputStateComponent>(player->getHandle());
+        isc.terrain       = primaryTerrain;
+        isc.physicsSystem = physicsSystem;
     }
 }
 
@@ -508,6 +525,9 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
     // smoothly interpolate server transform snapshots.
     ent->addComponent<NetworkSyncComponent>();
 
+    // Also emplace the new ECS NetworkSyncData so NetworkInterpolationSystem can drive it.
+    registry.emplace<NetworkSyncData>(ent->getHandle());
+
     entities.push_back(ent);
     allBoxes.push_back(ent);   // Keep allBoxes in sync for RenderSystem/UISystem
 
@@ -622,12 +642,24 @@ void Engine::buildSystems() {
         player->subscribeToEvents();
     }
 
+    // Also subscribe the ECS InputStateComponent to the EventBus.
+    if (player) {
+        auto* isc = registry.try_get<InputStateComponent>(player->getHandle());
+        if (isc) {
+            isc->useEventBus = true;
+        }
+    }
+
     if (physicsSystem) {
         systems.push_back(std::unique_ptr<ISystem>(physicsSystem));
     }
 
     systems.push_back(std::make_unique<InputSystem>(
         playerCamera, primaryTerrain, picker, sampleModifiedGui, pNameText));
+
+    // PlayerMovementSystem — ECS replacement for InputComponent::update().
+    // Runs after InputSystem (camera) and PhysicsSystem, reads InputStateComponent.
+    systems.push_back(std::make_unique<PlayerMovementSystem>(registry));
 
     // Build the chunk manager from the first loaded terrain's texture config.
     // Initial scene entities are registered so they appear inside their chunk.
@@ -675,6 +707,10 @@ void Engine::buildSystems() {
         networkSystem_ = netSys.get();
         systems.push_back(std::move(netSys));
     }
+
+    // NetworkInterpolationSystem — ECS replacement for NetworkSyncComponent::update().
+    // Runs after NetworkSystem has pushed snapshots, before RenderSystem draws.
+    systems.push_back(std::make_unique<NetworkInterpolationSystem>(registry));
 
     systems.push_back(std::make_unique<RenderSystem>(
         renderer, reflectFbo, entities, scenes, allTerrains, lights, allBoxes,

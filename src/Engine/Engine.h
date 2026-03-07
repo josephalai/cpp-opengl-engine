@@ -28,6 +28,8 @@
 
 class ChunkManager;
 class NetworkSystem;
+class PlayerMovementSystem;
+class NetworkInterpolationSystem;
 
 class Engine {
 public:
