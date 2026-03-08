@@ -81,8 +81,12 @@ void NetworkSystem::update(float deltaTime) {
         input.cameraYaw      = localPlayer_->getRotation().y;
         input.moveForward    = InputMaster::isKeyDown(W);
         input.moveBackward   = InputMaster::isKeyDown(S);
-        input.moveLeft       = InputMaster::isKeyDown(A);
-        input.moveRight      = InputMaster::isKeyDown(D);
+        // [Phase 3.3] A/D are TURN keys on the client (they increment rotation.y
+        // in PlayerMovementSystem). Their effect is already captured in cameraYaw.
+        // Sending them as strafe flags caused the server to add a perpendicular
+        // displacement that the client never applied → per-frame desync.
+        input.moveLeft       = false;
+        input.moveRight      = false;
         input.jump           = InputMaster::isKeyDown(Space);
 
         auto buf = Network::serialise(Network::PacketType::PlayerInput,
@@ -142,6 +146,14 @@ void NetworkSystem::update(float deltaTime) {
 
                     // If this is us, the local Player is already linked.
                     if (sp.networkId == localPlayerId_) {
+                        // Snap the local player to the server's authoritative spawn
+                        // position.  The server already terrain-clamps the Y, so this
+                        // ensures both sides start at exactly the same position and
+                        // prevents a cascade of reconciliation snaps while the client
+                        // is still "settling" from its scene-file spawn height.
+                        if (localPlayer_) {
+                            localPlayer_->setPosition(sp.position);
+                        }
                         // Already registered via WelcomePacket handling.
                         if (networkEntities_.find(localPlayerId_) ==
                             networkEntities_.end() && localPlayer_) {
