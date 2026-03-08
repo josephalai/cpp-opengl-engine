@@ -105,6 +105,15 @@ public:
     /// (Client-only in practice; server uses HeadlessTerrain for height clamping.)
     void addTerrainCollider(Terrain* terrain);
 
+    /// Add a static heightfield collider using raw height data.
+    /// Available on both server and client — no OpenGL types required.
+    /// @param heights     2-D height grid (heights[x][z], square: NxN)
+    /// @param terrainSize World-space width/depth of the tile (e.g. 800.0f)
+    /// @param originX     World X of the tile's minimum corner
+    /// @param originZ     World Z of the tile's minimum corner
+    void addHeadlessTerrainCollider(const std::vector<std::vector<float>>& heights,
+                                    float terrainSize, float originX, float originZ);
+
     // -------------------------------------------------------------------------
     // ECS-native character controller API — server + client (no GL/GLFW needed)
     // -------------------------------------------------------------------------

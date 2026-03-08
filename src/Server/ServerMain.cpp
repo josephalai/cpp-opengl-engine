@@ -128,6 +128,40 @@ struct HeadlessTerrain {
 };
 
 // ---------------------------------------------------------------------------
+// Multi-tile terrain manager — holds all loaded HeadlessTerrain tiles.
+// ---------------------------------------------------------------------------
+
+struct HeadlessTerrainManager {
+    std::vector<HeadlessTerrain> tiles;
+
+    void loadTile(const std::string& heightmapPath, int gx, int gz) {
+        tiles.emplace_back();
+        tiles.back().load(heightmapPath, gx, gz);
+        if (!tiles.back().valid) {
+            std::cerr << "[Server] WARNING: Skipping terrain tile (" << gx << ", " << gz
+                      << ") — heightmap could not be loaded from: " << heightmapPath << "\n";
+            tiles.pop_back();
+        }
+    }
+
+    bool isAnyValid() const {
+        return !tiles.empty();
+    }
+
+    float getHeight(float worldX, float worldZ) const {
+        for (const auto& tile : tiles) {
+            // Check if the world position falls within this tile's footprint.
+            if (worldX >= tile.originX && worldX < tile.originX + tile.size &&
+                worldZ >= tile.originZ && worldZ < tile.originZ + tile.size) {
+                return tile.getHeight(worldX, worldZ);
+            }
+        }
+        // Fall back to the first tile's nearest-edge value, or 0 if no tiles loaded.
+        return tiles.empty() ? 0.0f : tiles[0].getHeight(worldX, worldZ);
+    }
+};
+
+// ---------------------------------------------------------------------------
 // Wire-format send helpers
 // ---------------------------------------------------------------------------
 
@@ -167,7 +201,7 @@ static void broadcast(ENetHost* host, Network::PacketType type,
 
 static void loadHeadlessScene(entt::registry& registry,
                                PhysicsSystem& physics,
-                               const HeadlessTerrain& terrain,
+                               const HeadlessTerrainManager& terrain,
                                const std::string& jsonPath) {
     std::ifstream file(jsonPath);
     if (!file.is_open()) {
@@ -235,7 +269,7 @@ static void loadHeadlessScene(entt::registry& registry,
                 if (!rest.empty()) {
                     try { offset = std::stof(rest); } catch (...) {}
                 }
-                return terrain.valid ? terrain.getHeight(x, z) + offset : offset;
+                return terrain.isAnyValid() ? terrain.getHeight(x, z) + offset : offset;
             }
             try { return std::stof(s); } catch (...) {}
         }
@@ -335,7 +369,7 @@ static void loadHeadlessScene(entt::registry& registry,
                 if (hasPhys) {
                     float x  = std::floor(rx * 1500.f - 800.f);
                     float z  = std::floor(rz * -800.f);
-                    float y  = terrain.valid ? terrain.getHeight(x, z) : 0.0f;
+                    float y  = terrain.isAnyValid() ? terrain.getHeight(x, z) : 0.0f;
                     float ry = (rr * 100.f - 50.f) * 180.0f;
                     // Mirror gRandomScale(): ceil-multiplier then clamp.
                     float multiplier = (scaleMax > 1.0f) ? std::ceil(scaleMax) : 1.0f;
@@ -408,11 +442,42 @@ int main() {
               << " (tick rate: " << static_cast<int>(1.0f / kTickInterval)
               << " Hz)\n";
 
-    // --- Headless Terrain ---
-    HeadlessTerrain terrain;
+    // --- Headless Terrain — load all tiles from scene.json ---
+    HeadlessTerrainManager terrainMgr;
     {
-        std::string hmPath = FileSystem::Texture("heightMap");
-        terrain.load(hmPath, 0, -1);
+        std::string scenePath = FileSystem::Scene("scene.json");
+        std::string hmPath    = FileSystem::Texture("heightMap"); // default fallback
+
+        std::ifstream sceneFile(scenePath);
+        if (sceneFile.is_open()) {
+            try {
+                nlohmann::json sceneRoot;
+                sceneFile >> sceneRoot;
+
+                // Read heightmap filename from scene.json (default: "heightMap").
+                if (sceneRoot.contains("terrain") && sceneRoot["terrain"].contains("heightmap"))
+                    hmPath = FileSystem::Texture(sceneRoot["terrain"]["heightmap"].get<std::string>());
+
+                // Load every tile listed in terrain_tiles[].
+                if (sceneRoot.contains("terrain_tiles") && sceneRoot["terrain_tiles"].is_array()) {
+                    for (auto& tile : sceneRoot["terrain_tiles"]) {
+                        int gx = tile.value("gridX", 0);
+                        int gz = tile.value("gridZ", -1);
+                        terrainMgr.loadTile(hmPath, gx, gz);
+                    }
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[Server] Failed to parse scene.json for terrain tiles: "
+                          << e.what() << "\n";
+            }
+        } else {
+            std::cerr << "[Server] scene.json not found; falling back to single tile (0,-1)\n";
+        }
+
+        // Fallback: if no tiles were loaded from scene.json, load the primary tile.
+        if (!terrainMgr.isAnyValid()) {
+            terrainMgr.loadTile(hmPath, 0, -1);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -428,7 +493,12 @@ int main() {
     PhysicsSystem physicsSystem;
     physicsSystem.setRegistry(registry);
     physicsSystem.init();
-    physicsSystem.addGroundPlane(0.0f);
+    // Add a heightfield terrain collider for every loaded tile so Bullet's
+    // character controllers walk on the real terrain surface instead of Y=0.
+    for (const auto& tile : terrainMgr.tiles) {
+        physicsSystem.addHeadlessTerrainCollider(
+            tile.heights, tile.size, tile.originX, tile.originZ);
+    }
 
     // -------------------------------------------------------------------------
     // Headless Scene — spawn static Bullet colliders for trees, stalls, lamps.
@@ -436,7 +506,7 @@ int main() {
     // -------------------------------------------------------------------------
     {
         std::string scenePath = FileSystem::Scene("scene.json");
-        loadHeadlessScene(registry, physicsSystem, terrain, scenePath);
+        loadHeadlessScene(registry, physicsSystem, terrainMgr, scenePath);
     }
 
     // -------------------------------------------------------------------------
@@ -470,8 +540,8 @@ int main() {
         for (auto& d : defs) {
             uint32_t nid = nextNetworkId++;
             glm::vec3 pos = d.startPos;
-            if (terrain.valid)
-                pos.y = terrain.getHeight(pos.x, pos.z) + kCapsuleHalfHeight;
+            if (terrainMgr.isAnyValid())
+                pos.y = terrainMgr.getHeight(pos.x, pos.z) + kCapsuleHalfHeight;
 
             auto entity = spawnEntity(registry, nid, pos, d.modelType, /*isNPC=*/true);
             networkIdToEntity[nid] = entity;
@@ -506,8 +576,8 @@ int main() {
                 peerToNetworkId[event.peer] = newId;
 
                 glm::vec3 spawnPos(100.0f, 3.0f, -80.0f);
-                if (terrain.valid)
-                    spawnPos.y = terrain.getHeight(spawnPos.x, spawnPos.z) + kCapsuleHalfHeight;
+                if (terrainMgr.isAnyValid())
+                    spawnPos.y = terrainMgr.getHeight(spawnPos.x, spawnPos.z) + kCapsuleHalfHeight;
 
                 auto entity = spawnEntity(registry, newId, spawnPos, "player");
                 networkIdToEntity[newId] = entity;

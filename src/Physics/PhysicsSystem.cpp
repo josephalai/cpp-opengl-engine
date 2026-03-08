@@ -443,6 +443,62 @@ void PhysicsSystem::addTerrainCollider(Terrain* terrain) {
 #endif // !HEADLESS_SERVER
 }
 
+void PhysicsSystem::addHeadlessTerrainCollider(
+        const std::vector<std::vector<float>>& heights,
+        float terrainSize, float originX, float originZ) {
+    if (!dynamicsWorld_) return;
+
+    int vertexCount = static_cast<int>(heights.size());
+    if (vertexCount < 2) return;
+
+    terrainHeightBuffers_.emplace_back(vertexCount * vertexCount);
+    auto& buf = terrainHeightBuffers_.back();
+    // NOTE: btHeightfieldTerrainShape holds a raw pointer into buf.data() and
+    // does NOT copy the data.  The buffer must remain alive for the lifetime of
+    // the shape, hence it is stored in terrainHeightBuffers_.
+
+    float minH =  std::numeric_limits<float>::max();
+    float maxH =  std::numeric_limits<float>::lowest();
+    for (int x = 0; x < vertexCount; ++x) {
+        for (int z = 0; z < vertexCount; ++z) {
+            float hv = heights[x][z];
+            buf[z * vertexCount + x] = hv;
+            if (hv < minH) minH = hv;
+            if (hv > maxH) maxH = hv;
+        }
+    }
+
+    auto* shape = new btHeightfieldTerrainShape(
+        vertexCount, vertexCount,
+        buf.data(),
+        /*heightScale=*/1.0f,
+        minH, maxH,
+        /*upAxis=*/1,
+        PHY_FLOAT,
+        /*flipQuadEdges=*/false);
+
+    float stickScale = terrainSize / static_cast<float>(vertexCount - 1);
+    shape->setLocalScaling(btVector3(stickScale, 1.0f, stickScale));
+
+    groundShapes_.push_back(shape);
+
+    btTransform t;
+    t.setIdentity();
+    t.setOrigin(btVector3(
+        originX + terrainSize * 0.5f,
+        (minH + maxH) * 0.5f,
+        originZ + terrainSize * 0.5f));
+
+    auto* motionState = new btDefaultMotionState(t);
+    btRigidBody::btRigidBodyConstructionInfo ci(0.0f, motionState, shape);
+    ci.m_friction    = 0.8f;
+    ci.m_restitution = 0.1f;
+
+    auto* body = new btRigidBody(ci);
+    dynamicsWorld_->addRigidBody(body);
+    groundBodies_.push_back(body);
+}
+
 // ---------------------------------------------------------------------------
 // ECS-native character controller API — server + client
 // ---------------------------------------------------------------------------
