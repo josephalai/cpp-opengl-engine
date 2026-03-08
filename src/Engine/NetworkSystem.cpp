@@ -364,3 +364,4 @@ void NetworkSystem::addEntity(uint32_t networkId, Entity* e) {
 void NetworkSystem::removeEntity(uint32_t networkId) {
     networkEntities_.erase(networkId);
 }
+
