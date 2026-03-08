@@ -227,20 +227,30 @@ void NetworkSystem::update(float deltaTime) {
                         if (localPlayer_) {
                             glm::vec3 diff = snapshot.position - localPlayer_->getPosition();
 
+                            // Build the reconcile target, defaulting to the
+                            // full server position.  The Y component is handled
+                            // carefully below to avoid fighting with
+                            // PlayerMovementSystem's terrain-snapping logic.
+                            glm::vec3 target = snapshot.position;
+
                             // Apply a Y-axis dead-zone to absorb floating-point
-                            // imprecision between the client's Bullet simulation
-                            // and the server's (they run at different tick rates
-                            // and may disagree on vertical position by up to
-                            // ~0.5 units).  A small height difference is NOT a
-                            // genuine desync — ignoring it prevents the constant
-                            // up-and-down "bounce" caused by Y jitter.
+                            // imprecision between the client's terrain math and
+                            // the server's Bullet simulation (they can disagree
+                            // on vertical position by a small margin).  When the
+                            // Y difference is within the dead-zone we zero it
+                            // out for the distance check AND preserve the
+                            // client's own Y in the reconcile target.  This
+                            // prevents the lerp from fighting PlayerMovementSystem
+                            // which snaps Y back to terrain height every frame,
+                            // which would otherwise cause a persistent bounce.
                             if (std::abs(diff.y) < kReconcileYEpsilon) {
-                                diff.y = 0.0f;
+                                diff.y   = 0.0f;
+                                target.y = localPlayer_->getPosition().y;
                             }
 
                             float distSq = glm::dot(diff, diff);
                             if (distSq > kReconcileThreshSq) {
-                                reconcileTarget_    = snapshot.position;
+                                reconcileTarget_    = target;
                                 hasReconcileTarget_ = true;
                                 // Mirror the server's rotation immediately; visual
                                 // rotation snapping is far less noticeable than
