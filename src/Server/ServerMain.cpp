@@ -442,7 +442,9 @@ int main() {
                         float th = terrain.valid
                             ? terrain.getHeight(tc.position.x, tc.position.z)
                             : SharedMovement::kNoTerrainHeight;
-                        SharedMovement::applyInput(inp, tc.position, tc.rotation, th);
+                        SharedMovement::applyInput(inp, tc.position, tc.rotation,
+                                                   queue.upwardsSpeed, queue.isInAir,
+                                                   th);
 
                         if (inp.sequenceNumber > nidComp.lastInputSeq)
                             nidComp.lastInputSeq = inp.sequenceNumber;

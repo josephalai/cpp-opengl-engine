@@ -20,8 +20,16 @@
 
 /// Buffers incoming PlayerInputPackets for an entity until the next server tick.
 /// Drained and cleared during the authoritative movement step.
+/// Also stores the persistent vertical-movement state (upwardsSpeed, isInAir) so
+/// gravity and jump arcs survive across ticks — matching the client's
+/// InputStateComponent fields exactly.
 struct InputQueueComponent {
     std::vector<Network::PlayerInputPacket> inputs;
+
+    /// Vertical velocity (m/s). Positive = moving up. Persistent across ticks.
+    float upwardsSpeed = 0.0f;
+    /// True while the entity is airborne (no terrain contact).
+    bool  isInAir      = false;
 };
 
 #endif // ECS_INPUTQUEUECOMPONENT_H

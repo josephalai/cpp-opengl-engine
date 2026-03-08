@@ -5,6 +5,7 @@
 
 void SharedMovement::applyInput(const Network::PlayerInputPacket& input,
                                 glm::vec3& position, glm::vec3& rotation,
+                                float& upwardsSpeed, bool& isInAir,
                                 float terrainHeight) {
     // --- Rotation — apply client's absolute camera yaw directly ---
     // [Phase 3.2] Replaced incremental turn (input.turn * kTurnSpeed) with
@@ -33,8 +34,20 @@ void SharedMovement::applyInput(const Network::PlayerInputPacket& input,
     position.x += strafeDistance *  cosY;
     position.z += strafeDistance * -sinY;
 
-    // --- Terrain height clamping ---
-    if (terrainHeight > kNoTerrainHeight) {
-        position.y = terrainHeight;
+    // --- Jump impulse ---
+    if (input.jump && !isInAir) {
+        upwardsSpeed = kJumpPower;
+        isInAir      = true;
+    }
+
+    // --- Gravity integration ---
+    upwardsSpeed += kGravity * input.deltaTime;
+    position.y   += upwardsSpeed * input.deltaTime;
+
+    // --- Terrain landing ---
+    if (terrainHeight > kNoTerrainHeight && position.y <= terrainHeight) {
+        upwardsSpeed = 0.0f;
+        position.y   = terrainHeight;
+        isInAir      = false;
     }
 }
