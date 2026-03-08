@@ -25,6 +25,8 @@
 #include "../Util/FileSystem.h"
 #include "../Toolbox/Maths.h"
 
+#include <nlohmann/json.hpp>
+
 #include <enet/enet.h>
 #include <glm/glm.hpp>
 
@@ -32,6 +34,7 @@
 #include <fstream>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 #include <chrono>
 #include <thread>
 #include <csignal>
@@ -147,6 +150,185 @@ static void broadcast(ENetHost* host, Network::PacketType type,
 }
 
 // ---------------------------------------------------------------------------
+// Headless scene loader — Step 2 of Phase 3 Physics.
+//
+// Parses scene.json WITHOUT touching OpenGL.  Only the "physics_bodies",
+// "entities", and "random" arrays are read; all rendering/texture/model
+// fields are ignored.  Static Bullet colliders are spawned for every scene
+// entity whose alias appears in "physics_bodies".
+//
+// The "random" array is processed with the same pseudo-random number sequence
+// as SceneLoaderJson (seeded via "random_seed" in scene.json, defaulting to 1)
+// so that randomly placed trees on the server occupy exactly the same world
+// positions as on every client.
+// ---------------------------------------------------------------------------
+
+static void loadHeadlessScene(entt::registry& registry,
+                               PhysicsSystem& physics,
+                               const HeadlessTerrain& terrain,
+                               const std::string& jsonPath) {
+    std::ifstream file(jsonPath);
+    if (!file.is_open()) {
+        std::cout << "[Server] scene.json not found at " << jsonPath
+                  << " — no static world loaded.\n";
+        return;
+    }
+
+    nlohmann::json root;
+    try {
+        file >> root;
+    } catch (const std::exception& e) {
+        std::cerr << "[Server] Failed to parse " << jsonPath
+                  << ": " << e.what() << "\n";
+        return;
+    }
+
+    // ---- Parse physics_bodies by alias ------------------------------------
+    struct PhysCfg {
+        std::string   type        = "static";  // "static" | "dynamic"
+        std::string   shape       = "box";     // "box" | "sphere" | "capsule"
+        glm::vec3     halfExtents = glm::vec3(0.5f);
+        float         mass        = 1.0f;
+        float         friction    = 0.5f;
+        float         restitution = 0.3f;
+        float         radius      = 0.5f;
+        float         height      = 1.8f;
+    };
+    std::unordered_map<std::string, PhysCfg> physBodies;
+
+    if (root.contains("physics_bodies") && root["physics_bodies"].is_array()) {
+        for (auto& pb : root["physics_bodies"]) {
+            std::string alias = pb.value("alias", "");
+            if (alias.empty()) continue;
+            PhysCfg cfg;
+            cfg.type        = pb.value("type",        "static");
+            cfg.shape       = pb.value("shape",       "box");
+            cfg.friction    = pb.value("friction",    0.5f);
+            cfg.restitution = pb.value("restitution", 0.3f);
+            cfg.mass        = pb.value("mass",        1.0f);
+            cfg.radius      = pb.value("radius",      0.5f);
+            cfg.height      = pb.value("height",      1.8f);
+            if (pb.contains("halfExtents") && pb["halfExtents"].is_array()
+                    && pb["halfExtents"].size() >= 3) {
+                auto& he = pb["halfExtents"];
+                cfg.halfExtents = glm::vec3(he[0].get<float>(),
+                                            he[1].get<float>(),
+                                            he[2].get<float>());
+            }
+            physBodies[alias] = cfg;
+        }
+    }
+
+    // ---- Y-value parser (mirrors SceneLoaderJson::parseJsonY) -------------
+    auto parseY = [&](const nlohmann::json& entry, float x, float z) -> float {
+        if (!entry.contains("y")) return 0.0f;
+        auto& yv = entry["y"];
+        if (yv.is_number()) return yv.get<float>();
+        if (yv.is_string()) {
+            std::string s = yv.get<std::string>();
+            float offset = 0.0f;
+            if (s.rfind("terrain", 0) == 0) {
+                std::string rest = s.substr(7);
+                if (!rest.empty()) {
+                    try { offset = std::stof(rest); } catch (...) {}
+                }
+                return terrain.valid ? terrain.getHeight(x, z) + offset : offset;
+            }
+            try { return std::stof(s); } catch (...) {}
+        }
+        return 0.0f;
+    };
+
+    // ---- Helper: spawn one scene entity with a Bullet body ----------------
+    int staticCount = 0, dynamicCount = 0;
+    auto spawnSceneBody = [&](const std::string& alias,
+                               float x, float y, float z, float ry) {
+        auto it = physBodies.find(alias);
+        if (it == physBodies.end()) return;
+        const auto& cfg = it->second;
+
+        auto entity = registry.create();
+        registry.emplace<TransformComponent>(entity,
+            TransformComponent{glm::vec3(x, y, z), glm::vec3(0.0f, ry, 0.0f), 1.0f});
+
+        ColliderShape colShape = ColliderShape::Box;
+        if (cfg.shape == "sphere")  colShape = ColliderShape::Sphere;
+        if (cfg.shape == "capsule") colShape = ColliderShape::Capsule;
+
+        if (cfg.type == "dynamic") {
+            PhysicsBodyDef def;
+            def.type        = BodyType::Dynamic;
+            def.shape       = colShape;
+            def.mass        = cfg.mass;
+            def.halfExtents = cfg.halfExtents;
+            def.radius      = cfg.radius;
+            def.height      = cfg.height;
+            def.friction    = cfg.friction;
+            def.restitution = cfg.restitution;
+            physics.addDynamicBody(entity, def);
+            ++dynamicCount;
+        } else {
+            physics.addStaticBody(entity, colShape,
+                                  cfg.halfExtents, cfg.friction, cfg.restitution);
+            ++staticCount;
+        }
+    };
+
+    // ---- Fixed-position entities ------------------------------------------
+    if (root.contains("entities") && root["entities"].is_array()) {
+        for (auto& e : root["entities"]) {
+            std::string alias = e.value("alias", "");
+            float x  = e.value("x",  0.0f);
+            float z  = e.value("z",  0.0f);
+            float ry = e.value("ry", 0.0f);
+            float y  = parseY(e, x, z);
+            spawnSceneBody(alias, x, y, z, ry);
+        }
+    }
+
+    // ---- Randomly-placed entities -----------------------------------------
+    // Mirror SceneLoaderJson's gRandom* calls exactly (same PRNG sequence).
+    // The seed is declared in scene.json under "random_seed" (default: 1).
+    if (root.contains("random") && root["random"].is_array()) {
+        unsigned int seed = root.value("random_seed", 1u);
+        srand(seed);
+        std::cout << "[Server] Random seed for entity placement: " << seed << "\n";
+
+        for (auto& r : root["random"]) {
+            std::string alias    = r.value("alias",    "");
+            int         count    = r.value("count",    0);
+            float       scaleMin = r.value("scaleMin", 0.75f);
+            float       scaleMax = r.value("scaleMax", 1.5f);
+            bool        useAtlas = r.value("atlas",    false);
+            bool        hasPhys  = physBodies.count(alias) > 0;
+
+            for (int i = 0; i < count; ++i) {
+                // Consume rand() in the same order as gRandomPosition + gRandomRotation
+                // + gRandomScale (+ atlas index when applicable) in SceneLoaderJson.
+                float rx = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // x
+                float rz = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // z
+                float rr = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // ry
+                float rs = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // scale
+                if (useAtlas) rand(); // atlas index — consume to keep sequence in sync
+
+                if (hasPhys) {
+                    float x  = std::floor(rx * 1500.f - 800.f);
+                    float z  = std::floor(rz * -800.f);
+                    float y  = terrain.valid ? terrain.getHeight(x, z) : 0.0f;
+                    float ry = (rr * 100.f - 50.f) * 180.0f;
+                    (void)rs; // scale not needed for physics
+                    spawnSceneBody(alias, x, y, z, ry);
+                }
+            }
+        }
+    }
+
+    std::cout << "[Server] Headless scene loaded from " << jsonPath
+              << ": " << staticCount << " static + "
+              << dynamicCount << " dynamic physics bodies.\n";
+}
+
+// ---------------------------------------------------------------------------
 // Helper: create a registry entity with TransformComponent + NetworkIdComponent
 // ---------------------------------------------------------------------------
 
@@ -219,6 +401,15 @@ int main() {
     physicsSystem.addGroundPlane(0.0f);
 
     // -------------------------------------------------------------------------
+    // Headless Scene — spawn static Bullet colliders for trees, stalls, lamps.
+    // Mirrors the client's scene.json parsing without any OpenGL dependency.
+    // -------------------------------------------------------------------------
+    {
+        std::string scenePath = FileSystem::Scene("scene.json");
+        loadHeadlessScene(registry, physicsSystem, terrain, scenePath);
+    }
+
+    // -------------------------------------------------------------------------
     // Network tracking maps
     //   peerToNetworkId    — peer → network ID (for input routing on receive)
     //   networkIdToEntity  — network ID → entt entity (for entity lookup)
@@ -254,6 +445,7 @@ int main() {
 
             auto entity = spawnEntity(registry, nid, pos, d.modelType, /*isNPC=*/true);
             networkIdToEntity[nid] = entity;
+            physicsSystem.addCharacterController(entity, 0.5f, 1.8f);
             npcManager.registerNPC(nid, d.scriptType);
 
             std::cout << "[Server] NPC " << nid << " (" << d.modelType
@@ -289,6 +481,7 @@ int main() {
 
                 auto entity = spawnEntity(registry, newId, spawnPos, "player");
                 networkIdToEntity[newId] = entity;
+                physicsSystem.addCharacterController(entity, 0.5f, 1.8f);
 
                 std::cout << "[Server] Client connected — networkId " << newId
                           << " from " << event.peer->address.host << ":"
@@ -342,6 +535,7 @@ int main() {
 
                     auto eit = networkIdToEntity.find(removedId);
                     if (eit != networkIdToEntity.end()) {
+                        physicsSystem.removeCharacterController(eit->second);
                         registry.destroy(eit->second);
                         networkIdToEntity.erase(eit);
                     }
@@ -424,11 +618,13 @@ int main() {
                 }
             }
 
-            // ----- [Phase 3.3] Drain all entity input queues authoritatively -----
-            // For every entity that received inputs since the last tick, feed
-            // each queued input through SharedMovement::applyInput() to produce
-            // the server's authoritative position.  Client coordinates are never
-            // read — only button states + cameraYaw arrive over the wire.
+            // ----- [Phase 3.3 / Phase 3 Physics] Drain entity input queues -----
+            // For entities that have a Bullet character controller (all players and
+            // NPCs), we run SharedMovement to compute the intended displacement and
+            // then pass that displacement to the character controller so Bullet can
+            // resolve wall-sliding collisions.  For any entity that does NOT have a
+            // controller (should not arise in normal operation), we fall back to the
+            // direct SharedMovement path.
             {
                 auto inputView = registry.view<TransformComponent,
                                                NetworkIdComponent,
@@ -438,17 +634,48 @@ int main() {
                     auto& nidComp = inputView.get<NetworkIdComponent>(entity);
                     auto& queue   = inputView.get<InputQueueComponent>(entity);
 
-                    for (const auto& inp : queue.inputs) {
-                        float th = terrain.valid
-                            ? terrain.getHeight(tc.position.x, tc.position.z)
-                            : SharedMovement::kNoTerrainHeight;
-                        SharedMovement::applyInput(inp, tc.position, tc.rotation,
-                                                   queue.upwardsSpeed, queue.isInAir,
-                                                   th);
+                    if (physicsSystem.hasCharacterController(entity)) {
+                        // --- Character-controller path ---
+                        // 1. Record starting position.
+                        // 2. Run SharedMovement across all queued inputs (accumulates
+                        //    the gravity/jump/horizontal movement in tc.position and
+                        //    updates the persistent queue.upwardsSpeed / isInAir).
+                        // 3. Compute total displacement from the starting position.
+                        // 4. Revert tc.position — Bullet writes the authoritative
+                        //    position back in PhysicsSystem::update() via the ghost
+                        //    object transform.
+                        // 5. Feed displacement to Bullet; it handles wall-sliding.
+                        glm::vec3 initialPos = tc.position;
 
-                        if (inp.sequenceNumber > nidComp.lastInputSeq)
-                            nidComp.lastInputSeq = inp.sequenceNumber;
+                        for (const auto& inp : queue.inputs) {
+                            // Terrain height at the *current* (accumulated) position.
+                            float th = terrain.valid
+                                ? terrain.getHeight(tc.position.x, tc.position.z)
+                                : SharedMovement::kNoTerrainHeight;
+                            SharedMovement::applyInput(inp, tc.position, tc.rotation,
+                                                       queue.upwardsSpeed, queue.isInAir,
+                                                       th);
+                            if (inp.sequenceNumber > nidComp.lastInputSeq)
+                                nidComp.lastInputSeq = inp.sequenceNumber;
+                        }
+
+                        glm::vec3 displacement = tc.position - initialPos;
+                        tc.position = initialPos;  // revert; ghost sync overwrites after update()
+                        physicsSystem.setEntityWalkDirection(entity, displacement);
+                    } else {
+                        // --- Fallback: direct SharedMovement path (no collision) ---
+                        for (const auto& inp : queue.inputs) {
+                            float th = terrain.valid
+                                ? terrain.getHeight(tc.position.x, tc.position.z)
+                                : SharedMovement::kNoTerrainHeight;
+                            SharedMovement::applyInput(inp, tc.position, tc.rotation,
+                                                       queue.upwardsSpeed, queue.isInAir,
+                                                       th);
+                            if (inp.sequenceNumber > nidComp.lastInputSeq)
+                                nidComp.lastInputSeq = inp.sequenceNumber;
+                        }
                     }
+
                     queue.inputs.clear();
                 }
             }

@@ -50,6 +50,16 @@ struct PhysicsEntry {
     BodyType      bodyType     = BodyType::Dynamic;
 };
 
+/// Holds all Bullet objects that make up a character controller for one ECS entity.
+/// Used by the ECS-native API (server: all players/NPCs; client: remote players).
+/// Kept outside the HEADLESS_SERVER guard so both builds can share the type.
+struct CharacterControllerData {
+    btPairCachingGhostObject*       ghostObject       = nullptr;
+    btKinematicCharacterController* controller        = nullptr;
+    btCapsuleShape*                 capsuleShape      = nullptr;
+    float                           capsuleHalfHeight = 0.0f; ///< capsuleHeight/2 + radius
+};
+
 class PhysicsSystem : public ISystem {
 public:
     PhysicsSystem();
@@ -94,6 +104,31 @@ public:
     /// Add a static heightfield collider for a Terrain tile.
     /// (Client-only in practice; server uses HeadlessTerrain for height clamping.)
     void addTerrainCollider(Terrain* terrain);
+
+    // -------------------------------------------------------------------------
+    // ECS-native character controller API — server + client (no GL/GLFW needed)
+    // -------------------------------------------------------------------------
+
+    /// Register a Bullet kinematic character controller for the given entity.
+    /// Reads initial position from the entity's TransformComponent.
+    /// The controller disables internal gravity — vertical movement is supplied
+    /// via setEntityWalkDirection so it stays in sync with SharedMovement.
+    void addCharacterController(entt::entity entity,
+                                float radius = 0.5f,
+                                float height = 1.8f);
+
+    /// Set the intended displacement for the next physics step.
+    /// Call once per tick (before physicsSystem.update()) with the full 3-D
+    /// displacement computed by SharedMovement::applyInput() so Bullet can
+    /// resolve wall-sliding collisions while preserving the intended trajectory.
+    void setEntityWalkDirection(entt::entity entity, glm::vec3 walkDisplacement);
+
+    /// Remove and destroy the character controller for the given entity.
+    /// Must be called before registry.destroy(entity).
+    void removeCharacterController(entt::entity entity);
+
+    /// Returns true if a character controller has been registered for entity.
+    bool hasCharacterController(entt::entity entity) const;
 
 #ifndef HEADLESS_SERVER
     // -------------------------------------------------------------------------
@@ -165,6 +200,10 @@ private:
     std::vector<btRigidBody*>                     groundBodies_;   ///< ground planes + terrain tiles
     std::vector<btCollisionShape*>                groundShapes_;
     std::vector<std::vector<float>>               terrainHeightBuffers_; ///< keeps height data alive for terrain shapes
+
+    /// ECS-native character controllers (server: all players/NPCs; client: remote players).
+    /// Keyed by the raw uint32_t value of entt::entity to avoid needing a hash specialisation.
+    std::unordered_map<uint32_t, CharacterControllerData> characterControllers_;
 
 #ifndef HEADLESS_SERVER
     PhysicsDebugDrawer*                  debugDrawer_        = nullptr;

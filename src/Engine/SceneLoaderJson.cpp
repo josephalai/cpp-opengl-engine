@@ -285,6 +285,11 @@ bool SceneLoaderJson::load(
     // Random entities
     // -----------------------------------------------------------------------
     if (root.contains("random") && root["random"].is_array()) {
+        // Seed the C PRNG to the value declared in the JSON so that both the
+        // client and the headless server produce bit-identical random placement.
+        unsigned int randomSeed = root.value("random_seed", 1u);
+        srand(randomSeed);
+
         for (auto& r : root["random"]) {
             std::string alias = r.value("alias", "");
             StringId aliasId(alias);

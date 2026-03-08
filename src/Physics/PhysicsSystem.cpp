@@ -111,8 +111,10 @@ void PhysicsSystem::update(float deltaTime) {
         e.body->setWorldTransform(t);
     }
 
-    // Step simulation
-    dynamicsWorld_->stepSimulation(deltaTime, 10);
+    // Step simulation — single sub-step per call so the character controller
+    // walk direction (which is a per-tick displacement, not per-sub-step) is
+    // applied exactly once regardless of the tick interval duration.
+    dynamicsWorld_->stepSimulation(deltaTime, 1, deltaTime);
 
 #ifndef HEADLESS_SERVER
     // Sync character controller ghost transform → player (client only)
@@ -120,6 +122,21 @@ void PhysicsSystem::update(float deltaTime) {
         syncCharacterToPlayer();
     }
 #endif
+
+    // Sync ECS character controllers: ghost transform → TransformComponent.
+    // Done on both client and server — server uses this for all players/NPCs.
+    for (auto& [key, data] : characterControllers_) {
+        if (!data.ghostObject) continue;
+        entt::entity entity = static_cast<entt::entity>(key);
+        const btTransform& t = data.ghostObject->getWorldTransform();
+        glm::vec3 pos = btToGlm(t.getOrigin());
+        pos.y -= data.capsuleHalfHeight;  // ghost origin is at capsule centre; entity position is at feet
+        if (registry_ && entity != entt::null) {
+            if (auto* tc = registry_->try_get<TransformComponent>(entity)) {
+                tc->position = pos;
+            }
+        }
+    }
 
     // Sync dynamic body transforms FROM physics world TO TransformComponent/registry
     for (auto& e : entries_) {
@@ -160,6 +177,15 @@ void PhysicsSystem::shutdown() {
             delete b->getMotionState();
             delete b;
         }
+        // Clean up ECS-native character controllers (server players/NPCs, client remote players)
+        for (auto& [key, data] : characterControllers_) {
+            if (data.controller)  dynamicsWorld_->removeAction(data.controller);
+            if (data.ghostObject) dynamicsWorld_->removeCollisionObject(data.ghostObject);
+            delete data.controller;   data.controller  = nullptr;
+            delete data.ghostObject;  data.ghostObject  = nullptr;
+            delete data.capsuleShape; data.capsuleShape = nullptr;
+        }
+        characterControllers_.clear();
 #ifndef HEADLESS_SERVER
         if (characterController_) {
             dynamicsWorld_->removeAction(characterController_);
@@ -415,6 +441,73 @@ void PhysicsSystem::addTerrainCollider(Terrain* terrain) {
     dynamicsWorld_->addRigidBody(body);
     groundBodies_.push_back(body);
 #endif // !HEADLESS_SERVER
+}
+
+// ---------------------------------------------------------------------------
+// ECS-native character controller API — server + client
+// ---------------------------------------------------------------------------
+
+void PhysicsSystem::addCharacterController(entt::entity entity, float radius, float height) {
+    if (!dynamicsWorld_) return;
+    uint32_t key = static_cast<uint32_t>(entity);
+    if (characterControllers_.count(key)) return;  // already registered
+
+    glm::vec3 pos(0.0f);
+    if (registry_ && entity != entt::null) {
+        if (auto* tc = registry_->try_get<TransformComponent>(entity))
+            pos = tc->position;
+    }
+
+    CharacterControllerData data;
+    data.capsuleHalfHeight = height * 0.5f + radius;
+    data.capsuleShape = new btCapsuleShape(radius, height);
+
+    data.ghostObject = new btPairCachingGhostObject();
+    btTransform t;
+    t.setIdentity();
+    t.setOrigin(btVector3(pos.x, pos.y + data.capsuleHalfHeight, pos.z));
+    data.ghostObject->setWorldTransform(t);
+    data.ghostObject->setCollisionShape(data.capsuleShape);
+    data.ghostObject->setCollisionFlags(btCollisionObject::CF_CHARACTER_OBJECT);
+
+    dynamicsWorld_->addCollisionObject(
+        data.ghostObject,
+        btBroadphaseProxy::CharacterFilter,
+        btBroadphaseProxy::StaticFilter | btBroadphaseProxy::DefaultFilter);
+
+    data.controller = new btKinematicCharacterController(
+        data.ghostObject, data.capsuleShape, 0.35f);
+    // Disable built-in gravity: SharedMovement handles vertical movement so
+    // that the server simulation stays bit-identical to the client prediction.
+    data.controller->setGravity(btVector3(0.0f, 0.0f, 0.0f));
+    dynamicsWorld_->addAction(data.controller);
+
+    characterControllers_[key] = data;
+}
+
+void PhysicsSystem::setEntityWalkDirection(entt::entity entity, glm::vec3 walkDisplacement) {
+    auto it = characterControllers_.find(static_cast<uint32_t>(entity));
+    if (it == characterControllers_.end()) return;
+    it->second.controller->setWalkDirection(
+        btVector3(walkDisplacement.x, walkDisplacement.y, walkDisplacement.z));
+}
+
+void PhysicsSystem::removeCharacterController(entt::entity entity) {
+    auto it = characterControllers_.find(static_cast<uint32_t>(entity));
+    if (it == characterControllers_.end()) return;
+    auto& data = it->second;
+    if (dynamicsWorld_) {
+        if (data.controller)  dynamicsWorld_->removeAction(data.controller);
+        if (data.ghostObject) dynamicsWorld_->removeCollisionObject(data.ghostObject);
+    }
+    delete data.controller;   data.controller  = nullptr;
+    delete data.ghostObject;  data.ghostObject  = nullptr;
+    delete data.capsuleShape; data.capsuleShape = nullptr;
+    characterControllers_.erase(it);
+}
+
+bool PhysicsSystem::hasCharacterController(entt::entity entity) const {
+    return characterControllers_.count(static_cast<uint32_t>(entity)) > 0;
 }
 
 // ---------------------------------------------------------------------------
