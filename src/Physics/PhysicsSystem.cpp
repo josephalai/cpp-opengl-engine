@@ -468,7 +468,11 @@ void PhysicsSystem::addCharacterController(entt::entity entity, float radius, fl
     t.setOrigin(btVector3(pos.x, pos.y + data.capsuleHalfHeight, pos.z));
     data.ghostObject->setWorldTransform(t);
     data.ghostObject->setCollisionShape(data.capsuleShape);
-    data.ghostObject->setCollisionFlags(btCollisionObject::CF_CHARACTER_OBJECT);
+    data.ghostObject->setCollisionFlags(btCollisionObject::CF_CHARACTER_OBJECT
+                                        | btCollisionObject::CF_KINEMATIC_OBJECT);
+    // Prevent Bullet's broadphase from putting the ghost object to sleep and
+    // silently culling its collision sweeps against static geometry.
+    data.ghostObject->setActivationState(DISABLE_DEACTIVATION);
 
     dynamicsWorld_->addCollisionObject(
         data.ghostObject,

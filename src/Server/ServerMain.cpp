@@ -79,8 +79,9 @@ struct HeadlessTerrain {
         Heightmap hm(heightmapPath);
         auto info = hm.getImageInfo();
         if (info.height <= 0 || info.width <= 0) {
-            std::cerr << "[Server] Failed to load heightmap: "
-                      << heightmapPath << "\n";
+            std::cerr << "[Server] FATAL: Failed to load heightmap — tried absolute path: "
+                      << heightmapPath
+                      << "\n  Trees/stalls will be spawned at Y=0 and may be underground.\n";
             return;
         }
         int vc = info.height;
@@ -169,8 +170,9 @@ static void loadHeadlessScene(entt::registry& registry,
                                const std::string& jsonPath) {
     std::ifstream file(jsonPath);
     if (!file.is_open()) {
-        std::cout << "[Server] scene.json not found at " << jsonPath
-                  << " — no static world loaded.\n";
+        std::cerr << "[Server] ERROR: scene.json not found — tried absolute path: "
+                  << jsonPath
+                  << "\n  The physics world will be empty (no trees/stalls/lamps).\n";
         return;
     }
 
@@ -326,6 +328,11 @@ static void loadHeadlessScene(entt::registry& registry,
     std::cout << "[Server] Headless scene loaded from " << jsonPath
               << ": " << staticCount << " static + "
               << dynamicCount << " dynamic physics bodies.\n";
+    if (staticCount == 0) {
+        std::cerr << "[Server] WARNING: 0 static bodies were spawned from " << jsonPath
+                  << ". Players will walk through all scene geometry.\n"
+                     "  Check that physics_bodies aliases match entity/random aliases in scene.json.\n";
+    }
 }
 
 // ---------------------------------------------------------------------------
