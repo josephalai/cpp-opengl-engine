@@ -42,6 +42,7 @@
 #include <unordered_map>
 #include <vector>
 #include <algorithm>
+#include <random>
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -304,11 +305,15 @@ static void loadHeadlessScene(entt::registry& registry,
     }
 
     // ---- Randomly-placed entities -----------------------------------------
-    // Mirror SceneLoaderJson's gRandom* calls exactly (same PRNG sequence).
-    // The seed is declared in scene.json under "random_seed" (default: 1).
+    // Mirror SceneLoaderJson's random placement exactly (same PRNG sequence).
+    // Both sides use std::mt19937 seeded with random_seed and consume draws in
+    // the same order: x, z, ry, scale [, atlas] — guaranteeing bit-identical
+    // positions regardless of any other rand() calls elsewhere in the process.
     if (root.contains("random") && root["random"].is_array()) {
         unsigned int seed = root.value("random_seed", 1u);
-        srand(seed);
+        std::mt19937 rng(seed);
+        std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
+        auto randF = [&]() { return dist01(rng); };
         std::cout << "[Server] Random seed for entity placement: " << seed << "\n";
 
         for (auto& r : root["random"]) {
@@ -320,21 +325,19 @@ static void loadHeadlessScene(entt::registry& registry,
             bool        hasPhys  = physBodies.count(alias) > 0;
 
             for (int i = 0; i < count; ++i) {
-                // Consume rand() in the same order as gRandomPosition + gRandomRotation
-                // + gRandomScale (+ atlas index when applicable) in SceneLoaderJson.
-                float rx = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // x
-                float rz = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // z
-                float rr = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // ry
-                float rs = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // scale
-                if (useAtlas) rand(); // atlas index — consume to keep sequence in sync
+                // draw 1: x  draw 2: z  draw 3: ry  draw 4: scale  [draw 5: atlas]
+                float rx = randF();
+                float rz = randF();
+                float rr = randF();
+                float rs = randF();
+                if (useAtlas) randF(); // atlas index — consume to stay in sync
 
                 if (hasPhys) {
                     float x  = std::floor(rx * 1500.f - 800.f);
                     float z  = std::floor(rz * -800.f);
                     float y  = terrain.valid ? terrain.getHeight(x, z) : 0.0f;
                     float ry = (rr * 100.f - 50.f) * 180.0f;
-                    // Mirror gRandomScale() from SceneLoaderJson so the physics shape
-                    // matches the visual scale of each randomly-placed entity.
+                    // Mirror gRandomScale(): ceil-multiplier then clamp.
                     float multiplier = (scaleMax > 1.0f) ? std::ceil(scaleMax) : 1.0f;
                     float scale = rs * multiplier;
                     if (scale < scaleMin) scale = scaleMin;
@@ -645,72 +648,84 @@ int main() {
                 }
             }
 
-            // ----- [Phase 3.3 / Phase 3 Physics] Drain entity input queues -----
-            // For entities that have a Bullet character controller (all players and
-            // NPCs), we run SharedMovement to compute the intended displacement and
-            // then pass that displacement to the character controller so Bullet can
-            // resolve wall-sliding collisions.  For any entity that does NOT have a
-            // controller (should not arise in normal operation), we fall back to the
-            // direct SharedMovement path.
+            // ----- [Phase 3.3 / Physics] Drain entity input queues -----
+            // Fix 3: Per-input physics stepping.
+            //
+            // Previously: accumulate all N inputs per entity into one displacement
+            // vector → ONE 100ms Bullet step.  This caused wall-sliding and corner
+            // collisions to be resolved very differently on the server (one big 100ms
+            // sweep) vs. the client (N small ~16ms sweeps).
+            //
+            // Now: transpose the entity × input loops. For each input slot i across
+            // all entities, apply that input to every entity that has one, then step
+            // Bullet by the corresponding deltaTime slice. Bullet resolves each small
+            // step incrementally, matching the client's per-frame behaviour.
+            //
+            // Fix 4: SharedMovement is now horizontal-only; Bullet's built-in
+            // gravity handles Y via world gravity. Jumps are triggered directly on
+            // the character controller when input.jump is true.
             {
                 auto inputView = registry.view<TransformComponent,
                                                NetworkIdComponent,
                                                InputQueueComponent>();
+
+                // Find the maximum queue depth so we know how many sub-steps to run.
+                int maxDepth = 0;
                 for (auto entity : inputView) {
-                    auto& tc      = inputView.get<TransformComponent>(entity);
-                    auto& nidComp = inputView.get<NetworkIdComponent>(entity);
-                    auto& queue   = inputView.get<InputQueueComponent>(entity);
+                    int qs = static_cast<int>(
+                        inputView.get<InputQueueComponent>(entity).inputs.size());
+                    maxDepth = std::max(maxDepth, qs);
+                }
 
-                    if (physicsSystem.hasCharacterController(entity)) {
-                        // --- Character-controller path ---
-                        // 1. Record starting position.
-                        // 2. Run SharedMovement across all queued inputs (accumulates
-                        //    the gravity/jump/horizontal movement in tc.position and
-                        //    updates the persistent queue.upwardsSpeed / isInAir).
-                        // 3. Compute total displacement from the starting position.
-                        // 4. Revert tc.position — Bullet writes the authoritative
-                        //    position back in PhysicsSystem::update() via the ghost
-                        //    object transform.
-                        // 5. Feed displacement to Bullet; it handles wall-sliding.
-                        glm::vec3 initialPos = tc.position;
+                if (maxDepth > 0) {
+                    float subDt = kTickInterval / static_cast<float>(maxDepth);
 
-                        for (const auto& inp : queue.inputs) {
-                            // Terrain height at the *current* (accumulated) position.
-                            float th = terrain.valid
-                                ? terrain.getHeight(tc.position.x, tc.position.z)
-                                : SharedMovement::kNoTerrainHeight;
-                            SharedMovement::applyInput(inp, tc.position, tc.rotation,
-                                                       queue.upwardsSpeed, queue.isInAir,
-                                                       th);
+                    for (int step = 0; step < maxDepth; ++step) {
+                        for (auto entity : inputView) {
+                            auto& tc      = inputView.get<TransformComponent>(entity);
+                            auto& nidComp = inputView.get<NetworkIdComponent>(entity);
+                            auto& queue   = inputView.get<InputQueueComponent>(entity);
+
+                            if (step >= static_cast<int>(queue.inputs.size())) continue;
+                            const auto& inp = queue.inputs[step];
+
                             if (inp.sequenceNumber > nidComp.lastInputSeq)
                                 nidComp.lastInputSeq = inp.sequenceNumber;
+
+                            if (physicsSystem.hasCharacterController(entity)) {
+                                // Compute horizontal displacement for this single input.
+                                glm::vec3 prevPos = tc.position;
+                                SharedMovement::applyInput(inp, tc.position, tc.rotation);
+                                glm::vec3 disp = tc.position - prevPos;
+                                tc.position = prevPos; // revert; ghost sync writes authoritative pos
+
+                                // Only XZ displacement passed; Bullet owns vertical.
+                                physicsSystem.setEntityWalkDirection(entity,
+                                    glm::vec3(disp.x, 0.0f, disp.z));
+
+                                // Trigger a jump impulse when requested and grounded.
+                                if (inp.jump)
+                                    physicsSystem.jumpCharacterController(entity);
+                            } else {
+                                // Fallback (no character controller): apply horizontal only.
+                                SharedMovement::applyInput(inp, tc.position, tc.rotation);
+                            }
                         }
 
-                        glm::vec3 displacement = tc.position - initialPos;
-                        tc.position = initialPos;  // revert; ghost sync overwrites after update()
-                        physicsSystem.setEntityWalkDirection(entity, displacement);
-                    } else {
-                        // --- Fallback: direct SharedMovement path (no collision) ---
-                        for (const auto& inp : queue.inputs) {
-                            float th = terrain.valid
-                                ? terrain.getHeight(tc.position.x, tc.position.z)
-                                : SharedMovement::kNoTerrainHeight;
-                            SharedMovement::applyInput(inp, tc.position, tc.rotation,
-                                                       queue.upwardsSpeed, queue.isInAir,
-                                                       th);
-                            if (inp.sequenceNumber > nidComp.lastInputSeq)
-                                nidComp.lastInputSeq = inp.sequenceNumber;
-                        }
+                        // Step Bullet forward by one input-sized slice.
+                        physicsSystem.update(subDt);
                     }
 
-                    queue.inputs.clear();
+                    // Clear all queues now that every input has been consumed.
+                    for (auto entity : inputView) {
+                        inputView.get<InputQueueComponent>(entity).inputs.clear();
+                    }
+                } else {
+                    // No inputs this tick — still advance the simulation so gravity,
+                    // dynamic bodies, and standing collision remain active.
+                    physicsSystem.update(kTickInterval);
                 }
             }
-
-            // ----- Step authoritative physics simulation -----
-            // PhysicsSystem reads kinematic TransformComponents → updates Bullet,
-            // then writes back dynamic body positions to TransformComponents.
-            physicsSystem.update(kTickInterval);
 
             // ----- Broadcast all entity snapshots from the registry -----
             auto view = registry.view<TransformComponent, NetworkIdComponent>();

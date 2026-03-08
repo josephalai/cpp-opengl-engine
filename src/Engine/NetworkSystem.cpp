@@ -69,6 +69,23 @@ void NetworkSystem::update(float deltaTime) {
     if (!client_) return;
 
     // -----------------------------------------------------------------
+    // 0. Apply smooth server reconciliation interpolation.
+    //    If a previous tick set hasReconcileTarget_, nudge the player
+    //    toward the server's authoritative position each frame.
+    // -----------------------------------------------------------------
+    if (hasReconcileTarget_ && localPlayer_) {
+        glm::vec3 cur    = localPlayer_->getPosition();
+        glm::vec3 newPos = glm::mix(cur, reconcileTarget_, kReconcileLerp);
+        localPlayer_->setPosition(newPos);
+        // Stop interpolating once we're close enough.
+        glm::vec3 remaining = reconcileTarget_ - newPos;
+        if (glm::dot(remaining, remaining) < 0.01f) {
+            localPlayer_->setPosition(reconcileTarget_);
+            hasReconcileTarget_ = false;
+        }
+    }
+
+    // -----------------------------------------------------------------
     // 1. Send the local player's input flags to the server.
     //    [Phase 3.2] The client NEVER sends its position/rotation over
     //    the wire.  Only raw button states and the camera yaw are sent.
@@ -203,18 +220,26 @@ void NetworkSystem::update(float deltaTime) {
 
                     if (snapshot.networkId == localPlayerId_) {
                         // === Server Reconciliation (local player) ===
-                        // The physics engine is authoritative on the client.
-                        // If the server disagrees significantly, snap the
-                        // player to the server's position.
+                        // Only correct if the server disagrees by more than
+                        // kReconcileThreshSq. Instead of a hard snap (which
+                        // causes a visible teleport), record the target and
+                        // smoothly LERP toward it across the next frames.
                         if (localPlayer_) {
                             glm::vec3 diff = snapshot.position - localPlayer_->getPosition();
                             float distSq = glm::dot(diff, diff);
-                            // Only correct if desync is > 5 units (avoids jitter).
-                            if (distSq > 25.0f) {
-                                localPlayer_->setPosition(snapshot.position);
+                            if (distSq > kReconcileThreshSq) {
+                                reconcileTarget_    = snapshot.position;
+                                hasReconcileTarget_ = true;
+                                // Mirror the server's rotation immediately; visual
+                                // rotation snapping is far less noticeable than
+                                // position teleporting.
                                 localPlayer_->setRotation(snapshot.rotation);
                                 std::cout << "[NetworkSystem] Server reconciliation — "
-                                             "snapped local player to server position.\n";
+                                             "lerping local player to server position.\n";
+                            } else {
+                                // Within threshold: cancel any pending reconciliation
+                                // so we don't fight the server over a tiny difference.
+                                hasReconcileTarget_ = false;
                             }
                         }
                     } else {

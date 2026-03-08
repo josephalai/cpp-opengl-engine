@@ -29,21 +29,18 @@ public:
     static constexpr float kGravity   = -50.0f;
     static constexpr float kJumpPower =  30.0f;
 
-    /// Apply a single input to position/rotation, including jump and gravity.
+    /// Apply a single input's horizontal movement and rotation.
     ///
-    /// @param input          The player input to apply.
-    /// @param position       [in/out] World-space position (modified in place).
-    /// @param rotation       [in/out] Euler angles in degrees (modified in place).
-    /// @param upwardsSpeed   [in/out] Current vertical velocity (m/s).  Must be
-    ///                       persisted between calls (i.e. across server ticks).
-    /// @param isInAir        [in/out] True while the entity is airborne.
-    /// @param terrainHeight  Optional terrain height at the current XZ position.
-    ///                       If provided (i.e. > kNoTerrainHeight), position.y is
-    ///                       clamped when the entity lands.
+    /// Vertical movement (gravity, jumping, terrain landing) is intentionally
+    /// omitted here: Bullet's btKinematicCharacterController owns the Y axis
+    /// and will apply world gravity + honour jump() calls autonomously.
+    /// SharedMovement is the source of truth for XZ displacement only.
+    ///
+    /// @param input     The player input to apply.
+    /// @param position  [in/out] World-space position (only X/Z modified).
+    /// @param rotation  [in/out] Euler angles in degrees (Y modified).
     static void applyInput(const Network::PlayerInputPacket& input,
-                           glm::vec3& position, glm::vec3& rotation,
-                           float& upwardsSpeed, bool& isInAir,
-                           float terrainHeight = kNoTerrainHeight);
+                           glm::vec3& position, glm::vec3& rotation);
 };
 
 #endif // ENGINE_SHARED_MOVEMENT_H

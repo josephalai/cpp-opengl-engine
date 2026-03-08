@@ -481,9 +481,14 @@ void PhysicsSystem::addCharacterController(entt::entity entity, float radius, fl
 
     data.controller = new btKinematicCharacterController(
         data.ghostObject, data.capsuleShape, 0.35f);
-    // Disable built-in gravity: SharedMovement handles vertical movement so
-    // that the server simulation stays bit-identical to the client prediction.
-    data.controller->setGravity(btVector3(0.0f, 0.0f, 0.0f));
+    // Let Bullet's world gravity drive vertical movement for this controller.
+    // SharedMovement only supplies horizontal intent; this makes the character
+    // land correctly on top of static geometry (trees, stalls) rather than
+    // only knowing about the flat terrain plane.
+    data.controller->setGravity(dynamicsWorld_->getGravity());
+    // Configure jump speed to match SharedMovement::kJumpPower (30 m/s).
+    // jumpCharacterController() calls jump(btVector3(0,0,0)) which uses this value.
+    data.controller->setJumpSpeed(30.0f); // must equal SharedMovement::kJumpPower
     dynamicsWorld_->addAction(data.controller);
 
     characterControllers_[key] = data;
@@ -494,6 +499,13 @@ void PhysicsSystem::setEntityWalkDirection(entt::entity entity, glm::vec3 walkDi
     if (it == characterControllers_.end()) return;
     it->second.controller->setWalkDirection(
         btVector3(walkDisplacement.x, walkDisplacement.y, walkDisplacement.z));
+}
+
+void PhysicsSystem::jumpCharacterController(entt::entity entity) {
+    auto it = characterControllers_.find(static_cast<uint32_t>(entity));
+    if (it == characterControllers_.end()) return;
+    if (it->second.controller->canJump())
+        it->second.controller->jump(btVector3(0.0f, 0.0f, 0.0f));
 }
 
 void PhysicsSystem::removeCharacterController(entt::entity entity) {

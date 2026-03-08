@@ -4,15 +4,11 @@
 #include <cmath>
 
 void SharedMovement::applyInput(const Network::PlayerInputPacket& input,
-                                glm::vec3& position, glm::vec3& rotation,
-                                float& upwardsSpeed, bool& isInAir,
-                                float terrainHeight) {
+                                glm::vec3& position, glm::vec3& rotation) {
     // --- Rotation — apply client's absolute camera yaw directly ---
-    // [Phase 3.2] Replaced incremental turn (input.turn * kTurnSpeed) with
-    // the authoritative cameraYaw sent by the client.
     rotation.y = input.cameraYaw;
 
-    // --- Translation ---
+    // --- Forward / backward translation ---
     float speed = 0.0f;
     if      (input.moveForward)  speed =  kRunSpeed;
     else if (input.moveBackward) speed = -kRunSpeed;
@@ -24,30 +20,17 @@ void SharedMovement::applyInput(const Network::PlayerInputPacket& input,
     position.x += distance * sinY;
     position.z += distance * cosY;
 
-    // --- Strafing (moveLeft / moveRight) — perpendicular to facing direction ---
+    // --- Strafing (left / right) ---
     float strafeSpeed = 0.0f;
     if      (input.moveLeft)  strafeSpeed = -kRunSpeed;
     else if (input.moveRight) strafeSpeed =  kRunSpeed;
 
     float strafeDistance = strafeSpeed * input.deltaTime;
-    // Perpendicular to forward: rotate facing direction 90°.
     position.x += strafeDistance *  cosY;
     position.z += strafeDistance * -sinY;
 
-    // --- Jump impulse ---
-    if (input.jump && !isInAir) {
-        upwardsSpeed = kJumpPower;
-        isInAir      = true;
-    }
-
-    // --- Gravity integration ---
-    upwardsSpeed += kGravity * input.deltaTime;
-    position.y   += upwardsSpeed * input.deltaTime;
-
-    // --- Terrain landing ---
-    if (terrainHeight > kNoTerrainHeight && position.y <= terrainHeight) {
-        upwardsSpeed = 0.0f;
-        position.y   = terrainHeight;
-        isInAir      = false;
-    }
+    // NOTE: vertical movement (gravity, jump, terrain landing) is intentionally
+    // absent.  Bullet's btKinematicCharacterController drives the Y axis; the
+    // server calls physicsSystem.jumpCharacterController(entity) when
+    // input.jump is true, and Bullet's world gravity handles falling.
 }

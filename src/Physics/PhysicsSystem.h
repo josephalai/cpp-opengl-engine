@@ -111,17 +111,20 @@ public:
 
     /// Register a Bullet kinematic character controller for the given entity.
     /// Reads initial position from the entity's TransformComponent.
-    /// The controller disables internal gravity — vertical movement is supplied
-    /// via setEntityWalkDirection so it stays in sync with SharedMovement.
+    /// Bullet's world gravity drives vertical movement; horizontal intent is
+    /// supplied via setEntityWalkDirection each tick.
     void addCharacterController(entt::entity entity,
                                 float radius = 0.5f,
                                 float height = 1.8f);
 
-    /// Set the intended displacement for the next physics step.
-    /// Call once per tick (before physicsSystem.update()) with the full 3-D
-    /// displacement computed by SharedMovement::applyInput() so Bullet can
-    /// resolve wall-sliding collisions while preserving the intended trajectory.
+    /// Set the intended horizontal displacement for the next physics step.
+    /// Only the XZ components of walkDisplacement are applied; Bullet's
+    /// built-in gravity controller handles the Y axis autonomously.
     void setEntityWalkDirection(entt::entity entity, glm::vec3 walkDisplacement);
+
+    /// Trigger a jump on the entity's character controller.
+    /// No-ops if the controller is already airborne (canJump() returns false).
+    void jumpCharacterController(entt::entity entity);
 
     /// Remove and destroy the character controller for the given entity.
     /// Must be called before registry.destroy(entity).
