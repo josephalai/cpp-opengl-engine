@@ -226,6 +226,18 @@ void NetworkSystem::update(float deltaTime) {
                         // smoothly LERP toward it across the next frames.
                         if (localPlayer_) {
                             glm::vec3 diff = snapshot.position - localPlayer_->getPosition();
+
+                            // Apply a Y-axis dead-zone to absorb floating-point
+                            // imprecision between the client's Bullet simulation
+                            // and the server's (they run at different tick rates
+                            // and may disagree on vertical position by up to
+                            // ~0.5 units).  A small height difference is NOT a
+                            // genuine desync — ignoring it prevents the constant
+                            // up-and-down "bounce" caused by Y jitter.
+                            if (std::abs(diff.y) < kReconcileYEpsilon) {
+                                diff.y = 0.0f;
+                            }
+
                             float distSq = glm::dot(diff, diff);
                             if (distSq > kReconcileThreshSq) {
                                 reconcileTarget_    = snapshot.position;
@@ -234,8 +246,13 @@ void NetworkSystem::update(float deltaTime) {
                                 // rotation snapping is far less noticeable than
                                 // position teleporting.
                                 localPlayer_->setRotation(snapshot.rotation);
-                                std::cout << "[NetworkSystem] Server reconciliation — "
-                                             "lerping local player to server position.\n";
+                                // Only log for significant desyncs (> 1 unit) to
+                                // avoid spamming the console with normal
+                                // floating-point physics divergence.
+                                if (distSq > 1.0f) {
+                                    std::cout << "[NetworkSystem] Server reconciliation — "
+                                                 "lerping local player to server position.\n";
+                                }
                             } else {
                                 // Within threshold: cancel any pending reconciliation
                                 // so we don't fight the server over a tiny difference.

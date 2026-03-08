@@ -91,8 +91,14 @@ private:
     // we do NOT hard-snap the player (which causes visible teleporting). Instead
     // we store the server's authoritative position and smoothly LERP toward it
     // over the next several frames in update().
-    static constexpr float kReconcileThreshSq = 0.1f; ///< squared-distance threshold
-    static constexpr float kReconcileLerp     = 0.3f; ///< alpha per frame toward server
+    static constexpr float kReconcileThreshSq = 0.25f; ///< squared-distance threshold (~0.5 u)
+    // kReconcileYEpsilon: Y-axis dead-zone.  The server (Bullet) and client
+    // (Bullet) run at different tick rates and can disagree on vertical position
+    // by up to ~0.5 units due to gravity micro-steps and terrain-snapping float
+    // imprecision.  Zero-out any Y difference smaller than this so it never
+    // contributes to the distance check — preventing constant Y-axis jitter.
+    static constexpr float kReconcileYEpsilon = 0.5f;  ///< Y dead-zone (units)
+    static constexpr float kReconcileLerp     = 0.3f;  ///< alpha per frame toward server
     glm::vec3 reconcileTarget_    = {};
     bool      hasReconcileTarget_ = false;
 };
