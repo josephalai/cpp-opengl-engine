@@ -125,15 +125,33 @@ void PhysicsSystem::update(float deltaTime) {
 
     // Sync ECS character controllers: ghost transform → TransformComponent.
     // Done on both client and server — server uses this for all players/NPCs.
+    // IMPORTANT: Only the horizontal (XZ) position is taken from Bullet.
+    // The vertical (Y) axis is owned by SharedMovement (terrain-clamped,
+    // gravity-integrated).  Overwriting tc->position.y from the ghost would
+    // fight SharedMovement and cause the bounce/float bug.
+    // After updating XZ we re-anchor the ghost at the correct terrain Y so
+    // Bullet's collision sweeps remain accurate relative to static geometry.
     for (auto& [key, data] : characterControllers_) {
         if (!data.ghostObject) continue;
         entt::entity entity = static_cast<entt::entity>(key);
         const btTransform& t = data.ghostObject->getWorldTransform();
-        glm::vec3 pos = btToGlm(t.getOrigin());
-        pos.y -= data.capsuleHalfHeight;  // ghost origin is at capsule centre; entity position is at feet
+        glm::vec3 bulletPos = btToGlm(t.getOrigin());
         if (registry_ && entity != entt::null) {
             if (auto* tc = registry_->try_get<TransformComponent>(entity)) {
-                tc->position = pos;
+                // Accept horizontal correction from Bullet (wall-sliding).
+                tc->position.x = bulletPos.x;
+                tc->position.z = bulletPos.z;
+                // tc->position.y is intentionally preserved — SharedMovement owns it.
+
+                // Re-anchor the ghost so the capsule hovers at the correct
+                // terrain-derived height.  Without this the ghost slowly drifts
+                // away from the logical position and starts missing wall collisions.
+                btTransform correctedT = t;
+                correctedT.setOrigin(btVector3(
+                    bulletPos.x,
+                    tc->position.y + data.capsuleHalfHeight,
+                    bulletPos.z));
+                data.ghostObject->setWorldTransform(correctedT);
             }
         }
     }
@@ -481,14 +499,14 @@ void PhysicsSystem::addCharacterController(entt::entity entity, float radius, fl
 
     data.controller = new btKinematicCharacterController(
         data.ghostObject, data.capsuleShape, 0.35f);
-    // Let Bullet's world gravity drive vertical movement for this controller.
-    // SharedMovement only supplies horizontal intent; this makes the character
-    // land correctly on top of static geometry (trees, stalls) rather than
-    // only knowing about the flat terrain plane.
-    data.controller->setGravity(dynamicsWorld_->getGravity());
-    // Configure jump speed to match SharedMovement::kJumpPower (30 m/s).
-    // jumpCharacterController() calls jump(btVector3(0,0,0)) which uses this value.
-    data.controller->setJumpSpeed(30.0f); // must equal SharedMovement::kJumpPower
+    // Disable Bullet's gravity for character controllers.  SharedMovement now
+    // owns the Y axis exclusively — it applies deterministic gravity, jumping,
+    // and terrain clamping using the actual heightmap.  Bullet only resolves
+    // horizontal (XZ) wall-sliding and collision response.  If Bullet gravity
+    // were enabled here, the server's flat ground plane (Y=0) would constantly
+    // fight the client's terrain-clamped heights, causing oscillating Y values
+    // and a flood of server-reconciliation corrections.
+    data.controller->setGravity(btVector3(0.0f, 0.0f, 0.0f));
     dynamicsWorld_->addAction(data.controller);
 
     characterControllers_[key] = data;

@@ -649,21 +649,20 @@ int main() {
             }
 
             // ----- [Phase 3.3 / Physics] Drain entity input queues -----
-            // Fix 3: Per-input physics stepping.
+            // Architecture:
+            //   SharedMovement owns the Y axis (gravity, jumping, terrain
+            //   clamping).  Bullet owns only the XZ axes (wall-sliding).
             //
-            // Previously: accumulate all N inputs per entity into one displacement
-            // vector → ONE 100ms Bullet step.  This caused wall-sliding and corner
-            // collisions to be resolved very differently on the server (one big 100ms
-            // sweep) vs. the client (N small ~16ms sweeps).
+            //   Per input slot the server:
+            //     1. Calls SharedMovement::applyInput (full overload) which
+            //        updates XZ and applies gravity / terrain-clamped Y.
+            //     2. Feeds only the XZ displacement to Bullet.
+            //     3. Bullet's update writes corrected XZ back to tc.position
+            //        but leaves tc.position.y untouched (see PhysicsSystem::update).
             //
-            // Now: transpose the entity × input loops. For each input slot i across
-            // all entities, apply that input to every entity that has one, then step
-            // Bullet by the corresponding deltaTime slice. Bullet resolves each small
-            // step incrementally, matching the client's per-frame behaviour.
-            //
-            // Fix 4: SharedMovement is now horizontal-only; Bullet's built-in
-            // gravity handles Y via world gravity. Jumps are triggered directly on
-            // the character controller when input.jump is true.
+            //   The transposed entity × input loop is preserved so each
+            //   input triggers a small Bullet sub-step — giving accurate
+            //   per-frame XZ wall-sliding, matching the client's behaviour.
             {
                 auto inputView = registry.view<TransformComponent,
                                                NetworkIdComponent,
@@ -692,27 +691,42 @@ int main() {
                             if (inp.sequenceNumber > nidComp.lastInputSeq)
                                 nidComp.lastInputSeq = inp.sequenceNumber;
 
-                            if (physicsSystem.hasCharacterController(entity)) {
-                                // Compute horizontal displacement for this single input.
-                                glm::vec3 prevPos = tc.position;
-                                SharedMovement::applyInput(inp, tc.position, tc.rotation);
-                                glm::vec3 disp = tc.position - prevPos;
-                                tc.position = prevPos; // revert; ghost sync writes authoritative pos
+                            // Query terrain height at current XZ for clamping.
+                            float th = terrain.valid
+                                ? terrain.getHeight(tc.position.x, tc.position.z)
+                                : SharedMovement::kNoTerrainHeight;
 
-                                // Only XZ displacement passed; Bullet owns vertical.
+                            if (physicsSystem.hasCharacterController(entity)) {
+                                // Apply full movement (XZ + Y) through SharedMovement.
+                                // Y is authoritative after this call.
+                                glm::vec3 prevPos = tc.position;
+                                SharedMovement::applyInput(inp, tc.position, tc.rotation,
+                                                           queue.upwardsSpeed,
+                                                           queue.isInAir, th);
+
+                                // Feed only XZ displacement to Bullet for wall-sliding.
+                                // tc.position.y remains as set by SharedMovement;
+                                // PhysicsSystem::update() will NOT overwrite it.
+                                glm::vec3 disp = tc.position - prevPos;
+                                tc.position.x = prevPos.x;
+                                tc.position.z = prevPos.z;
+
                                 physicsSystem.setEntityWalkDirection(entity,
                                     glm::vec3(disp.x, 0.0f, disp.z));
-
-                                // Trigger a jump impulse when requested and grounded.
-                                if (inp.jump)
-                                    physicsSystem.jumpCharacterController(entity);
+                                // Jump is handled by SharedMovement (upwardsSpeed).
+                                // Do NOT call jumpCharacterController here — Bullet
+                                // gravity is disabled so its jump would have no effect.
                             } else {
-                                // Fallback (no character controller): apply horizontal only.
-                                SharedMovement::applyInput(inp, tc.position, tc.rotation);
+                                // Fallback (no character controller): apply full
+                                // movement directly — SharedMovement owns Y here too.
+                                SharedMovement::applyInput(inp, tc.position, tc.rotation,
+                                                           queue.upwardsSpeed,
+                                                           queue.isInAir, th);
                             }
                         }
 
                         // Step Bullet forward by one input-sized slice.
+                        // Bullet only resolves XZ (wall-sliding); Y is unchanged.
                         physicsSystem.update(subDt);
                     }
 
@@ -721,8 +735,8 @@ int main() {
                         inputView.get<InputQueueComponent>(entity).inputs.clear();
                     }
                 } else {
-                    // No inputs this tick — still advance the simulation so gravity,
-                    // dynamic bodies, and standing collision remain active.
+                    // No inputs this tick — still advance the simulation so
+                    // dynamic bodies and standing XZ collisions remain active.
                     physicsSystem.update(kTickInterval);
                 }
             }

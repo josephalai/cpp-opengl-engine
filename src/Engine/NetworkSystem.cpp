@@ -227,26 +227,17 @@ void NetworkSystem::update(float deltaTime) {
                         if (localPlayer_) {
                             glm::vec3 diff = snapshot.position - localPlayer_->getPosition();
 
-                            // Build the reconcile target, defaulting to the
-                            // full server position.  The Y component is handled
-                            // carefully below to avoid fighting with
-                            // PlayerMovementSystem's terrain-snapping logic.
+                            // Both client (PlayerMovementSystem) and server
+                            // (SharedMovement full overload) now derive Y from
+                            // the same deterministic terrain-clamped logic.
+                            // Any residual floating-point difference in Y must
+                            // never trigger reconciliation — always zero it out
+                            // and preserve the client's own Y in the reconcile
+                            // target to prevent the lerp from fighting
+                            // PlayerMovementSystem's terrain snap.
+                            diff.y = 0.0f;
                             glm::vec3 target = snapshot.position;
-
-                            // Apply a Y-axis dead-zone to absorb floating-point
-                            // imprecision between the client's terrain math and
-                            // the server's Bullet simulation (they can disagree
-                            // on vertical position by a small margin).  When the
-                            // Y difference is within the dead-zone we zero it
-                            // out for the distance check AND preserve the
-                            // client's own Y in the reconcile target.  This
-                            // prevents the lerp from fighting PlayerMovementSystem
-                            // which snaps Y back to terrain height every frame,
-                            // which would otherwise cause a persistent bounce.
-                            if (std::abs(diff.y) < kReconcileYEpsilon) {
-                                diff.y   = 0.0f;
-                                target.y = localPlayer_->getPosition().y;
-                            }
+                            target.y = localPlayer_->getPosition().y;
 
                             float distSq = glm::dot(diff, diff);
                             if (distSq > kReconcileThreshSq) {

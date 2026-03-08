@@ -87,17 +87,14 @@ private:
     uint32_t  inputSequenceNumber_ = 0;
 
     // --- Server reconciliation ---
-    // When the server disagrees with our position by more than kReconcileThresh²
-    // we do NOT hard-snap the player (which causes visible teleporting). Instead
-    // we store the server's authoritative position and smoothly LERP toward it
-    // over the next several frames in update().
-    static constexpr float kReconcileThreshSq = 0.25f; ///< squared-distance threshold (~0.5 u)
-    // kReconcileYEpsilon: Y-axis dead-zone.  The server (Bullet) and client
-    // (Bullet) run at different tick rates and can disagree on vertical position
-    // by up to ~0.5 units due to gravity micro-steps and terrain-snapping float
-    // imprecision.  Zero-out any Y difference smaller than this so it never
-    // contributes to the distance check — preventing constant Y-axis jitter.
-    static constexpr float kReconcileYEpsilon = 0.5f;  ///< Y dead-zone (units)
+    // When the server disagrees with our XZ position by more than
+    // kReconcileThreshSq we do NOT hard-snap the player (which causes visible
+    // teleporting). Instead we store the server's authoritative XZ and smoothly
+    // LERP toward it over the next several frames in update().
+    // Y is intentionally excluded from reconciliation: both sides compute Y
+    // from the same deterministic SharedMovement terrain-clamped logic, so Y
+    // differences are floating-point noise and must never trigger corrections.
+    static constexpr float kReconcileThreshSq = 0.25f; ///< squared XZ distance threshold (~0.5 u)
     static constexpr float kReconcileLerp     = 0.3f;  ///< alpha per frame toward server
     glm::vec3 reconcileTarget_    = {};
     bool      hasReconcileTarget_ = false;

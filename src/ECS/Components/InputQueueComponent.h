@@ -21,11 +21,17 @@
 /// Buffers incoming PlayerInputPackets for an entity until the next server tick.
 /// Drained and cleared during the authoritative movement step.
 ///
-/// Vertical physics state (upwardsSpeed, isInAir) is no longer stored here:
-/// Bullet's btKinematicCharacterController is now authoritative for the Y axis
-/// via world gravity and jumpCharacterController().
+/// Vertical physics state (upwardsSpeed, isInAir) is stored here so that
+/// gravity accumulation and jump arcs persist smoothly across ticks.
+/// SharedMovement::applyInput (full overload) owns these fields exclusively;
+/// Bullet is only used for horizontal (XZ) wall-sliding.
 struct InputQueueComponent {
     std::vector<Network::PlayerInputPacket> inputs;
+
+    /// Authoritative vertical velocity (m/s). Integrates gravity each input.
+    float upwardsSpeed = 0.0f;
+    /// True when the entity is airborne (between a jump and landing).
+    bool  isInAir      = false;
 };
 
 #endif // ECS_INPUTQUEUECOMPONENT_H

@@ -28,9 +28,31 @@ void SharedMovement::applyInput(const Network::PlayerInputPacket& input,
     float strafeDistance = strafeSpeed * input.deltaTime;
     position.x += strafeDistance *  cosY;
     position.z += strafeDistance * -sinY;
+}
 
-    // NOTE: vertical movement (gravity, jump, terrain landing) is intentionally
-    // absent.  Bullet's btKinematicCharacterController drives the Y axis; the
-    // server calls physicsSystem.jumpCharacterController(entity) when
-    // input.jump is true, and Bullet's world gravity handles falling.
+void SharedMovement::applyInput(const Network::PlayerInputPacket& input,
+                                glm::vec3& position, glm::vec3& rotation,
+                                float& upwardsSpeed, bool& isInAir,
+                                float terrainHeight) {
+    // --- XZ movement and rotation (delegates to the simple overload) ---
+    applyInput(input, position, rotation);
+
+    // --- Vertical physics ---
+
+    // Jump: only when grounded and the jump key was pressed this input.
+    if (input.jump && !isInAir) {
+        upwardsSpeed = kJumpPower;
+        isInAir      = true;
+    }
+
+    // Gravity accumulation and vertical displacement.
+    upwardsSpeed += kGravity * input.deltaTime;
+    position.y   += upwardsSpeed * input.deltaTime;
+
+    // Terrain clamping — land when feet reach or pass through the surface.
+    if (terrainHeight != kNoTerrainHeight && position.y <= terrainHeight) {
+        upwardsSpeed = 0.0f;
+        position.y   = terrainHeight;
+        isInAir      = false;
+    }
 }

@@ -29,18 +29,39 @@ public:
     static constexpr float kGravity   = -50.0f;
     static constexpr float kJumpPower =  30.0f;
 
-    /// Apply a single input's horizontal movement and rotation.
+    /// Apply a single input's horizontal movement and rotation (XZ only).
     ///
-    /// Vertical movement (gravity, jumping, terrain landing) is intentionally
-    /// omitted here: Bullet's btKinematicCharacterController owns the Y axis
-    /// and will apply world gravity + honour jump() calls autonomously.
-    /// SharedMovement is the source of truth for XZ displacement only.
+    /// This lightweight overload modifies only position.x / position.z and
+    /// rotation.y.  The Y axis is intentionally untouched — use the full
+    /// overload below when vertical physics are needed.
     ///
     /// @param input     The player input to apply.
-    /// @param position  [in/out] World-space position (only X/Z modified).
+    /// @param position  [in/out] World-space position (only XZ modified).
     /// @param rotation  [in/out] Euler angles in degrees (Y modified).
     static void applyInput(const Network::PlayerInputPacket& input,
                            glm::vec3& position, glm::vec3& rotation);
+
+    /// Apply a single input's full movement: XZ translation, rotation, gravity,
+    /// jumping, and terrain clamping.
+    ///
+    /// SharedMovement is the single authoritative source for the Y axis on both
+    /// the server and the client.  Bullet Physics is used only for horizontal
+    /// (XZ) wall-sliding; its gravity is disabled so it never fights the
+    /// terrain-clamped heights this function produces.
+    ///
+    /// @param input         The player input to apply.
+    /// @param position      [in/out] World-space position (XZ and Y modified).
+    /// @param rotation      [in/out] Euler angles in degrees (Y modified).
+    /// @param upwardsSpeed  [in/out] Vertical velocity (m/s). Persists across calls
+    ///                      so gravity accumulates and jump arcs are smooth.
+    /// @param isInAir       [in/out] Whether the entity is currently airborne.
+    /// @param terrainHeight Terrain Y at the entity's XZ position, used for
+    ///                      landing detection.  Pass kNoTerrainHeight to skip
+    ///                      terrain clamping (entity will free-fall indefinitely).
+    static void applyInput(const Network::PlayerInputPacket& input,
+                           glm::vec3& position, glm::vec3& rotation,
+                           float& upwardsSpeed, bool& isInAir,
+                           float terrainHeight);
 };
 
 #endif // ENGINE_SHARED_MOVEMENT_H
