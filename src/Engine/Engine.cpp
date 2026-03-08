@@ -564,7 +564,10 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
         remoteAe->controller   = remoteCtrl;
         remoteAe->position     = position;
         remoteAe->scale        = animatedEntities[0]->scale;
-        remoteAe->modelOffset  = glm::vec3(0.0f);  // No physics capsule offset
+        
+        // MATCH the local player's offset so they sit at the exact same height visually
+        remoteAe->modelOffset  = animatedEntities[0]->modelOffset;  
+        
         remoteAe->isLocalPlayer = false;
         remoteAe->pairedEntity  = ent;
 

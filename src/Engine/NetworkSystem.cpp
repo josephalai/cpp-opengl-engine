@@ -70,17 +70,27 @@ void NetworkSystem::update(float deltaTime) {
 
     // -----------------------------------------------------------------
     // 0. Apply smooth server reconciliation interpolation.
-    //    If a previous tick set hasReconcileTarget_, nudge the player
-    //    toward the server's authoritative position each frame.
     // -----------------------------------------------------------------
     if (hasReconcileTarget_ && localPlayer_) {
-        glm::vec3 cur    = localPlayer_->getPosition();
-        glm::vec3 newPos = glm::mix(cur, reconcileTarget_, kReconcileLerp);
-        localPlayer_->setPosition(newPos);
-        // Stop interpolating once we're close enough.
-        glm::vec3 remaining = reconcileTarget_ - newPos;
+        glm::vec3 cur = localPlayer_->getPosition();
+
+        // 1. Lerp XZ horizontally (always trust the server's XZ)
+        cur.x = glm::mix(cur.x, reconcileTarget_.x, kReconcileLerp);
+        cur.z = glm::mix(cur.z, reconcileTarget_.z, kReconcileLerp);
+
+        // 2. Threshold Y (Mask Bullet's collision margin discrepancies)
+        float yDiff = std::abs(cur.y - reconcileTarget_.y);
+        if (yDiff > 0.15f) { // Only correct Y if it's a real desync (e.g. jumping/falling)
+            cur.y = glm::mix(cur.y, reconcileTarget_.y, kReconcileLerp * 0.5f); // Softer vertical lerp
+        }
+
+        localPlayer_->setPosition(cur);
+
+        // Stop interpolating once we're close enough on the XZ plane
+        glm::vec3 remaining = reconcileTarget_ - cur;
+        remaining.y = 0.0f; // Ignore Y for the cancellation check
+        
         if (glm::dot(remaining, remaining) < 0.01f) {
-            localPlayer_->setPosition(reconcileTarget_);
             hasReconcileTarget_ = false;
         }
     }
@@ -226,20 +236,18 @@ void NetworkSystem::update(float deltaTime) {
                         // smoothly LERP toward it across the next frames.
                         if (localPlayer_) {
                             glm::vec3 diff = snapshot.position - localPlayer_->getPosition();
+                            
+                            // Ignore tiny vertical discrepancies when deciding to reconcile
+                            if (std::abs(diff.y) < 0.15f) {
+                                diff.y = 0.0f; 
+                            }
+                            
                             float distSq = glm::dot(diff, diff);
                             if (distSq > kReconcileThreshSq) {
                                 reconcileTarget_    = snapshot.position;
                                 hasReconcileTarget_ = true;
-                                // Mirror the server's rotation immediately; visual
-                                // rotation snapping is far less noticeable than
-                                // position teleporting.
                                 localPlayer_->setRotation(snapshot.rotation);
-                                std::cout << "[NetworkSystem] Server reconciliation — "
-                                             "lerping local player to server position.\n";
-                            } else {
-                                // Within threshold: cancel any pending reconciliation
-                                // so we don't fight the server over a tiny difference.
-                                hasReconcileTarget_ = false;
+                                std::cout << "[NetworkSystem] Server reconciliation triggered.\n";
                             }
                         }
                     } else {
