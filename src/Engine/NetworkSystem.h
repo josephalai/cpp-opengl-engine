@@ -94,8 +94,15 @@ private:
     // Y is intentionally excluded from reconciliation: both sides compute Y
     // from the same deterministic SharedMovement terrain-clamped logic, so Y
     // differences are floating-point noise and must never trigger corrections.
-    static constexpr float kReconcileThreshSq = 0.25f; ///< squared XZ distance threshold (~0.5 u)
-    static constexpr float kReconcileLerp     = 0.3f;  ///< alpha per frame toward server
+    //
+    // The epsilon of 0.5f (0.25f squared) is generous enough that minor
+    // floating-point terrain height differences between client and server
+    // never trigger a correction. Only genuine XZ desyncs (wall-collision
+    // disagreement, rubber-band lag > 0.5 u) will cross the threshold.
+    static constexpr float kReconciliationEpsilon = 0.5f;    ///< XZ distance that counts as a genuine desync
+    static constexpr float kReconcileThreshSq = kReconciliationEpsilon
+                                                * kReconciliationEpsilon;
+    static constexpr float kReconcileLerp     = 0.1f;  ///< alpha per frame toward server (gentle to avoid fighting movement)
     glm::vec3 reconcileTarget_    = {};
     bool      hasReconcileTarget_ = false;
 };

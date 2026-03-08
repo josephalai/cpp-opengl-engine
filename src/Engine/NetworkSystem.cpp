@@ -71,16 +71,33 @@ void NetworkSystem::update(float deltaTime) {
     // -----------------------------------------------------------------
     // 0. Apply smooth server reconciliation interpolation.
     //    If a previous tick set hasReconcileTarget_, nudge the player
-    //    toward the server's authoritative position each frame.
+    //    toward the server's authoritative XZ position each frame.
+    //
+    //    Y is intentionally excluded from reconciliation: PlayerMovementSystem
+    //    owns the Y axis (terrain-clamped gravity).  Letting the LERP touch Y
+    //    would interpolate toward a stale terrain height from the previous
+    //    frame, causing the character to float above the ground on any slope
+    //    and creating a gravity/LERP bounce oscillation.
     // -----------------------------------------------------------------
     if (hasReconcileTarget_ && localPlayer_) {
         glm::vec3 cur    = localPlayer_->getPosition();
+        // Keep reconcileTarget_ Y fresh so the final snap never uses a stale
+        // terrain height from an earlier frame.
+        reconcileTarget_.y = cur.y;
+
         glm::vec3 newPos = glm::mix(cur, reconcileTarget_, kReconcileLerp);
+        // Always restore terrain-clamped Y — only XZ is reconciled.
+        newPos.y = cur.y;
         localPlayer_->setPosition(newPos);
-        // Stop interpolating once we're close enough.
+
+        // Convergence check — XZ only (Y is always preserved above).
         glm::vec3 remaining = reconcileTarget_ - newPos;
+        remaining.y = 0.0f;
         if (glm::dot(remaining, remaining) < 0.01f) {
-            localPlayer_->setPosition(reconcileTarget_);
+            // Final XZ snap; keep the current terrain Y.
+            glm::vec3 finalPos = reconcileTarget_;
+            finalPos.y = cur.y;
+            localPlayer_->setPosition(finalPos);
             hasReconcileTarget_ = false;
         }
     }
@@ -221,7 +238,7 @@ void NetworkSystem::update(float deltaTime) {
                     if (snapshot.networkId == localPlayerId_) {
                         // === Server Reconciliation (local player) ===
                         // Only correct if the server disagrees by more than
-                        // kReconcileThreshSq. Instead of a hard snap (which
+                        // kReconcileThreshSq in XZ. Instead of a hard snap (which
                         // causes a visible teleport), record the target and
                         // smoothly LERP toward it across the next frames.
                         if (localPlayer_) {
@@ -230,11 +247,8 @@ void NetworkSystem::update(float deltaTime) {
                             // Both client (PlayerMovementSystem) and server
                             // (SharedMovement full overload) now derive Y from
                             // the same deterministic terrain-clamped logic.
-                            // Any residual floating-point difference in Y must
-                            // never trigger reconciliation — always zero it out
-                            // and preserve the client's own Y in the reconcile
-                            // target to prevent the lerp from fighting
-                            // PlayerMovementSystem's terrain snap.
+                            // Zero Y so terrain floating-point noise never
+                            // triggers a correction; the LERP also preserves Y.
                             diff.y = 0.0f;
                             glm::vec3 target = snapshot.position;
                             target.y = localPlayer_->getPosition().y;
@@ -247,10 +261,11 @@ void NetworkSystem::update(float deltaTime) {
                                 // rotation snapping is far less noticeable than
                                 // position teleporting.
                                 localPlayer_->setRotation(snapshot.rotation);
-                                // Only log for significant desyncs (> 1 unit) to
-                                // avoid spamming the console with normal
-                                // floating-point physics divergence.
-                                if (distSq > 1.0f) {
+                                // Only log when the desync exceeds 1 unit (XZ only,
+                                // Y already zeroed above) to avoid spamming the
+                                // console with sub-unit floating-point divergence.
+                                float desyncDistance = std::sqrt(distSq);
+                                if (desyncDistance > 1.0f) {
                                     std::cout << "[NetworkSystem] Server reconciliation — "
                                                  "lerping local player to server position.\n";
                                 }
