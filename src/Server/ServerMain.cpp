@@ -244,34 +244,48 @@ static void loadHeadlessScene(entt::registry& registry,
     // ---- Helper: spawn one scene entity with a Bullet body ----------------
     int staticCount = 0, dynamicCount = 0;
     auto spawnSceneBody = [&](const std::string& alias,
-                               float x, float y, float z, float ry) {
+                               float x, float y, float z, float ry,
+                               float scale = 1.0f) {
         auto it = physBodies.find(alias);
         if (it == physBodies.end()) return;
         const auto& cfg = it->second;
 
         auto entity = registry.create();
         registry.emplace<TransformComponent>(entity,
-            TransformComponent{glm::vec3(x, y, z), glm::vec3(0.0f, ry, 0.0f), 1.0f});
+            TransformComponent{glm::vec3(x, y, z), glm::vec3(0.0f, ry, 0.0f), scale});
 
         ColliderShape colShape = ColliderShape::Box;
         if (cfg.shape == "sphere")  colShape = ColliderShape::Sphere;
         if (cfg.shape == "capsule") colShape = ColliderShape::Capsule;
+
+        // Scale all dimensions so the Bullet shape matches the rendered model.
+        glm::vec3 scaledHalfExtents = cfg.halfExtents * scale;
+        float     scaledRadius      = cfg.radius      * scale;
+        float     scaledHeight      = cfg.height      * scale;
 
         if (cfg.type == "dynamic") {
             PhysicsBodyDef def;
             def.type        = BodyType::Dynamic;
             def.shape       = colShape;
             def.mass        = cfg.mass;
-            def.halfExtents = cfg.halfExtents;
-            def.radius      = cfg.radius;
-            def.height      = cfg.height;
+            def.halfExtents = scaledHalfExtents;
+            def.radius      = scaledRadius;
+            def.height      = scaledHeight;
             def.friction    = cfg.friction;
             def.restitution = cfg.restitution;
             physics.addDynamicBody(entity, def);
             ++dynamicCount;
         } else {
-            physics.addStaticBody(entity, colShape,
-                                  cfg.halfExtents, cfg.friction, cfg.restitution);
+            PhysicsBodyDef def;
+            def.type        = BodyType::Static;
+            def.shape       = colShape;
+            def.mass        = 0.0f;
+            def.halfExtents = scaledHalfExtents;
+            def.radius      = scaledRadius;
+            def.height      = scaledHeight;
+            def.friction    = cfg.friction;
+            def.restitution = cfg.restitution;
+            physics.addDynamicBody(entity, def);
             ++staticCount;
         }
     };
@@ -280,11 +294,12 @@ static void loadHeadlessScene(entt::registry& registry,
     if (root.contains("entities") && root["entities"].is_array()) {
         for (auto& e : root["entities"]) {
             std::string alias = e.value("alias", "");
-            float x  = e.value("x",  0.0f);
-            float z  = e.value("z",  0.0f);
-            float ry = e.value("ry", 0.0f);
-            float y  = parseY(e, x, z);
-            spawnSceneBody(alias, x, y, z, ry);
+            float x     = e.value("x",     0.0f);
+            float z     = e.value("z",     0.0f);
+            float ry    = e.value("ry",    0.0f);
+            float scale = e.value("scale", 1.0f);
+            float y     = parseY(e, x, z);
+            spawnSceneBody(alias, x, y, z, ry, scale);
         }
     }
 
@@ -318,8 +333,13 @@ static void loadHeadlessScene(entt::registry& registry,
                     float z  = std::floor(rz * -800.f);
                     float y  = terrain.valid ? terrain.getHeight(x, z) : 0.0f;
                     float ry = (rr * 100.f - 50.f) * 180.0f;
-                    (void)rs; // scale not needed for physics
-                    spawnSceneBody(alias, x, y, z, ry);
+                    // Mirror gRandomScale() from SceneLoaderJson so the physics shape
+                    // matches the visual scale of each randomly-placed entity.
+                    float multiplier = (scaleMax > 1.0f) ? std::ceil(scaleMax) : 1.0f;
+                    float scale = rs * multiplier;
+                    if (scale < scaleMin) scale = scaleMin;
+                    if (scale > scaleMax) scale = scaleMax;
+                    spawnSceneBody(alias, x, y, z, ry, scale);
                 }
             }
         }
