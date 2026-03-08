@@ -53,7 +53,7 @@ static constexpr int   kMaxClients   = 32;
 static constexpr int   kChannelCount = 2;
 static constexpr float kTickInterval = 0.1f;   // 100 ms = 10 Hz
 static constexpr float kTerrainSize  = 800.0f;
-
+static constexpr float kCapsuleHalfHeight = (1.8f / 2.0f) + 0.5f; // 1.4f
 // ---------------------------------------------------------------------------
 // Graceful shutdown on SIGINT / SIGTERM
 // ---------------------------------------------------------------------------
@@ -471,7 +471,7 @@ int main() {
             uint32_t nid = nextNetworkId++;
             glm::vec3 pos = d.startPos;
             if (terrain.valid)
-                pos.y = terrain.getHeight(pos.x, pos.z);
+                pos.y = terrain.getHeight(pos.x, pos.z) + kCapsuleHalfHeight;
 
             auto entity = spawnEntity(registry, nid, pos, d.modelType, /*isNPC=*/true);
             networkIdToEntity[nid] = entity;
@@ -507,7 +507,7 @@ int main() {
 
                 glm::vec3 spawnPos(100.0f, 3.0f, -80.0f);
                 if (terrain.valid)
-                    spawnPos.y = terrain.getHeight(spawnPos.x, spawnPos.z);
+                    spawnPos.y = terrain.getHeight(spawnPos.x, spawnPos.z) + kCapsuleHalfHeight;
 
                 auto entity = spawnEntity(registry, newId, spawnPos, "player");
                 networkIdToEntity[newId] = entity;
@@ -636,6 +636,24 @@ int main() {
         if (elapsed >= kTickInterval) {
             lastTick = now;
             serverTime += kTickInterval;
+
+            // --- NEW: 5-Second Player Position Logging ---
+            static float logTimer = 0.0f;
+            logTimer += kTickInterval;
+            if (logTimer >= 5.0f) {
+                logTimer = 0.0f;
+                std::cout << "\n--- [Server] Player Positions (5s Tick) ---\n";
+                auto view = registry.view<TransformComponent, NetworkIdComponent>();
+                for (auto entity : view) {
+                    auto& tc = view.get<TransformComponent>(entity);
+                    auto& nid = view.get<NetworkIdComponent>(entity);
+                    if (!nid.isNPC) {
+                        std::cout << "Client " << nid.id << " at position ("
+                                  << tc.position.x << ", " << tc.position.y << ", " << tc.position.z << ")\n";
+                    }
+                }
+                std::cout << "-------------------------------------------\n";
+            }
 
             // ----- NPC AI tick — generate synthetic inputs -----
             std::unordered_map<uint32_t, Network::PlayerInputPacket> npcInputs;

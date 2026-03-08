@@ -229,15 +229,9 @@ void NetworkSystem::update(float deltaTime) {
                     std::memcpy(&snapshot, payload, sizeof(snapshot));
 
                     if (snapshot.networkId == localPlayerId_) {
-                        // === Server Reconciliation (local player) ===
-                        // Only correct if the server disagrees by more than
-                        // kReconcileThreshSq. Instead of a hard snap (which
-                        // causes a visible teleport), record the target and
-                        // smoothly LERP toward it across the next frames.
                         if (localPlayer_) {
                             glm::vec3 diff = snapshot.position - localPlayer_->getPosition();
                             
-                            // Ignore tiny vertical discrepancies when deciding to reconcile
                             if (std::abs(diff.y) < 0.15f) {
                                 diff.y = 0.0f; 
                             }
@@ -247,7 +241,14 @@ void NetworkSystem::update(float deltaTime) {
                                 reconcileTarget_    = snapshot.position;
                                 hasReconcileTarget_ = true;
                                 localPlayer_->setRotation(snapshot.rotation);
-                                std::cout << "[NetworkSystem] Server reconciliation triggered.\n";
+                                
+                                // FIX: Detailed Client-side logging
+                                std::cout << "[NetworkSystem] Server reconciliation triggered.\n"
+                                          << "   -> Client Physics Pos: (" << localPlayer_->getPosition().x << ", " 
+                                          << localPlayer_->getPosition().y << ", " << localPlayer_->getPosition().z << ")\n"
+                                          << "   -> Server Physics Pos: (" << snapshot.position.x << ", " 
+                                          << snapshot.position.y << ", " << snapshot.position.z << ")\n"
+                                          << "   -> Discrepancy (Diff): (" << diff.x << ", " << diff.y << ", " << diff.z << ")\n";
                             }
                         }
                     } else {
