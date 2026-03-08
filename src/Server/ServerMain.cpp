@@ -697,22 +697,26 @@ int main() {
                                 : SharedMovement::kNoTerrainHeight;
 
                             if (physicsSystem.hasCharacterController(entity)) {
-                                // Apply full movement (XZ + Y) through SharedMovement.
-                                // Y is authoritative after this call.
+                                // ---- Phase 1: Y axis — owned by SharedMovement ----
+                                // Apply full movement (XZ + Y). After this call
+                                // tc.position.y is terrain-clamped and authoritative.
                                 glm::vec3 prevPos = tc.position;
                                 SharedMovement::applyInput(inp, tc.position, tc.rotation,
                                                            queue.upwardsSpeed,
                                                            queue.isInAir, th);
+                                // Capture the authoritative Y before reverting XZ.
+                                float authY = tc.position.y;
 
-                                // Feed only XZ displacement to Bullet for wall-sliding.
-                                // tc.position.y remains as set by SharedMovement;
-                                // PhysicsSystem::update() will NOT overwrite it.
-                                glm::vec3 disp = tc.position - prevPos;
-                                tc.position.x = prevPos.x;
-                                tc.position.z = prevPos.z;
+                                // ---- Phase 2: XZ axis — owned by Bullet ----
+                                // Extract the XZ displacement SharedMovement computed,
+                                // then revert XZ to prevPos so PhysicsSystem::update()
+                                // can write back Bullet's wall-corrected XZ.
+                                // tc.position.y is set to authY (keeps SharedMovement's value).
+                                glm::vec3 xzDisp(tc.position.x - prevPos.x, 0.0f,
+                                                 tc.position.z - prevPos.z);
+                                tc.position = glm::vec3(prevPos.x, authY, prevPos.z);
 
-                                physicsSystem.setEntityWalkDirection(entity,
-                                    glm::vec3(disp.x, 0.0f, disp.z));
+                                physicsSystem.setEntityWalkDirection(entity, xzDisp);
                                 // Jump is handled by SharedMovement (upwardsSpeed).
                                 // Do NOT call jumpCharacterController here — Bullet
                                 // gravity is disabled so its jump would have no effect.

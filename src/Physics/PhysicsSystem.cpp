@@ -139,6 +139,9 @@ void PhysicsSystem::update(float deltaTime) {
         if (registry_ && entity != entt::null) {
             if (auto* tc = registry_->try_get<TransformComponent>(entity)) {
                 // Accept horizontal correction from Bullet (wall-sliding).
+                // Note: bulletPos is the capsule center, but for a vertically
+                // symmetric capsule the XZ coordinates of the center are
+                // identical to the XZ coordinates of the feet — no offset needed.
                 tc->position.x = bulletPos.x;
                 tc->position.z = bulletPos.z;
                 // tc->position.y is intentionally preserved — SharedMovement owns it.
