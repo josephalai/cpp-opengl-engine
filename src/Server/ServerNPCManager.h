@@ -55,6 +55,7 @@ struct NPCDefinition {
 struct NPCAIState {
     float timer      = 0.0f;   ///< Accumulated time in current phase.
     int   phase      = 0;      ///< Current behaviour phase index.
+    float cameraYaw  = 0.0f;   ///< [Phase 3.2] Accumulated heading (degrees).
 };
 
 // -------------------------------------------------------------------------

@@ -47,15 +47,19 @@ struct TransformSnapshot {
 };
 
 /// A single frame of player input sent from client to server.
-/// Includes the client's physics-driven position and rotation so the server
-/// can use them as the authoritative state (with validation).
+/// [Phase 3.2] Protocol Shift: positional data (position, rotation) removed.
+/// The client now sends only raw button states and the camera yaw; the server
+/// independently simulates the resulting position via SharedMovement::applyInput().
+/// This makes teleport-hacking physically impossible over the protocol.
 struct PlayerInputPacket {
-    uint32_t  sequenceNumber = 0;    ///< Monotonically increasing per-client counter.
-    float     forward        = 0.0f; ///< +1 = forward, -1 = backward, 0 = none.
-    float     turn           = 0.0f; ///< +1 = turn left, -1 = turn right, 0 = none.
-    float     deltaTime      = 0.0f; ///< Frame time used to scale the movement.
-    glm::vec3 position       = {};   ///< Client's physics-driven world position.
-    glm::vec3 rotation       = {};   ///< Client's physics-driven rotation (Euler degrees).
+    uint32_t sequenceNumber = 0;     ///< Monotonically increasing per-client counter.
+    float    deltaTime      = 0.0f;  ///< Frame time used to scale the movement.
+    float    cameraYaw      = 0.0f;  ///< Absolute camera yaw (degrees) for movement direction.
+    bool     moveForward    = false; ///< W key — move forward.
+    bool     moveBackward   = false; ///< S key — move backward.
+    bool     moveLeft       = false; ///< A key — strafe/turn left.
+    bool     moveRight      = false; ///< D key — strafe/turn right.
+    bool     jump           = false; ///< Space key — jump.
 };
 
 /// Sent by the server to a newly connected client to tell it its own networkId.
