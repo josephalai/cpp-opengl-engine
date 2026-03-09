@@ -24,7 +24,10 @@ void ModelCache::preload(const std::vector<std::string>& paths) {
 
 void ModelCache::clear() {
     for (auto& [path, model] : cache) {
-        delete model;
+        if (model) {
+            model->cleanUp(); // ADD THIS: Free the OpenGL buffers!
+            delete model;
+        }
     }
     cache.clear();
 }
