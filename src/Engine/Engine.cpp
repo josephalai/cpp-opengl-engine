@@ -269,8 +269,8 @@ void Engine::loadScene() {
     // reconciliation snapping.  The legacy path in PlayerMovementSystem uses the
     // same Euler integration as SharedMovement, so prediction and server agree.
     //
-    // physicsSystem->setCharacterController(player, 1.0f, 3.0f); // [Phase 3.3] Removed
-    // player->setPhysicsSystem(physicsSystem);                    // [Phase 3.3] Removed (no-op)
+    physicsSystem->setCharacterController(player, 0.5f, 1.8f); // [Phase 3.3] Removed
+    player->setPhysicsSystem(physicsSystem);                    // [Phase 3.3] Removed (no-op)
 
     // Emplace the new ECS InputStateComponent so PlayerMovementSystem can drive it.
     if (player) {
@@ -279,7 +279,7 @@ void Engine::loadScene() {
         // [Phase 3.3] Leave physicsSystem null so PlayerMovementSystem uses the
         // legacy direct-math path instead of the Bullet physics path.  This keeps
         // client movement mathematically identical to SharedMovement::applyInput().
-        isc.physicsSystem = nullptr;
+        isc.physicsSystem = physicsSystem;
     }
 }
 
@@ -688,6 +688,8 @@ void Engine::buildSystems() {
                 onNetworkDespawn(nid, e);
             }
         );
+
+        netSys->setPhysicsSystem(physicsSystem);
 
         netSys->init();
 

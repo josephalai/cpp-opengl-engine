@@ -661,6 +661,7 @@ void PhysicsSystem::setCharacterController(Player* player,
     characterController_ = new btKinematicCharacterController(
         ghostObject_, capsuleShape_, 0.35f);
     characterController_->setGravity(dynamicsWorld_->getGravity());
+    characterController_->setJumpSpeed(30.0f);
     dynamicsWorld_->addAction(characterController_);
 }
 
@@ -678,6 +679,12 @@ void PhysicsSystem::setPlayerWalkDirection(float vx, float vz, bool wantsJump) {
     if (wantsJump && characterController_->canJump()) {
         characterController_->jump();
     }
+}
+
+void PhysicsSystem::warpPlayer(const glm::vec3& feetPos) {
+    if (!characterController_ || !ghostObject_) return;
+    btVector3 centre(feetPos.x, feetPos.y + capsuleHalfHeight_, feetPos.z);
+    characterController_->warp(centre);
 }
 
 void PhysicsSystem::renderDebug(const glm::mat4& view, const glm::mat4& projection) {
