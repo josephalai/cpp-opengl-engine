@@ -10,6 +10,10 @@
 // This is a pure mathematical utility with no rendering or networking
 // dependencies — it can run identically on both the client and the headless
 // server, ensuring deterministic simulation.
+//
+// Movement constants are now read from ConfigManager at runtime instead of
+// being compiled as static constexpr.  Both client and server load the same
+// world_config.json, so determinism is preserved.
 
 #ifndef ENGINE_SHARED_MOVEMENT_H
 #define ENGINE_SHARED_MOVEMENT_H
@@ -19,15 +23,19 @@
 
 class SharedMovement {
 public:
-    /// Movement constants — must match InputStateComponent for consistent prediction.
-    static constexpr float kRunSpeed        = 20.0f;
-    static constexpr float kTurnSpeed       = 160.0f;
-    static constexpr float kNoTerrainHeight = -99999.0f;
+    /// Compile-time fallback constants — used only if ConfigManager has not
+    /// been initialised yet (which should not happen in production).
+    static constexpr float kDefaultRunSpeed  = 20.0f;
+    static constexpr float kDefaultTurnSpeed = 160.0f;
+    static constexpr float kNoTerrainHeight  = -99999.0f;
+    static constexpr float kDefaultGravity   = -50.0f;
+    static constexpr float kDefaultJumpPower =  30.0f;
 
-    /// Vertical physics constants — must match InputStateComponent exactly so the
-    /// server's jump arc and the client's jump arc are bit-identical.
-    static constexpr float kGravity   = -50.0f;
-    static constexpr float kJumpPower =  30.0f;
+    /// Runtime accessors that prefer ConfigManager values.
+    static float runSpeed();
+    static float turnSpeed();
+    static float gravity();
+    static float jumpPower();
 
     /// Apply a single input's horizontal movement and rotation.
     ///

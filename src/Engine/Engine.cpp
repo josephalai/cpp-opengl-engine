@@ -44,6 +44,8 @@
 #include "../ECS/Components/InputStateComponent.h"
 #include "../ECS/Components/NetworkSyncData.h"
 #include "../Toolbox/Maths.h"
+#include "../Config/ConfigManager.h"
+#include "../Config/PrefabManager.h"
 #include <enet/enet.h>
 #include <thread>
 #include <fstream>
@@ -55,6 +57,10 @@ Engine::Engine() = default;
 Engine::~Engine() = default;
 
 void Engine::init() {
+    // --- Data-driven initialisation (must happen before DisplayManager) ---
+    ConfigManager::get().loadAll(HOME_PATH);
+    PrefabManager::get().loadAll(HOME_PATH);
+
     // Initialize ENet before anything else that might use networking.
     if (enet_initialize() != 0) {
         std::cerr << "[Engine] Failed to initialize ENet.\n";

@@ -4,6 +4,7 @@
 
 #include "PhysicsSystem.h"
 #include "../ECS/Components/TransformComponent.h"
+#include "../Config/ConfigManager.h"
 
 #ifndef HEADLESS_SERVER
 #include "PhysicsDebugDrawer.h"
@@ -59,8 +60,9 @@ void PhysicsSystem::init() {
     dynamicsWorld_   = new btDiscreteDynamicsWorld(
         dispatcher_, broadphase_, solver_, collisionConfig_);
 
-    // Match existing kGravity = -50 in Player.h
-    dynamicsWorld_->setGravity(btVector3(0.0f, -50.0f, 0.0f));
+    // Read gravity from ConfigManager (data-driven; defaults to [0, -50, 0]).
+    const auto& g = ConfigManager::get().physics.gravity;
+    dynamicsWorld_->setGravity(btVector3(g.x, g.y, g.z));
 
     // Register the ghost-object callback needed by btKinematicCharacterController
     broadphase_->getOverlappingPairCache()->setInternalGhostPairCallback(
@@ -542,9 +544,8 @@ void PhysicsSystem::addCharacterController(entt::entity entity, float radius, fl
     // land correctly on top of static geometry (trees, stalls) rather than
     // only knowing about the flat terrain plane.
     data.controller->setGravity(dynamicsWorld_->getGravity());
-    // Configure jump speed to match SharedMovement::kJumpPower (30 m/s).
-    // jumpCharacterController() calls jump(btVector3(0,0,0)) which uses this value.
-    data.controller->setJumpSpeed(30.0f); // must equal SharedMovement::kJumpPower
+    // Configure jump speed from ConfigManager (data-driven).
+    data.controller->setJumpSpeed(ConfigManager::get().physics.jumpPower);
     dynamicsWorld_->addAction(data.controller);
 
     characterControllers_[key] = data;
@@ -661,7 +662,8 @@ void PhysicsSystem::setCharacterController(Player* player,
     characterController_ = new btKinematicCharacterController(
         ghostObject_, capsuleShape_, 0.35f);
     characterController_->setGravity(dynamicsWorld_->getGravity());
-    characterController_->setJumpSpeed(30.0f);
+    // Configure jump speed from ConfigManager (data-driven).
+    characterController_->setJumpSpeed(ConfigManager::get().physics.jumpPower);
     dynamicsWorld_->addAction(characterController_);
 }
 
