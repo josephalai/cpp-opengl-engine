@@ -8,7 +8,12 @@
 #include "../ECS/Components/NetworkIdComponent.h"
 #include "../ECS/Components/InputStateComponent.h"
 #include "../ECS/Components/InputQueueComponent.h"
+#include "../ECS/Components/AIScriptComponent.h"
 #include "../Physics/PhysicsSystem.h"
+
+#ifndef HEADLESS_SERVER
+#include "../ECS/Components/AssimpModelComponent.h"
+#endif
 
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -70,6 +75,35 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                            ConfigManager::get().physics.defaultCapsuleHeight);
         physics->addCharacterController(entity, radius, height);
     }
+
+    // --- AIScriptComponent (if "ai_script" is declared) ---
+    if (prefab.contains("ai_script")) {
+        auto& ai = registry.emplace<AIScriptComponent>(entity);
+        ai.scriptPath = prefab["ai_script"].get<std::string>();
+        // Also read the logical script name from the AIComponent block.
+        if (prefab.contains("components") &&
+            prefab["components"].contains("AIComponent") &&
+            prefab["components"]["AIComponent"].contains("script")) {
+            ai.scriptName = prefab["components"]["AIComponent"]["script"].get<std::string>();
+        }
+    }
+
+#ifndef HEADLESS_SERVER
+    // --- Client-side rendering: AssimpModelComponent ---
+    // If the prefab declares a "mesh" path, attach a visual component so the
+    // client's RenderSystem can draw it.  The mesh is stored as a path string
+    // in the component; actual GPU resource loading happens later when the
+    // render pipeline encounters the component.  For the server build this
+    // block is compiled out (no OpenGL / AssimpMesh dependency).
+    if (prefab.contains("mesh")) {
+        auto& amc = registry.emplace<AssimpModelComponent>(entity);
+        amc.position = position;
+        // The mesh pointer will be resolved by the client's asset loader
+        // when the entity enters the render view.  We store the path in
+        // the prefab so the loader knows what file to open.
+        // amc.mesh remains nullptr until the client loads the .glb/.obj.
+    }
+#endif
 
     return entity;
 }

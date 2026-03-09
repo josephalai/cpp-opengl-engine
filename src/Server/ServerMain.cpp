@@ -552,7 +552,19 @@ int main() {
 
             auto entity = spawnEntity(registry, nid, pos, d.modelType, /*isNPC=*/true);
             networkIdToEntity[nid] = entity;
-            physicsSystem.addCharacterController(entity, 0.5f, 1.8f);
+
+            // Read capsule dimensions from the prefab if available; fall back to
+            // ConfigManager defaults.  This eliminates the hardcoded 0.5f / 1.8f.
+            float capsuleRadius = ConfigManager::get().physics.defaultCapsuleRadius;
+            float capsuleHeight = ConfigManager::get().physics.defaultCapsuleHeight;
+            if (!d.prefab.empty() && PrefabManager::get().hasPrefab(d.prefab)) {
+                const auto& prefab = PrefabManager::get().getPrefab(d.prefab);
+                if (prefab.contains("physics")) {
+                    capsuleRadius = prefab["physics"].value("radius", capsuleRadius);
+                    capsuleHeight = prefab["physics"].value("height", capsuleHeight);
+                }
+            }
+            physicsSystem.addCharacterController(entity, capsuleRadius, capsuleHeight);
             npcManager.registerNPC(nid, d.scriptType);
 
             std::cout << "[Server] NPC " << nid << " (" << d.modelType

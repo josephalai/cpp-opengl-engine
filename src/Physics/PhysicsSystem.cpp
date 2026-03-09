@@ -662,7 +662,8 @@ void PhysicsSystem::setCharacterController(Player* player,
     characterController_ = new btKinematicCharacterController(
         ghostObject_, capsuleShape_, 0.35f);
     characterController_->setGravity(dynamicsWorld_->getGravity());
-    characterController_->setJumpSpeed(30.0f);
+    // Configure jump speed from ConfigManager (data-driven).
+    characterController_->setJumpSpeed(ConfigManager::get().physics.jumpPower);
     dynamicsWorld_->addAction(characterController_);
 }
 
