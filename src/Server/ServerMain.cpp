@@ -53,7 +53,6 @@ static constexpr int   kMaxClients   = 32;
 static constexpr int   kChannelCount = 2;
 static constexpr float kTickInterval = 0.1f;   // 100 ms = 10 Hz
 static constexpr float kTerrainSize  = 800.0f;
-static constexpr float kCapsuleHalfHeight = (1.8f / 2.0f) + 0.5f; // 1.4f
 // ---------------------------------------------------------------------------
 // Graceful shutdown on SIGINT / SIGTERM
 // ---------------------------------------------------------------------------
@@ -540,8 +539,12 @@ int main() {
         for (auto& d : defs) {
             uint32_t nid = nextNetworkId++;
             glm::vec3 pos = d.startPos;
+            // TransformComponent.position is the feet position.  addCharacterController
+            // internally offsets the ghost by capsuleHalfHeight, so we must NOT add it
+            // here — doing so would place the ghost (and the character) 1.4 m above the
+            // terrain surface, causing an initial bounce before gravity corrects it.
             if (terrainMgr.isAnyValid())
-                pos.y = terrainMgr.getHeight(pos.x, pos.z) + kCapsuleHalfHeight;
+                pos.y = terrainMgr.getHeight(pos.x, pos.z);
 
             auto entity = spawnEntity(registry, nid, pos, d.modelType, /*isNPC=*/true);
             networkIdToEntity[nid] = entity;
@@ -576,8 +579,11 @@ int main() {
                 peerToNetworkId[event.peer] = newId;
 
                 glm::vec3 spawnPos(100.0f, 3.0f, -80.0f);
+                // TransformComponent.position is the feet position.  addCharacterController
+                // internally offsets the ghost by capsuleHalfHeight, so we must NOT add it
+                // here — doing so would place the capsule 2×capsuleHalfHeight above terrain.
                 if (terrainMgr.isAnyValid())
-                    spawnPos.y = terrainMgr.getHeight(spawnPos.x, spawnPos.z) + kCapsuleHalfHeight;
+                    spawnPos.y = terrainMgr.getHeight(spawnPos.x, spawnPos.z);
 
                 auto entity = spawnEntity(registry, newId, spawnPos, "player");
                 networkIdToEntity[newId] = entity;
@@ -757,9 +763,21 @@ int main() {
                                                NetworkIdComponent,
                                                InputQueueComponent>();
 
-                // Terrain-clamp all character controllers to the surface after each
-                // physics step.  Mirrors the client's PlayerMovementSystem legacy
-                // terrain clamp so server Y == HeadlessTerrain::getHeight().
+                // Safety clamp: prevent character controllers from falling through the
+                // terrain mesh if Bullet's collision resolution ever positions a capsule
+                // slightly below the surface (can happen on steep slopes or at seams
+                // between triangle quads).
+                //
+                // IMPORTANT — use a tolerance of ~5 cm before triggering a warp.
+                // The btHeightfieldTerrainShape and HeadlessTerrain::getHeight use
+                // identical height data and the same bilinear interpolation, so their
+                // terrain heights agree to within floating-point precision.  If we warp
+                // on a sub-mm difference Bullet has just corrected, we put the ghost back
+                // into a position Bullet is about to move it away from, creating an
+                // oscillation ("bouncing") whose amplitude grows on steep terrain where
+                // the height gradient is larger.  The 0.05 m threshold ensures we only
+                // intervene when the character has genuinely fallen through geometry.
+                static constexpr float kTerrainClampEpsilon = 0.05f;
                 auto clampCharsToTerrain = [&]() {
                     if (!terrainMgr.isAnyValid()) return;
                     auto tv = registry.view<TransformComponent, NetworkIdComponent>();
@@ -767,7 +785,7 @@ int main() {
                         if (!physicsSystem.hasCharacterController(entity)) continue;
                         auto& tc = tv.get<TransformComponent>(entity);
                         float terrH = terrainMgr.getHeight(tc.position.x, tc.position.z);
-                        if (tc.position.y < terrH) {
+                        if (tc.position.y < terrH - kTerrainClampEpsilon) {
                             tc.position.y = terrH;
                             physicsSystem.warpCharacterController(entity, tc.position);
                         }
