@@ -98,10 +98,9 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
     if (prefab.contains("mesh")) {
         auto& amc = registry.emplace<AssimpModelComponent>(entity);
         amc.position = position;
-        // The mesh pointer will be resolved by the client's asset loader
-        // when the entity enters the render view.  We store the path in
-        // the prefab so the loader knows what file to open.
-        // amc.mesh remains nullptr until the client loads the .glb/.obj.
+        amc.meshPath = prefab["mesh"].get<std::string>();
+        // amc.mesh remains nullptr until the client's asset loader resolves
+        // the meshPath into a GPU-ready AssimpMesh*.
     }
 #endif
 

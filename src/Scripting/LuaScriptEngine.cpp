@@ -100,7 +100,7 @@ bool LuaScriptEngine::loadScript(const std::string& relativePath) {
 
 Network::PlayerInputPacket LuaScriptEngine::tickAI(
     const std::string& scriptName,
-    uint32_t /*entityId*/,
+    uint32_t entityId,
     float dt,
     LuaAIState& state)
 {
@@ -119,7 +119,7 @@ Network::PlayerInputPacket LuaScriptEngine::tickAI(
     if (!callResult.valid()) {
         sol::error err = callResult;
         std::cerr << "[LuaScriptEngine] Error in " << scriptName
-                  << ": " << err.what() << "\n";
+                  << " (entity " << entityId << "): " << err.what() << "\n";
         return pkt;
     }
 

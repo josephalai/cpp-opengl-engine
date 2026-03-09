@@ -2,6 +2,7 @@
 #define ECS_ASSIMPMODELCOMPONENT_H
 
 #include <glm/glm.hpp>
+#include <string>
 
 class AssimpMesh;
 class BoundingBox;
@@ -14,6 +15,12 @@ struct AssimpModelComponent {
     glm::vec3    rotation = glm::vec3(0.0f);
     float        scale    = 1.0f;
     BoundingBox* box      = nullptr;
+
+    /// Path to the mesh file (e.g. "models/guard.glb").  Populated by
+    /// EntityFactory from the prefab's "mesh" field.  The client's asset
+    /// loader resolves this into an AssimpMesh* when the entity enters the
+    /// render view.  Left empty for entities loaded via SceneLoader.
+    std::string  meshPath;
 };
 
 #endif // ECS_ASSIMPMODELCOMPONENT_H

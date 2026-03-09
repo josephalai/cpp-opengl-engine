@@ -12,7 +12,7 @@
 
 struct AIScriptComponent {
     /// Path to the Lua script file (relative to Resources), e.g.
-    /// "scripts/ai/guard_behavior.lua".
+    /// "scripts/ai/guard.lua".
     std::string scriptPath;
 
     /// Logical script name (e.g. "GuardAI", "WanderAI") used as a lookup

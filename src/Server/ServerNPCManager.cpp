@@ -130,11 +130,8 @@ void ServerNPCManager::registerNPC(uint32_t networkId,
 void ServerNPCManager::initLua(const std::string& resourceRoot) {
     luaEngine_.init(resourceRoot);
 
-    // Expose ConfigManager values to Lua's config table.
-#ifdef HAS_LUA
-    // The config table was already created by LuaScriptEngine::init().
-    // We populate it here where ConfigManager is guaranteed to be loaded.
-#endif
+    // Expose ConfigManager values to Lua's config table so scripts stay
+    // data-driven (reads the same world_config.json as C++).
 
     // Collect unique script paths from registered NPC prefabs.
     // Walk through all registered NPCs, look up their prefab, and load
@@ -204,16 +201,16 @@ void ServerNPCManager::tick(float dt,
             outInputs[id] = pkt;
         } else {
             // Fallback: use built-in C++ AI.
-            Network::PlayerInputPacket pkt{};
-            pkt.deltaTime = dt;
+            Network::PlayerInputPacket inputPacket{};
+            inputPacket.deltaTime = dt;
 
             if (script == "GuardAI") {
-                tickGuard(id, ai, dt, pkt);
+                tickGuard(id, ai, dt, inputPacket);
             } else {
                 // Default: WanderAI
-                tickWander(id, ai, dt, pkt);
+                tickWander(id, ai, dt, inputPacket);
             }
-            outInputs[id] = pkt;
+            outInputs[id] = inputPacket;
         }
     }
 }
