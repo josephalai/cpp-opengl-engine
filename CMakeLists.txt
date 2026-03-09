@@ -37,8 +37,6 @@ FetchContent_MakeAvailable(entt)
 
 # =============================================================================
 # GLM — header-only math library (fetched automatically via FetchContent)
-# Replaces the manually-cloned deps/glm so the headless server builds on any
-# machine (Ubuntu VPS, CI) without requiring a local deps/ clone.
 # =============================================================================
 FetchContent_Declare(
     glm
@@ -53,49 +51,49 @@ FetchContent_MakeAvailable(glm)
 FetchContent_Declare(
     sol2
     GIT_REPOSITORY https://github.com/ThePhD/sol2.git
-    GIT_TAG        v3.3.0
+    GIT_TAG        main
 )
 FetchContent_MakeAvailable(sol2)
 
 # =============================================================================
-# Lua — scripting language (system library)
+# Lua 5.4 — Fetched and built from official source (Bypasses Homebrew entirely)
 # =============================================================================
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-    pkg_check_modules(LUA QUIET lua5.4)
-endif()
-if(NOT LUA_FOUND)
-    # Fallback: try common system paths directly.
-    find_path(LUA_INCLUDE_DIR lua.h PATH_SUFFIXES lua5.4)
-    find_library(LUA_LIBRARY NAMES lua5.4 lua54 lua)
-    if(LUA_INCLUDE_DIR AND LUA_LIBRARY)
-        set(LUA_FOUND TRUE)
-        set(LUA_INCLUDE_DIRS ${LUA_INCLUDE_DIR})
-        set(LUA_LIBRARIES ${LUA_LIBRARY})
-    endif()
-endif()
+FetchContent_Declare(
+    lua54
+    URL https://www.lua.org/ftp/lua-5.4.6.tar.gz
+)
+FetchContent_MakeAvailable(lua54)
 
-if(NOT LUA_FOUND)
-    message(STATUS "Lua not found — Lua scripting will be disabled.")
+# Create a static library out of the raw Lua C files
+if(NOT TARGET lua54_lib)
+    file(GLOB LUA_SOURCES "${lua54_SOURCE_DIR}/src/*.c")
+    # Remove the standalone executables so we only build the library
+    list(REMOVE_ITEM LUA_SOURCES 
+        "${lua54_SOURCE_DIR}/src/lua.c" 
+        "${lua54_SOURCE_DIR}/src/luac.c"
+    )
+    
+    add_library(lua54_lib STATIC ${LUA_SOURCES})
+    target_include_directories(lua54_lib PUBLIC "${lua54_SOURCE_DIR}/src")
+    
+    # OS-specific macros for Lua
+    if(APPLE)
+        target_compile_definitions(lua54_lib PRIVATE LUA_USE_MACOSX)
+    elseif(UNIX)
+        target_compile_definitions(lua54_lib PRIVATE LUA_USE_LINUX)
+    endif()
+
+    # Expose variables to the rest of the CMake file
+    set(LUA_FOUND TRUE)
+    set(LUA_LIBRARIES lua54_lib)
+    set(LUA_INCLUDE_DIRS "${lua54_SOURCE_DIR}/src")
+    
+    message(STATUS "Lua 5.4 source downloaded and added as a build target.")
 endif()
 
 # =============================================================================
 # Source file collection — Three-way split (GEA Build Wall)
 # =============================================================================
-#
-#  COMMON_SOURCES  Pure simulation core: ECS, Physics, Math, World, Network.
-#                  Compiled into BOTH client_engine and headless_server.
-#                  Must NEVER directly include OpenGL, GLFW, or GUI headers.
-#
-#  CLIENT_SOURCES  Everything else (rendering pipeline, GUI, animation, etc.).
-#                  Compiled only into client_engine.
-#
-#  SERVER_SOURCES  Headless server entry point.
-#                  Compiled only into headless_server.
-#
-# Note: re-run cmake when adding/removing files (GLOB_RECURSE does not auto-detect).
-
-# --- COMMON: simulation core, safe for server AND client ---
 file(GLOB_RECURSE COMMON_SOURCES
     "${CMAKE_SOURCE_DIR}/src/ECS/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Physics/*.cpp"
@@ -109,8 +107,7 @@ file(GLOB_RECURSE COMMON_SOURCES
     "${CMAKE_SOURCE_DIR}/src/Terrain/HeightMap.cpp"
 )
 
-# Exclude OpenGL/GLFW-dependent files from COMMON so headless_server
-# compiles cleanly without a GPU or display library.
+# Exclude OpenGL/GLFW-dependent files from COMMON
 list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/PhysicsDebugDrawer\\.cpp$")
 list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/DebugLineShader\\.cpp$")
 list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/CharacterController\\.cpp$")
@@ -125,7 +122,6 @@ file(GLOB_RECURSE SERVER_SOURCES
 )
 
 # --- CLIENT: full engine source tree (rendering pipeline + COMMON dirs) ---
-# Uses the broad ALL_SOURCES glob so every engine subsystem is included.
 file(GLOB_RECURSE ALL_SOURCES
     "${CMAKE_SOURCE_DIR}/src/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/*.h"
@@ -136,58 +132,36 @@ list(FILTER CLIENT_SOURCES EXCLUDE REGEX ".*/Server/.*")
 # =============================================================================
 # Client Engine executable (OpenGL + GLFW + full rendering pipeline)
 # =============================================================================
-
-# The client requires OpenGL; skip if not available (e.g. headless CI).
 find_package(OpenGL QUIET)
 if(OpenGL_FOUND)
 
 add_executable(client_engine ${CLIENT_SOURCES})
 
 target_include_directories(client_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
-
-# Embed the source root so FileSystem can locate resources regardless of CWD.
 target_compile_definitions(client_engine PRIVATE RESOURCE_ROOT="${CMAKE_SOURCE_DIR}")
-
-# --- Client Dependencies ---
 
 target_link_libraries(client_engine PRIVATE OpenGL::GL)
 
-# GLFW
 add_subdirectory(deps/glfw)
 target_include_directories(client_engine PRIVATE deps/glfw/include)
 
-# FreeType — use the system library (brew install freetype) to avoid
-# cmake_minimum_required VERSION < 3.5 errors from the bundled source tree.
 find_package(Freetype REQUIRED)
-
-# PNG
 find_package(PNG REQUIRED)
 target_include_directories(client_engine PRIVATE ${PNG_INCLUDE_DIR})
 
-# Assimp — use the system library (brew install assimp) for the same reason.
 find_package(assimp REQUIRED)
 
-# Quill (logging)
 add_subdirectory(deps/quill)
 
-# GLM — header-only; fetched via FetchContent (glm_SOURCE_DIR set above).
-# deps/glm is kept as a fallback for local macOS builds with a manual clone.
 target_include_directories(client_engine PRIVATE ${glm_SOURCE_DIR})
 
-# Bullet Physics — system dependency (brew install bullet)
 find_package(Bullet REQUIRED)
 target_include_directories(client_engine PRIVATE ${BULLET_INCLUDE_DIRS})
 
-# ENet include path (FetchContent populates enet_SOURCE_DIR)
 target_include_directories(client_engine PRIVATE ${enet_SOURCE_DIR}/include)
-
-# nlohmann/json — header-only (FetchContent populates nlohmann_json_SOURCE_DIR)
 target_include_directories(client_engine PRIVATE ${nlohmann_json_SOURCE_DIR}/include)
-
-# EnTT — header-only ECS library
 target_include_directories(client_engine PRIVATE ${entt_SOURCE_DIR}/src)
 
-# Link all client dependencies
 target_link_libraries(client_engine PRIVATE
     glfw
     ${GLFW_LIBRARIES}
@@ -206,9 +180,7 @@ else()
 endif()
 
 # =============================================================================
-# Bullet Physics — also required by headless_server (PhysicsSystem uses Bullet).
-# find_package is called outside the OpenGL block so the server target can
-# link against it regardless of whether OpenGL/GLFW is present.
+# Bullet Physics
 # =============================================================================
 if(NOT Bullet_FOUND)
     find_package(Bullet QUIET)
@@ -241,7 +213,6 @@ endif()
 # =============================================================================
 # Headless Server executable (NO OpenGL, NO GLFW — ENet + Bullet + EnTT + GLM)
 # =============================================================================
-
 add_executable(headless_server ${COMMON_SOURCES} ${SERVER_SOURCES})
 
 target_include_directories(headless_server PRIVATE
@@ -253,18 +224,9 @@ target_include_directories(headless_server PRIVATE
     ${BULLET_INCLUDE_DIRS}
 )
 
-# Sol2 + Lua (scripting engine for data-driven NPC AI)
-if(LUA_FOUND)
-    target_include_directories(headless_server PRIVATE
-        ${sol2_SOURCE_DIR}/include
-        ${LUA_INCLUDE_DIRS}
-    )
-    target_compile_definitions(headless_server PRIVATE HAS_LUA)
-endif()
-
 target_compile_definitions(headless_server PRIVATE
     RESOURCE_ROOT="${CMAKE_SOURCE_DIR}"
-    HEADLESS_SERVER          # Build Wall: disables OpenGL/GLFW code paths in shared headers
+    HEADLESS_SERVER          
 )
 
 target_link_libraries(headless_server PRIVATE
@@ -272,7 +234,25 @@ target_link_libraries(headless_server PRIVATE
     ${BULLET_LIBRARIES}
 )
 
-# Link Lua library when available
+# =============================================================================
+# Sol2 + Lua Linking (for both Server and Client)
+# =============================================================================
 if(LUA_FOUND)
+    # 1. Link Headless Server
+    target_include_directories(headless_server BEFORE PRIVATE
+        ${LUA_INCLUDE_DIRS}
+        ${sol2_SOURCE_DIR}/include
+    )
+    target_compile_definitions(headless_server PRIVATE HAS_LUA)
     target_link_libraries(headless_server PRIVATE ${LUA_LIBRARIES})
+
+    # 2. Link Client Engine
+    if(TARGET client_engine)
+        target_include_directories(client_engine BEFORE PRIVATE
+            ${LUA_INCLUDE_DIRS}
+            ${sol2_SOURCE_DIR}/include
+        )
+        target_compile_definitions(client_engine PRIVATE HAS_LUA)
+        target_link_libraries(client_engine PRIVATE ${LUA_LIBRARIES})
+    endif()
 endif()
