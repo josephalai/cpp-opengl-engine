@@ -37,7 +37,7 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
     if (prefab.contains("model_type")) {
         auto& nid = registry.emplace<NetworkIdComponent>(entity);
         nid.modelType = prefab["model_type"].get<std::string>();
-        nid.isNPC     = true;  // prefab-spawned entities are NPCs by default
+        nid.isNPC     = prefab.value("is_npc", true);  // default true for prefab-spawned
     }
 
     // --- InputStateComponent (use prefab overrides or ConfigManager defaults) ---

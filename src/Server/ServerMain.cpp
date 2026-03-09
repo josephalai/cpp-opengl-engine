@@ -47,16 +47,9 @@
 #include <random>
 
 // ---------------------------------------------------------------------------
-// Configuration — values are now loaded from world_config.json via ConfigManager.
-// These local constants are kept as fallbacks for legacy code paths that run
-// before ConfigManager::loadAll() completes (signal handlers, etc.).
+// Configuration — all values are loaded from world_config.json via
+// ConfigManager at the start of main().
 // ---------------------------------------------------------------------------
-
-static constexpr int   kPort         = 7777;      // overridden by ConfigManager
-static constexpr int   kMaxClients   = 32;         // overridden by ConfigManager
-static constexpr int   kChannelCount = 2;          // overridden by ConfigManager
-static constexpr float kTickInterval = 0.1f;       // overridden by ConfigManager
-static constexpr float kTerrainSize  = 800.0f;     // overridden by ConfigManager
 // ---------------------------------------------------------------------------
 // Graceful shutdown on SIGINT / SIGTERM
 // ---------------------------------------------------------------------------
@@ -80,6 +73,7 @@ struct HeadlessTerrain {
 
     /// Build from heightmap file for terrain tile at grid (gx, gz).
     void load(const std::string& heightmapPath, int gx, int gz) {
+        size = ConfigManager::get().physics.terrainSize;
         Heightmap hm(heightmapPath);
         auto info = hm.getImageInfo();
         if (info.height <= 0 || info.width <= 0) {
