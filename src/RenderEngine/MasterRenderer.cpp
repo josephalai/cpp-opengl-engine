@@ -12,8 +12,8 @@
 MasterRenderer::MasterRenderer(PlayerCamera *cameraInput, Loader *loader) : shader(new StaticShader()),
                                                             renderer(new EntityRenderer(shader)),
                                                             camera(cameraInput), projectionMatrix(
-                Maths::createProjectionMatrix(FOVY, static_cast<float>(DisplayManager::Width()),
-                                              static_cast<float>(DisplayManager::Height()), NEAR_PLANE, FAR_PLANE)),
+                Maths::createProjectionMatrix(masterFovy(), static_cast<float>(DisplayManager::Width()),
+                                              static_cast<float>(DisplayManager::Height()), masterNearPlane(), masterFarPlane())),
                                                             terrainShader(new TerrainShader()),
                                                             sceneShader(new AssimpStaticShader()),
                                                             bShader(new BoundingBoxShader()){
@@ -33,6 +33,14 @@ MasterRenderer::MasterRenderer(PlayerCamera *cameraInput, Loader *loader) : shad
     // Instanced rendering
     instancedShader   = new InstancedShader();
     instancedRenderer = new InstancedRenderer(instancedShader);
+
+    // Apply environment preset from ConfigManager (data-driven sky/fog).
+    const auto& env = ConfigManager::get().environment.current();
+    skyColor = Color(env.skyColor);
+    fogSettings.density = env.fogDensity;
+    fogSettings.start   = env.fogStart;
+    fogSettings.end     = env.fogEnd;
+    fogSettings.color   = env.fogColor;
 }
 
 void MasterRenderer::cleanUp() {
@@ -111,8 +119,8 @@ void MasterRenderer::processTerrain(Terrain *terrain) {
 glm::mat4 MasterRenderer::createProjectionMatrix() {
     // my additions
     return Maths::createProjectionMatrix(PlayerCamera::Zoom, static_cast<GLfloat>(DisplayManager::Width()),
-                                         static_cast<GLfloat>(DisplayManager::Height()), NEAR_PLANE,
-                                         FAR_PLANE);
+                                         static_cast<GLfloat>(DisplayManager::Height()), masterNearPlane(),
+                                         masterFarPlane());
 }
 
 glm::mat4 MasterRenderer::getProjectionMatrix() {

@@ -1,6 +1,7 @@
 // src/Server/ServerNPCManager.cpp
 
 #include "ServerNPCManager.h"
+#include "../Config/ConfigManager.h"
 
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -145,12 +146,12 @@ void ServerNPCManager::tick(float dt,
 // -------------------------------------------------------------------------
 // WanderAI — walk forward for 3 s, turn for 1 s, repeat
 // [Phase 3.2] Updated to use boolean input flags + accumulated cameraYaw.
+// NPC turn speed is now read from ConfigManager (data-driven).
 // -------------------------------------------------------------------------
-
-static constexpr float kNPCTurnSpeed = 80.0f; // degrees per second
 
 void ServerNPCManager::tickWander(uint32_t /*id*/, NPCAIState& ai,
                                   float dt, Network::PlayerInputPacket& out) {
+    const float npcTurnSpeed = ConfigManager::get().physics.npcTurnSpeed;
     ai.timer += dt;
 
     switch (ai.phase) {
@@ -159,7 +160,7 @@ void ServerNPCManager::tickWander(uint32_t /*id*/, NPCAIState& ai,
             if (ai.timer >= 3.0f) { ai.timer = 0.0f; ai.phase = 1; }
             break;
         case 1: // Turn (accumulate yaw)
-            ai.cameraYaw += kNPCTurnSpeed * dt;
+            ai.cameraYaw += npcTurnSpeed * dt;
             if (ai.timer >= 1.0f) { ai.timer = 0.0f; ai.phase = 0; }
             break;
         default:
@@ -173,10 +174,12 @@ void ServerNPCManager::tickWander(uint32_t /*id*/, NPCAIState& ai,
 // -------------------------------------------------------------------------
 // GuardAI — stand still, occasionally look around
 // [Phase 3.2] Updated to use boolean input flags + accumulated cameraYaw.
+// NPC turn speed is now read from ConfigManager (data-driven).
 // -------------------------------------------------------------------------
 
 void ServerNPCManager::tickGuard(uint32_t /*id*/, NPCAIState& ai,
                                  float dt, Network::PlayerInputPacket& out) {
+    const float npcTurnSpeed = ConfigManager::get().physics.npcTurnSpeed;
     ai.timer += dt;
 
     switch (ai.phase) {
@@ -184,11 +187,11 @@ void ServerNPCManager::tickGuard(uint32_t /*id*/, NPCAIState& ai,
             if (ai.timer >= 4.0f) { ai.timer = 0.0f; ai.phase = 1; }
             break;
         case 1: // Look left
-            ai.cameraYaw += kNPCTurnSpeed * dt;
+            ai.cameraYaw += npcTurnSpeed * dt;
             if (ai.timer >= 0.5f) { ai.timer = 0.0f; ai.phase = 2; }
             break;
         case 2: // Look right
-            ai.cameraYaw -= kNPCTurnSpeed * dt;
+            ai.cameraYaw -= npcTurnSpeed * dt;
             if (ai.timer >= 1.0f) { ai.timer = 0.0f; ai.phase = 0; }
             break;
         default:

@@ -72,6 +72,7 @@ file(GLOB_RECURSE COMMON_SOURCES
     "${CMAKE_SOURCE_DIR}/src/Network/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Util/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Collision/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/Config/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Terrain/HeightMap.cpp"
 )
 

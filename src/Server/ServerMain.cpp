@@ -24,6 +24,8 @@
 #include "../Terrain/HeightMap.h"
 #include "../Util/FileSystem.h"
 #include "../Toolbox/Maths.h"
+#include "../Config/ConfigManager.h"
+#include "../Config/PrefabManager.h"
 
 #include <nlohmann/json.hpp>
 
@@ -45,14 +47,16 @@
 #include <random>
 
 // ---------------------------------------------------------------------------
-// Configuration
+// Configuration — values are now loaded from world_config.json via ConfigManager.
+// These local constants are kept as fallbacks for legacy code paths that run
+// before ConfigManager::loadAll() completes (signal handlers, etc.).
 // ---------------------------------------------------------------------------
 
-static constexpr int   kPort         = 7777;
-static constexpr int   kMaxClients   = 32;
-static constexpr int   kChannelCount = 2;
-static constexpr float kTickInterval = 0.1f;   // 100 ms = 10 Hz
-static constexpr float kTerrainSize  = 800.0f;
+static constexpr int   kPort         = 7777;      // overridden by ConfigManager
+static constexpr int   kMaxClients   = 32;         // overridden by ConfigManager
+static constexpr int   kChannelCount = 2;          // overridden by ConfigManager
+static constexpr float kTickInterval = 0.1f;       // overridden by ConfigManager
+static constexpr float kTerrainSize  = 800.0f;     // overridden by ConfigManager
 // ---------------------------------------------------------------------------
 // Graceful shutdown on SIGINT / SIGTERM
 // ---------------------------------------------------------------------------
@@ -71,7 +75,7 @@ struct HeadlessTerrain {
     std::vector<std::vector<float>> heights;
     float originX = 0.0f;
     float originZ = 0.0f;
-    float size    = kTerrainSize;
+    float size    = 800.0f;  // overridden at load time from ConfigManager
     bool  valid   = false;
 
     /// Build from heightmap file for terrain tile at grid (gx, gz).
@@ -419,6 +423,11 @@ int main() {
     std::signal(SIGINT,  signalHandler);
     std::signal(SIGTERM, signalHandler);
 
+    // --- Data-driven initialisation ---
+    ConfigManager::get().loadAll(HOME_PATH);
+    PrefabManager::get().loadAll(HOME_PATH);
+    const auto& cfg = ConfigManager::get();
+
     // --- ENet Initialization ---
     if (enet_initialize() != 0) {
         std::cerr << "[Server] Failed to initialize ENet.\n";
@@ -427,18 +436,19 @@ int main() {
 
     ENetAddress address;
     address.host = ENET_HOST_ANY;
-    address.port = static_cast<enet_uint16>(kPort);
+    address.port = static_cast<enet_uint16>(cfg.server.port);
 
-    ENetHost* server = enet_host_create(&address, kMaxClients, kChannelCount, 0, 0);
+    ENetHost* server = enet_host_create(&address, cfg.server.maxClients,
+                                         cfg.server.channelCount, 0, 0);
     if (!server) {
         std::cerr << "[Server] Failed to create ENet server host on port "
-                  << kPort << ".\n";
+                  << cfg.server.port << ".\n";
         enet_deinitialize();
         return 1;
     }
 
-    std::cout << "[Server] Listening on port " << kPort
-              << " (tick rate: " << static_cast<int>(1.0f / kTickInterval)
+    std::cout << "[Server] Listening on port " << cfg.server.port
+              << " (tick rate: " << static_cast<int>(1.0f / cfg.server.tickInterval)
               << " Hz)\n";
 
     // --- Headless Terrain — load all tiles from scene.json ---
@@ -711,13 +721,13 @@ int main() {
         auto now = Clock::now();
         float elapsed = std::chrono::duration<float>(now - lastTick).count();
 
-        if (elapsed >= kTickInterval) {
+        if (elapsed >= cfg.server.tickInterval) {
             lastTick = now;
-            serverTime += kTickInterval;
+            serverTime += cfg.server.tickInterval;
 
             // --- NEW: 5-Second Player Position Logging ---
             static float logTimer = 0.0f;
-            logTimer += kTickInterval;
+            logTimer += cfg.server.tickInterval;
             if (logTimer >= 5.0f) {
                 logTimer = 0.0f;
                 std::cout << "\n--- [Server] Player Positions (5s Tick) ---\n";
@@ -735,7 +745,7 @@ int main() {
 
             // ----- NPC AI tick — generate synthetic inputs -----
             std::unordered_map<uint32_t, Network::PlayerInputPacket> npcInputs;
-            npcManager.tick(kTickInterval, npcInputs);
+            npcManager.tick(cfg.server.tickInterval, npcInputs);
             for (auto& [nid, inp] : npcInputs) {
                 auto eit = networkIdToEntity.find(nid);
                 if (eit != networkIdToEntity.end()) {
@@ -810,7 +820,7 @@ int main() {
                 }
 
                 if (maxDepth > 0) {
-                    float subDt = kTickInterval / static_cast<float>(maxDepth);
+                    float subDt = cfg.server.tickInterval / static_cast<float>(maxDepth);
 
                     for (int step = 0; step < maxDepth; ++step) {
                         for (auto entity : inputView) {
@@ -874,7 +884,7 @@ int main() {
                     }
                     // No inputs this tick — still advance the simulation so gravity,
                     // dynamic bodies, and standing collision remain active.
-                    physicsSystem.update(kTickInterval);
+                    physicsSystem.update(cfg.server.tickInterval);
 
                     // Same terrain-clamp for the no-input path.
                     clampCharsToTerrain();
@@ -905,7 +915,7 @@ int main() {
         // --- Sleep until next tick ---
         auto now2    = Clock::now();
         float used   = std::chrono::duration<float>(now2 - lastTick).count();
-        float remain = kTickInterval - used;
+        float remain = cfg.server.tickInterval - used;
         if (remain > 0.001f) {
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(static_cast<int>(remain * 1000.0f)));

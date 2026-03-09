@@ -2,6 +2,16 @@
   "id": "npc_wanderer",
   "description": "A wandering NPC that walks forward for 3 seconds, then turns for 1 second.",
   "model_type": "npc_wanderer",
+  "mesh": "models/wanderer.glb",
+  "physics": {
+    "type": "kinematic_character",
+    "radius": 0.5,
+    "height": 1.8,
+    "mass": 70.0,
+    "step_height": 0.35
+  },
+  "animation_controller": "animations/humanoid.json",
+  "ai_script": "scripts/ai/wander_behavior.lua",
   "components": {
     "NetworkSyncComponent": {
       "interpolation_delay": 0.20,

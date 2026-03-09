@@ -2,6 +2,16 @@
   "id": "npc_guard",
   "description": "A stationary guard NPC that stands still and occasionally looks around.",
   "model_type": "npc_guard",
+  "mesh": "models/guard.glb",
+  "physics": {
+    "type": "kinematic_character",
+    "radius": 0.5,
+    "height": 1.8,
+    "mass": 70.0,
+    "step_height": 0.35
+  },
+  "animation_controller": "animations/humanoid.json",
+  "ai_script": "scripts/ai/guard_behavior.lua",
   "components": {
     "NetworkSyncComponent": {
       "interpolation_delay": 0.20,

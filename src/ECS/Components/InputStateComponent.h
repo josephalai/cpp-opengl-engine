@@ -13,12 +13,18 @@ class PhysicsSystem;
 ///
 /// [Phase 3.2] Network input flags mirror PlayerInputPacket exactly so the
 /// local prediction path and the server authoritative path share the same data.
+///
+/// [Data-Driven] Default values for runSpeed, turnSpeed, kGravity, and
+/// kJumpPower are now also defined in world_config.json and loaded by
+/// ConfigManager.  EntityFactory applies config overrides when spawning
+/// entities.  The static constexpr values below are retained as compile-time
+/// fallbacks for code that runs before ConfigManager is initialised.
 struct InputStateComponent {
-    // --- Movement tuning (JSON-configurable) ---
+    // --- Movement tuning (JSON-configurable via ConfigManager / prefabs) ---
     float runSpeed  = 20.0f;
     float turnSpeed = 160.0f;
 
-    // --- Physics constants ---
+    // --- Physics constants (compile-time fallbacks; runtime values come from ConfigManager) ---
     static constexpr float kGravity   = -50.0f;
     static constexpr float kJumpPower =  30.0f;
 
