@@ -77,10 +77,17 @@ void NetworkSystem::update(float deltaTime) {
     //    The server independently simulates movement using SharedMovement.
     // -----------------------------------------------------------------
     if (localPlayer_ && serverPeer_) {
+
+        // ---> ADD THIS: Record the actual physical result of the PREVIOUS frame's input
+        if (inputSequenceNumber_ > 0) {
+            localHistory_.push_back({inputSequenceNumber_, localPlayer_->getPosition()});
+            if (localHistory_.size() > 100) localHistory_.erase(localHistory_.begin());
+        }
+
         Network::PlayerInputPacket input;
         input.sequenceNumber = ++inputSequenceNumber_;
         // --- ADD THESE TWO LINES ---
-        localHistory_.push_back({input.sequenceNumber, localPlayer_->getPosition()});
+        // localHistory_.push_back({input.sequenceNumber, localPlayer_->getPosition()});
         if (localHistory_.size() > 100) localHistory_.erase(localHistory_.begin());
         // ---------------------------
 
