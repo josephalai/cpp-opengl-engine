@@ -28,6 +28,8 @@
 #include <glm/glm.hpp>
 #include <entt/entt.hpp>
 
+class PhysicsSystem;
+
 class Player;
 
 class NetworkSystem : public ISystem {
@@ -60,7 +62,15 @@ public:
     /// The local player's networkId assigned by the server.
     uint32_t localPlayerId() const { return localPlayerId_; }
 
+    void setPhysicsSystem(PhysicsSystem* physics) { physicsSystem_ = physics; }
+
 private:
+    // ADD THIS STRUCT AND VECTOR:
+    struct PlayerHistory {
+        uint32_t sequenceNumber;
+        glm::vec3 position;
+    };
+    std::vector<PlayerHistory> localHistory_;
     // --- Registry (for ECS component access) ---
     entt::registry& registry_;
 
@@ -95,6 +105,7 @@ private:
     static constexpr float kReconcileLerp     = 0.3f; ///< alpha per frame toward server
     glm::vec3 reconcileTarget_    = {};
     bool      hasReconcileTarget_ = false;
+    PhysicsSystem* physicsSystem_ = nullptr;
 };
 
 #endif // ENGINE_NETWORKSYSTEM_H

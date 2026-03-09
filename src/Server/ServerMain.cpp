@@ -782,12 +782,19 @@ int main() {
                     if (!terrainMgr.isAnyValid()) return;
                     auto tv = registry.view<TransformComponent, NetworkIdComponent>();
                     for (auto entity : tv) {
-                        if (!physicsSystem.hasCharacterController(entity)) continue;
                         auto& tc = tv.get<TransformComponent>(entity);
                         float terrH = terrainMgr.getHeight(tc.position.x, tc.position.z);
-                        if (tc.position.y < terrH - kTerrainClampEpsilon) {
+                        
+                        if (physicsSystem.hasCharacterController(entity)) {
+                            // Bullet entities (NPCs)
+                            if (tc.position.y < terrH - kTerrainClampEpsilon) {
+                                tc.position.y = terrH;
+                                physicsSystem.warpCharacterController(entity, tc.position);
+                            }
+                        } else {
+                            // Math entities (The Player)
+                            // Snap directly to the terrain to mimic the client's manual math gravity
                             tc.position.y = terrH;
-                            physicsSystem.warpCharacterController(entity, tc.position);
                         }
                     }
                 };

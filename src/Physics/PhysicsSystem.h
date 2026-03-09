@@ -194,6 +194,8 @@ public:
     /// wantsJump triggers a single jump when the character is grounded.
     void setPlayerWalkDirection(float vx, float vz, bool wantsJump = false);
 
+    void warpPlayer(const glm::vec3& feetPos);
+
     /// Sync the ghost object's world transform back to the Player entity.
     void syncCharacterToPlayer();
 

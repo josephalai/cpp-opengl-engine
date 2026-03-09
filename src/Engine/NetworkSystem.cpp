@@ -13,7 +13,7 @@
 
 #include "NetworkSystem.h"
 #include "../Entities/Player.h"
-
+#include "../Physics/PhysicsSystem.h"
 #include <iostream>
 #include <cstring>
 #include <cmath>
@@ -68,30 +68,7 @@ void NetworkSystem::init() {
 void NetworkSystem::update(float deltaTime) {
     if (!client_) return;
 
-    // -----------------------------------------------------------------
-    // 0. Apply smooth server reconciliation interpolation.
-    // -----------------------------------------------------------------
-    if (hasReconcileTarget_ && localPlayer_) {
-        glm::vec3 cur = localPlayer_->getPosition();
 
-        // Reconcile XZ only. Y is owned by client physics (terrain gravity +
-        // terrain-clamp in PlayerMovementSystem); pulling Y toward the server's
-        // physics result causes the client to fight its own terrain collision and
-        // produces the infinite bounce seen in the reconciliation log.
-        cur.x = glm::mix(cur.x, reconcileTarget_.x, kReconcileLerp);
-        cur.z = glm::mix(cur.z, reconcileTarget_.z, kReconcileLerp);
-        // cur.y intentionally unchanged — Y is never reconciled.
-
-        localPlayer_->setPosition(cur);
-
-        // Stop interpolating once we're close enough on the XZ plane
-        glm::vec3 remaining = reconcileTarget_ - cur;
-        remaining.y = 0.0f; // Ignore Y for the cancellation check
-        
-        if (glm::dot(remaining, remaining) < 0.01f) {
-            hasReconcileTarget_ = false;
-        }
-    }
 
     // -----------------------------------------------------------------
     // 1. Send the local player's input flags to the server.
@@ -102,6 +79,11 @@ void NetworkSystem::update(float deltaTime) {
     if (localPlayer_ && serverPeer_) {
         Network::PlayerInputPacket input;
         input.sequenceNumber = ++inputSequenceNumber_;
+        // --- ADD THESE TWO LINES ---
+        localHistory_.push_back({input.sequenceNumber, localPlayer_->getPosition()});
+        if (localHistory_.size() > 100) localHistory_.erase(localHistory_.begin());
+        // ---------------------------
+
         input.deltaTime      = deltaTime;
         input.cameraYaw      = localPlayer_->getRotation().y;
         input.moveForward    = InputMaster::isKeyDown(W);
@@ -221,6 +203,7 @@ void NetworkSystem::update(float deltaTime) {
                 }
 
                 // ----- TransformSnapshot -----
+                // ----- TransformSnapshot -----
                 else if (ptype == Network::PacketType::TransformSnapshot &&
                          plen == sizeof(Network::TransformSnapshot)) {
                     Network::TransformSnapshot snapshot;
@@ -228,29 +211,38 @@ void NetworkSystem::update(float deltaTime) {
 
                     if (snapshot.networkId == localPlayerId_) {
                         if (localPlayer_) {
-                            glm::vec3 clientPos = localPlayer_->getPosition();
-                            glm::vec3 diff = snapshot.position - clientPos;
+                            glm::vec3 currentClientPos = localPlayer_->getPosition();
+                            glm::vec3 historicalPos = currentClientPos;
 
-                            // Y is owned by client physics (terrain + gravity).
-                            // Exclude it from the XZ-only reconciliation check so a
-                            // server/client terrain-height difference never triggers
-                            // a correction that fights the client's own physics.
-                            diff.y = 0.0f;
+                            // 1. Find where the client WAS when the server processed this
+                            auto it = std::find_if(localHistory_.begin(), localHistory_.end(),
+                                [&](const PlayerHistory& h) { return h.sequenceNumber == snapshot.lastProcessedInputSequence; });
+                            
+                            if (it != localHistory_.end()) {
+                                historicalPos = it->position;
+                                localHistory_.erase(localHistory_.begin(), it); // Clear older history
+                            }
+
+                            // 2. Compare Server Past vs Client Past
+                            glm::vec3 diff = snapshot.position - historicalPos;
+                            diff.y = 0.0f; // Exclude Y
 
                             float distSq = glm::dot(diff, diff);
                             if (distSq > kReconcileThreshSq) {
-                                // Accept server XZ, preserve client Y.
-                                reconcileTarget_    = snapshot.position;
-                                reconcileTarget_.y  = clientPos.y;
-                                hasReconcileTarget_ = true;
-                                localPlayer_->setRotation(snapshot.rotation);
+                                // 3. We actually desynced! Apply the mathematical error to our CURRENT position.
+                                glm::vec3 correctedPos = currentClientPos + diff;
+                                correctedPos.y = currentClientPos.y; // Preserve client Y
+                                
+                                localPlayer_->setPosition(correctedPos);
 
-                                std::cout << "[NetworkSystem] Server reconciliation triggered (XZ).\n"
-                                          << "   -> Client Physics Pos: (" << clientPos.x << ", "
-                                          << clientPos.y << ", " << clientPos.z << ")\n"
-                                          << "   -> Server Physics Pos: (" << snapshot.position.x << ", "
-                                          << snapshot.position.y << ", " << snapshot.position.z << ")\n"
-                                          << "   -> XZ Discrepancy: (" << diff.x << ", " << diff.z << ")\n";
+                                if (physicsSystem_) {
+                                    physicsSystem_->warpPlayer(correctedPos);
+                                }
+
+                                std::cout << "[NetworkSystem] Real Reconcile Triggered.\n"
+                                          << "   -> Client Hist Pos: (" << historicalPos.x << ", " << historicalPos.z << ")\n"
+                                          << "   -> Server Snap Pos: (" << snapshot.position.x << ", " << snapshot.position.z << ")\n"
+                                          << "   -> XZ Discrepancy : (" << diff.x << ", " << diff.z << ")\n";
                             }
                         }
                     } else {
