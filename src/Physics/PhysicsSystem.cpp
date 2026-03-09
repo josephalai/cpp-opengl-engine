@@ -111,8 +111,10 @@ void PhysicsSystem::update(float deltaTime) {
         e.body->setWorldTransform(t);
     }
 
-    // Step simulation
-    dynamicsWorld_->stepSimulation(deltaTime, 10);
+    // Step simulation — single sub-step per call so the character controller
+    // walk direction (which is a per-tick displacement, not per-sub-step) is
+    // applied exactly once regardless of the tick interval duration.
+    dynamicsWorld_->stepSimulation(deltaTime, 1, deltaTime);
 
 #ifndef HEADLESS_SERVER
     // Sync character controller ghost transform → player (client only)
@@ -120,6 +122,21 @@ void PhysicsSystem::update(float deltaTime) {
         syncCharacterToPlayer();
     }
 #endif
+
+    // Sync ECS character controllers: ghost transform → TransformComponent.
+    // Done on both client and server — server uses this for all players/NPCs.
+    for (auto& [key, data] : characterControllers_) {
+        if (!data.ghostObject) continue;
+        entt::entity entity = static_cast<entt::entity>(key);
+        const btTransform& t = data.ghostObject->getWorldTransform();
+        glm::vec3 pos = btToGlm(t.getOrigin());
+        pos.y -= data.capsuleHalfHeight;  // ghost origin is at capsule centre; entity position is at feet
+        if (registry_ && entity != entt::null) {
+            if (auto* tc = registry_->try_get<TransformComponent>(entity)) {
+                tc->position = pos;
+            }
+        }
+    }
 
     // Sync dynamic body transforms FROM physics world TO TransformComponent/registry
     for (auto& e : entries_) {
@@ -160,6 +177,15 @@ void PhysicsSystem::shutdown() {
             delete b->getMotionState();
             delete b;
         }
+        // Clean up ECS-native character controllers (server players/NPCs, client remote players)
+        for (auto& [key, data] : characterControllers_) {
+            if (data.controller)  dynamicsWorld_->removeAction(data.controller);
+            if (data.ghostObject) dynamicsWorld_->removeCollisionObject(data.ghostObject);
+            delete data.controller;   data.controller  = nullptr;
+            delete data.ghostObject;  data.ghostObject  = nullptr;
+            delete data.capsuleShape; data.capsuleShape = nullptr;
+        }
+        characterControllers_.clear();
 #ifndef HEADLESS_SERVER
         if (characterController_) {
             dynamicsWorld_->removeAction(characterController_);
@@ -415,6 +441,158 @@ void PhysicsSystem::addTerrainCollider(Terrain* terrain) {
     dynamicsWorld_->addRigidBody(body);
     groundBodies_.push_back(body);
 #endif // !HEADLESS_SERVER
+}
+
+void PhysicsSystem::addHeadlessTerrainCollider(
+        const std::vector<std::vector<float>>& heights,
+        float terrainSize, float originX, float originZ) {
+    if (!dynamicsWorld_) return;
+
+    int vertexCount = static_cast<int>(heights.size());
+    if (vertexCount < 2) return;
+
+    terrainHeightBuffers_.emplace_back(vertexCount * vertexCount);
+    auto& buf = terrainHeightBuffers_.back();
+    // NOTE: btHeightfieldTerrainShape holds a raw pointer into buf.data() and
+    // does NOT copy the data.  The buffer must remain alive for the lifetime of
+    // the shape, hence it is stored in terrainHeightBuffers_.
+
+    float minH =  std::numeric_limits<float>::max();
+    float maxH =  std::numeric_limits<float>::lowest();
+    for (int x = 0; x < vertexCount; ++x) {
+        for (int z = 0; z < vertexCount; ++z) {
+            float hv = heights[x][z];
+            buf[z * vertexCount + x] = hv;
+            if (hv < minH) minH = hv;
+            if (hv > maxH) maxH = hv;
+        }
+    }
+
+    auto* shape = new btHeightfieldTerrainShape(
+        vertexCount, vertexCount,
+        buf.data(),
+        /*heightScale=*/1.0f,
+        minH, maxH,
+        /*upAxis=*/1,
+        PHY_FLOAT,
+        /*flipQuadEdges=*/false);
+
+    float stickScale = terrainSize / static_cast<float>(vertexCount - 1);
+    shape->setLocalScaling(btVector3(stickScale, 1.0f, stickScale));
+
+    groundShapes_.push_back(shape);
+
+    btTransform t;
+    t.setIdentity();
+    t.setOrigin(btVector3(
+        originX + terrainSize * 0.5f,
+        (minH + maxH) * 0.5f,
+        originZ + terrainSize * 0.5f));
+
+    auto* motionState = new btDefaultMotionState(t);
+    btRigidBody::btRigidBodyConstructionInfo ci(0.0f, motionState, shape);
+    ci.m_friction    = 0.8f;
+    ci.m_restitution = 0.1f;
+
+    auto* body = new btRigidBody(ci);
+    dynamicsWorld_->addRigidBody(body);
+    groundBodies_.push_back(body);
+}
+
+// ---------------------------------------------------------------------------
+// ECS-native character controller API — server + client
+// ---------------------------------------------------------------------------
+
+void PhysicsSystem::addCharacterController(entt::entity entity, float radius, float height) {
+    if (!dynamicsWorld_) return;
+    uint32_t key = static_cast<uint32_t>(entity);
+    if (characterControllers_.count(key)) return;  // already registered
+
+    glm::vec3 pos(0.0f);
+    if (registry_ && entity != entt::null) {
+        if (auto* tc = registry_->try_get<TransformComponent>(entity))
+            pos = tc->position;
+    }
+
+    CharacterControllerData data;
+    data.capsuleHalfHeight = height * 0.5f + radius;
+    data.capsuleShape = new btCapsuleShape(radius, height);
+
+    data.ghostObject = new btPairCachingGhostObject();
+    btTransform t;
+    t.setIdentity();
+    t.setOrigin(btVector3(pos.x, pos.y + data.capsuleHalfHeight, pos.z));
+    data.ghostObject->setWorldTransform(t);
+    data.ghostObject->setCollisionShape(data.capsuleShape);
+    data.ghostObject->setCollisionFlags(btCollisionObject::CF_CHARACTER_OBJECT
+                                        | btCollisionObject::CF_KINEMATIC_OBJECT);
+    // Prevent Bullet's broadphase from putting the ghost object to sleep and
+    // silently culling its collision sweeps against static geometry.
+    data.ghostObject->setActivationState(DISABLE_DEACTIVATION);
+
+    dynamicsWorld_->addCollisionObject(
+        data.ghostObject,
+        btBroadphaseProxy::CharacterFilter,
+        btBroadphaseProxy::StaticFilter | btBroadphaseProxy::DefaultFilter);
+
+    data.controller = new btKinematicCharacterController(
+        data.ghostObject, data.capsuleShape, 0.35f);
+    // Let Bullet's world gravity drive vertical movement for this controller.
+    // SharedMovement only supplies horizontal intent; this makes the character
+    // land correctly on top of static geometry (trees, stalls) rather than
+    // only knowing about the flat terrain plane.
+    data.controller->setGravity(dynamicsWorld_->getGravity());
+    // Configure jump speed to match SharedMovement::kJumpPower (30 m/s).
+    // jumpCharacterController() calls jump(btVector3(0,0,0)) which uses this value.
+    data.controller->setJumpSpeed(30.0f); // must equal SharedMovement::kJumpPower
+    dynamicsWorld_->addAction(data.controller);
+
+    characterControllers_[key] = data;
+}
+
+void PhysicsSystem::setEntityWalkDirection(entt::entity entity, glm::vec3 walkDisplacement) {
+    auto it = characterControllers_.find(static_cast<uint32_t>(entity));
+    if (it == characterControllers_.end()) return;
+    it->second.controller->setWalkDirection(
+        btVector3(walkDisplacement.x, walkDisplacement.y, walkDisplacement.z));
+}
+
+void PhysicsSystem::jumpCharacterController(entt::entity entity) {
+    auto it = characterControllers_.find(static_cast<uint32_t>(entity));
+    if (it == characterControllers_.end()) return;
+    if (it->second.controller->canJump())
+        it->second.controller->jump(btVector3(0.0f, 0.0f, 0.0f));
+}
+
+void PhysicsSystem::removeCharacterController(entt::entity entity) {
+    auto it = characterControllers_.find(static_cast<uint32_t>(entity));
+    if (it == characterControllers_.end()) return;
+    auto& data = it->second;
+    if (dynamicsWorld_) {
+        if (data.controller)  dynamicsWorld_->removeAction(data.controller);
+        if (data.ghostObject) dynamicsWorld_->removeCollisionObject(data.ghostObject);
+    }
+    delete data.controller;   data.controller  = nullptr;
+    delete data.ghostObject;  data.ghostObject  = nullptr;
+    delete data.capsuleShape; data.capsuleShape = nullptr;
+    characterControllers_.erase(it);
+}
+
+bool PhysicsSystem::hasCharacterController(entt::entity entity) const {
+    return characterControllers_.count(static_cast<uint32_t>(entity)) > 0;
+}
+
+void PhysicsSystem::warpCharacterController(entt::entity entity,
+                                             const glm::vec3& feetPos) {
+    auto it = characterControllers_.find(static_cast<uint32_t>(entity));
+    if (it == characterControllers_.end()) return;
+    auto& data = it->second;
+    // Place the capsule centre (ghost object origin) at feetPos.y + capsuleHalfHeight
+    // so the capsule bottom sits exactly at feetPos.y (terrain surface).
+    btVector3 centre(feetPos.x,
+                     feetPos.y + data.capsuleHalfHeight,
+                     feetPos.z);
+    data.controller->warp(centre);
 }
 
 // ---------------------------------------------------------------------------

@@ -144,7 +144,10 @@ void ServerNPCManager::tick(float dt,
 
 // -------------------------------------------------------------------------
 // WanderAI — walk forward for 3 s, turn for 1 s, repeat
+// [Phase 3.2] Updated to use boolean input flags + accumulated cameraYaw.
 // -------------------------------------------------------------------------
+
+static constexpr float kNPCTurnSpeed = 80.0f; // degrees per second
 
 void ServerNPCManager::tickWander(uint32_t /*id*/, NPCAIState& ai,
                                   float dt, Network::PlayerInputPacket& out) {
@@ -152,13 +155,11 @@ void ServerNPCManager::tickWander(uint32_t /*id*/, NPCAIState& ai,
 
     switch (ai.phase) {
         case 0: // Walk forward
-            out.forward = 1.0f;
-            out.turn    = 0.0f;
+            out.moveForward = true;
             if (ai.timer >= 3.0f) { ai.timer = 0.0f; ai.phase = 1; }
             break;
-        case 1: // Turn
-            out.forward = 0.0f;
-            out.turn    = 1.0f;
+        case 1: // Turn (accumulate yaw)
+            ai.cameraYaw += kNPCTurnSpeed * dt;
             if (ai.timer >= 1.0f) { ai.timer = 0.0f; ai.phase = 0; }
             break;
         default:
@@ -166,10 +167,12 @@ void ServerNPCManager::tickWander(uint32_t /*id*/, NPCAIState& ai,
             ai.timer = 0.0f;
             break;
     }
+    out.cameraYaw = ai.cameraYaw;
 }
 
 // -------------------------------------------------------------------------
 // GuardAI — stand still, occasionally look around
+// [Phase 3.2] Updated to use boolean input flags + accumulated cameraYaw.
 // -------------------------------------------------------------------------
 
 void ServerNPCManager::tickGuard(uint32_t /*id*/, NPCAIState& ai,
@@ -178,18 +181,14 @@ void ServerNPCManager::tickGuard(uint32_t /*id*/, NPCAIState& ai,
 
     switch (ai.phase) {
         case 0: // Stand still
-            out.forward = 0.0f;
-            out.turn    = 0.0f;
             if (ai.timer >= 4.0f) { ai.timer = 0.0f; ai.phase = 1; }
             break;
         case 1: // Look left
-            out.forward = 0.0f;
-            out.turn    = 1.0f;
+            ai.cameraYaw += kNPCTurnSpeed * dt;
             if (ai.timer >= 0.5f) { ai.timer = 0.0f; ai.phase = 2; }
             break;
         case 2: // Look right
-            out.forward = 0.0f;
-            out.turn    = -1.0f;
+            ai.cameraYaw -= kNPCTurnSpeed * dt;
             if (ai.timer >= 1.0f) { ai.timer = 0.0f; ai.phase = 0; }
             break;
         default:
@@ -197,4 +196,5 @@ void ServerNPCManager::tickGuard(uint32_t /*id*/, NPCAIState& ai,
             ai.timer = 0.0f;
             break;
     }
+    out.cameraYaw = ai.cameraYaw;
 }

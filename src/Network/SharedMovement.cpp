@@ -4,18 +4,14 @@
 #include <cmath>
 
 void SharedMovement::applyInput(const Network::PlayerInputPacket& input,
-                                glm::vec3& position, glm::vec3& rotation,
-                                float terrainHeight) {
-    // --- Rotation ---
-    float turnSpeed = 0.0f;
-    if      (input.turn > 0.0f) turnSpeed =  kTurnSpeed / 2.0f;
-    else if (input.turn < 0.0f) turnSpeed = -kTurnSpeed / 2.0f;
-    rotation.y += turnSpeed * input.deltaTime;
+                                glm::vec3& position, glm::vec3& rotation) {
+    // --- Rotation — apply client's absolute camera yaw directly ---
+    rotation.y = input.cameraYaw;
 
-    // --- Translation ---
+    // --- Forward / backward translation ---
     float speed = 0.0f;
-    if      (input.forward > 0.0f) speed =  kRunSpeed;
-    else if (input.forward < 0.0f) speed = -kRunSpeed;
+    if      (input.moveForward)  speed =  kRunSpeed;
+    else if (input.moveBackward) speed = -kRunSpeed;
 
     float distance = speed * input.deltaTime;
     float sinY = std::sin(glm::radians(rotation.y));
@@ -24,8 +20,17 @@ void SharedMovement::applyInput(const Network::PlayerInputPacket& input,
     position.x += distance * sinY;
     position.z += distance * cosY;
 
-    // --- Terrain height clamping ---
-    if (terrainHeight > kNoTerrainHeight) {
-        position.y = terrainHeight;
-    }
+    // --- Strafing (left / right) ---
+    float strafeSpeed = 0.0f;
+    if      (input.moveLeft)  strafeSpeed = -kRunSpeed;
+    else if (input.moveRight) strafeSpeed =  kRunSpeed;
+
+    float strafeDistance = strafeSpeed * input.deltaTime;
+    position.x += strafeDistance *  cosY;
+    position.z += strafeDistance * -sinY;
+
+    // NOTE: vertical movement (gravity, jump, terrain landing) is intentionally
+    // absent.  Bullet's btKinematicCharacterController drives the Y axis; the
+    // server calls physicsSystem.jumpCharacterController(entity) when
+    // input.jump is true, and Bullet's world gravity handles falling.
 }

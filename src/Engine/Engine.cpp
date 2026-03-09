@@ -261,18 +261,25 @@ void Engine::loadScene() {
         physicsSystem->addTerrainCollider(t);
     }
 
-    // Set up a kinematic character controller for the player so Bullet handles
-    // gravity and collision instead of the manual terrain-height fallback.
-    if (player) {
-        physicsSystem->setCharacterController(player, 1.0f, 3.0f);
-        player->setPhysicsSystem(physicsSystem);
-    }
+    // [Phase 3.3] The server-authoritative architecture drives the local player's
+    // position with SharedMovement::applyInput() (direct Euler math), NOT Bullet.
+    // Registering a btKinematicCharacterController would cause PhysicsSystem to
+    // overwrite the player's TransformComponent with Bullet's output every tick,
+    // producing a completely different position than the server computes → constant
+    // reconciliation snapping.  The legacy path in PlayerMovementSystem uses the
+    // same Euler integration as SharedMovement, so prediction and server agree.
+    //
+    // physicsSystem->setCharacterController(player, 1.0f, 3.0f); // [Phase 3.3] Removed
+    // player->setPhysicsSystem(physicsSystem);                    // [Phase 3.3] Removed (no-op)
 
     // Emplace the new ECS InputStateComponent so PlayerMovementSystem can drive it.
     if (player) {
         auto& isc     = registry.emplace_or_replace<InputStateComponent>(player->getHandle());
         isc.terrain       = primaryTerrain;
-        isc.physicsSystem = physicsSystem;
+        // [Phase 3.3] Leave physicsSystem null so PlayerMovementSystem uses the
+        // legacy direct-math path instead of the Bullet physics path.  This keeps
+        // client movement mathematically identical to SharedMovement::applyInput().
+        isc.physicsSystem = nullptr;
     }
 }
 
@@ -557,7 +564,10 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
         remoteAe->controller   = remoteCtrl;
         remoteAe->position     = position;
         remoteAe->scale        = animatedEntities[0]->scale;
-        remoteAe->modelOffset  = glm::vec3(0.0f);  // No physics capsule offset
+        
+        // MATCH the local player's offset so they sit at the exact same height visually
+        remoteAe->modelOffset  = animatedEntities[0]->modelOffset;  
+        
         remoteAe->isLocalPlayer = false;
         remoteAe->pairedEntity  = ent;
 

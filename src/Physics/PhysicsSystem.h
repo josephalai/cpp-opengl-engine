@@ -50,6 +50,16 @@ struct PhysicsEntry {
     BodyType      bodyType     = BodyType::Dynamic;
 };
 
+/// Holds all Bullet objects that make up a character controller for one ECS entity.
+/// Used by the ECS-native API (server: all players/NPCs; client: remote players).
+/// Kept outside the HEADLESS_SERVER guard so both builds can share the type.
+struct CharacterControllerData {
+    btPairCachingGhostObject*       ghostObject       = nullptr;
+    btKinematicCharacterController* controller        = nullptr;
+    btCapsuleShape*                 capsuleShape      = nullptr;
+    float                           capsuleHalfHeight = 0.0f; ///< capsuleHeight/2 + radius
+};
+
 class PhysicsSystem : public ISystem {
 public:
     PhysicsSystem();
@@ -94,6 +104,48 @@ public:
     /// Add a static heightfield collider for a Terrain tile.
     /// (Client-only in practice; server uses HeadlessTerrain for height clamping.)
     void addTerrainCollider(Terrain* terrain);
+
+    /// Add a static heightfield collider using raw height data.
+    /// Available on both server and client — no OpenGL types required.
+    /// @param heights     2-D height grid (heights[x][z], square: NxN)
+    /// @param terrainSize World-space width/depth of the tile (e.g. 800.0f)
+    /// @param originX     World X of the tile's minimum corner
+    /// @param originZ     World Z of the tile's minimum corner
+    void addHeadlessTerrainCollider(const std::vector<std::vector<float>>& heights,
+                                    float terrainSize, float originX, float originZ);
+
+    // -------------------------------------------------------------------------
+    // ECS-native character controller API — server + client (no GL/GLFW needed)
+    // -------------------------------------------------------------------------
+
+    /// Register a Bullet kinematic character controller for the given entity.
+    /// Reads initial position from the entity's TransformComponent.
+    /// Bullet's world gravity drives vertical movement; horizontal intent is
+    /// supplied via setEntityWalkDirection each tick.
+    void addCharacterController(entt::entity entity,
+                                float radius = 0.5f,
+                                float height = 1.8f);
+
+    /// Set the intended horizontal displacement for the next physics step.
+    /// Only the XZ components of walkDisplacement are applied; Bullet's
+    /// built-in gravity controller handles the Y axis autonomously.
+    void setEntityWalkDirection(entt::entity entity, glm::vec3 walkDisplacement);
+
+    /// Trigger a jump on the entity's character controller.
+    /// No-ops if the controller is already airborne (canJump() returns false).
+    void jumpCharacterController(entt::entity entity);
+
+    /// Remove and destroy the character controller for the given entity.
+    /// Must be called before registry.destroy(entity).
+    void removeCharacterController(entt::entity entity);
+
+    /// Returns true if a character controller has been registered for entity.
+    bool hasCharacterController(entt::entity entity) const;
+
+    /// Teleport a character controller to a new position.
+    /// @param feetPos  World-space feet position (ground level); the ghost
+    ///                 capsule centre is placed at feetPos.y + capsuleHalfHeight.
+    void warpCharacterController(entt::entity entity, const glm::vec3& feetPos);
 
 #ifndef HEADLESS_SERVER
     // -------------------------------------------------------------------------
@@ -165,6 +217,10 @@ private:
     std::vector<btRigidBody*>                     groundBodies_;   ///< ground planes + terrain tiles
     std::vector<btCollisionShape*>                groundShapes_;
     std::vector<std::vector<float>>               terrainHeightBuffers_; ///< keeps height data alive for terrain shapes
+
+    /// ECS-native character controllers (server: all players/NPCs; client: remote players).
+    /// Keyed by the raw uint32_t value of entt::entity to avoid needing a hash specialisation.
+    std::unordered_map<uint32_t, CharacterControllerData> characterControllers_;
 
 #ifndef HEADLESS_SERVER
     PhysicsDebugDrawer*                  debugDrawer_        = nullptr;

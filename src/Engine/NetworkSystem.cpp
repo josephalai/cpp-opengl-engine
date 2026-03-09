@@ -69,23 +69,50 @@ void NetworkSystem::update(float deltaTime) {
     if (!client_) return;
 
     // -----------------------------------------------------------------
-    // 1. Send the local player's actual physics-driven position to the
-    //    server.  The Player entity has already been moved by the
-    //    PhysicsSystem (Bullet) before this system runs.
+    // 0. Apply smooth server reconciliation interpolation.
+    // -----------------------------------------------------------------
+    if (hasReconcileTarget_ && localPlayer_) {
+        glm::vec3 cur = localPlayer_->getPosition();
+
+        // Reconcile XZ only. Y is owned by client physics (terrain gravity +
+        // terrain-clamp in PlayerMovementSystem); pulling Y toward the server's
+        // physics result causes the client to fight its own terrain collision and
+        // produces the infinite bounce seen in the reconciliation log.
+        cur.x = glm::mix(cur.x, reconcileTarget_.x, kReconcileLerp);
+        cur.z = glm::mix(cur.z, reconcileTarget_.z, kReconcileLerp);
+        // cur.y intentionally unchanged — Y is never reconciled.
+
+        localPlayer_->setPosition(cur);
+
+        // Stop interpolating once we're close enough on the XZ plane
+        glm::vec3 remaining = reconcileTarget_ - cur;
+        remaining.y = 0.0f; // Ignore Y for the cancellation check
+        
+        if (glm::dot(remaining, remaining) < 0.01f) {
+            hasReconcileTarget_ = false;
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // 1. Send the local player's input flags to the server.
+    //    [Phase 3.2] The client NEVER sends its position/rotation over
+    //    the wire.  Only raw button states and the camera yaw are sent.
+    //    The server independently simulates movement using SharedMovement.
     // -----------------------------------------------------------------
     if (localPlayer_ && serverPeer_) {
-        float forward = InputMaster::isKeyDown(W) ?  1.0f
-                      : InputMaster::isKeyDown(S) ? -1.0f : 0.0f;
-        float turn    = InputMaster::isKeyDown(A) ?  1.0f
-                      : InputMaster::isKeyDown(D) ? -1.0f : 0.0f;
-
         Network::PlayerInputPacket input;
         input.sequenceNumber = ++inputSequenceNumber_;
-        input.forward        = forward;
-        input.turn           = turn;
         input.deltaTime      = deltaTime;
-        input.position       = localPlayer_->getPosition();
-        input.rotation       = localPlayer_->getRotation();
+        input.cameraYaw      = localPlayer_->getRotation().y;
+        input.moveForward    = InputMaster::isKeyDown(W);
+        input.moveBackward   = InputMaster::isKeyDown(S);
+        // [Phase 3.3] A/D are TURN keys on the client (they increment rotation.y
+        // in PlayerMovementSystem). Their effect is already captured in cameraYaw.
+        // Sending them as strafe flags caused the server to add a perpendicular
+        // displacement that the client never applied → per-frame desync.
+        input.moveLeft       = false;
+        input.moveRight      = false;
+        input.jump           = InputMaster::isKeyDown(Space);
 
         auto buf = Network::serialise(Network::PacketType::PlayerInput,
                                       input);
@@ -144,6 +171,14 @@ void NetworkSystem::update(float deltaTime) {
 
                     // If this is us, the local Player is already linked.
                     if (sp.networkId == localPlayerId_) {
+                        // Snap the local player to the server's authoritative spawn
+                        // position.  The server already terrain-clamps the Y, so this
+                        // ensures both sides start at exactly the same position and
+                        // prevents a cascade of reconciliation snaps while the client
+                        // is still "settling" from its scene-file spawn height.
+                        if (localPlayer_) {
+                            localPlayer_->setPosition(sp.position);
+                        }
                         // Already registered via WelcomePacket handling.
                         if (networkEntities_.find(localPlayerId_) ==
                             networkEntities_.end() && localPlayer_) {
@@ -192,19 +227,30 @@ void NetworkSystem::update(float deltaTime) {
                     std::memcpy(&snapshot, payload, sizeof(snapshot));
 
                     if (snapshot.networkId == localPlayerId_) {
-                        // === Server Reconciliation (local player) ===
-                        // The physics engine is authoritative on the client.
-                        // If the server disagrees significantly, snap the
-                        // player to the server's position.
                         if (localPlayer_) {
-                            glm::vec3 diff = snapshot.position - localPlayer_->getPosition();
+                            glm::vec3 clientPos = localPlayer_->getPosition();
+                            glm::vec3 diff = snapshot.position - clientPos;
+
+                            // Y is owned by client physics (terrain + gravity).
+                            // Exclude it from the XZ-only reconciliation check so a
+                            // server/client terrain-height difference never triggers
+                            // a correction that fights the client's own physics.
+                            diff.y = 0.0f;
+
                             float distSq = glm::dot(diff, diff);
-                            // Only correct if desync is > 5 units (avoids jitter).
-                            if (distSq > 25.0f) {
-                                localPlayer_->setPosition(snapshot.position);
+                            if (distSq > kReconcileThreshSq) {
+                                // Accept server XZ, preserve client Y.
+                                reconcileTarget_    = snapshot.position;
+                                reconcileTarget_.y  = clientPos.y;
+                                hasReconcileTarget_ = true;
                                 localPlayer_->setRotation(snapshot.rotation);
-                                std::cout << "[NetworkSystem] Server reconciliation — "
-                                             "snapped local player to server position.\n";
+
+                                std::cout << "[NetworkSystem] Server reconciliation triggered (XZ).\n"
+                                          << "   -> Client Physics Pos: (" << clientPos.x << ", "
+                                          << clientPos.y << ", " << clientPos.z << ")\n"
+                                          << "   -> Server Physics Pos: (" << snapshot.position.x << ", "
+                                          << snapshot.position.y << ", " << snapshot.position.z << ")\n"
+                                          << "   -> XZ Discrepancy: (" << diff.x << ", " << diff.z << ")\n";
                             }
                         }
                     } else {

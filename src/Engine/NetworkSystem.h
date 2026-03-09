@@ -85,6 +85,16 @@ private:
     // --- Network state ---
     uint32_t  localPlayerId_       = 0;
     uint32_t  inputSequenceNumber_ = 0;
+
+    // --- Server reconciliation ---
+    // When the server disagrees with our position by more than kReconcileThresh²
+    // we do NOT hard-snap the player (which causes visible teleporting). Instead
+    // we store the server's authoritative position and smoothly LERP toward it
+    // over the next several frames in update().
+    static constexpr float kReconcileThreshSq = 0.1f; ///< squared-distance threshold
+    static constexpr float kReconcileLerp     = 0.3f; ///< alpha per frame toward server
+    glm::vec3 reconcileTarget_    = {};
+    bool      hasReconcileTarget_ = false;
 };
 
 #endif // ENGINE_NETWORKSYSTEM_H
