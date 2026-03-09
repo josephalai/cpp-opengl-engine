@@ -30,10 +30,13 @@
 #include "InstancedRenderer.h"
 #include "InstancedModel.h"
 #include "../Shaders/InstancedShader.h"
+#include "../Config/ConfigManager.h"
 
-static const float FOVY = 45.0f;
-static const float NEAR_PLANE = 0.1f;
-static const float FAR_PLANE = 1000;
+/// Projection-plane accessors — prefer ConfigManager values at runtime.
+/// These are functions (not constants) so they reflect the current config.
+inline float masterFovy()      { return ConfigManager::get().client.fov; }
+inline float masterNearPlane() { return ConfigManager::get().client.nearPlane; }
+inline float masterFarPlane()  { return ConfigManager::get().client.farPlane; }
 
 class MasterRenderer {
 private:

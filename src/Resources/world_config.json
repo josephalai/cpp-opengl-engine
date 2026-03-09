@@ -1,0 +1,24 @@
+{
+  "_comment": "world_config.json — Global physics, movement, and server tunables. Loaded by ConfigManager on boot. Both client and server read this file to ensure deterministic simulation.",
+
+  "physics": {
+    "gravity": [0.0, -50.0, 0.0],
+    "jump_power": 30.0,
+    "default_run_speed": 20.0,
+    "default_turn_speed": 160.0,
+    "npc_turn_speed": 80.0,
+    "terrain_size": 800.0,
+
+    "default_capsule_radius": 0.5,
+    "default_capsule_height": 1.8,
+    "default_step_height": 0.35,
+    "default_mass": 70.0
+  },
+
+  "server": {
+    "port": 7777,
+    "max_clients": 32,
+    "channel_count": 2,
+    "tick_interval": 0.1
+  }
+}

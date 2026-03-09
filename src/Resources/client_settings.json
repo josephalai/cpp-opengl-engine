@@ -1,0 +1,10 @@
+{
+  "_comment": "client_settings.json — Client rendering and display settings. Loaded by ConfigManager on boot. Players can edit this file to customise FOV, render distance, and window size.",
+
+  "window_width": 800,
+  "window_height": 600,
+  "fov": 45.0,
+  "near_plane": 0.1,
+  "far_plane": 1000.0,
+  "window_title": "star wars scaperune"
+}

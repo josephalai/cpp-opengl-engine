@@ -6,6 +6,7 @@
 #include <cstdio>
 #include "DisplayManager.h"
 #include "../OpenGLWrapper/OpenGLUtils.h"
+#include "../Config/ConfigManager.h"
 
 GLint DisplayManager::SRC_WIDTH = 800;
 GLint DisplayManager::SRC_HEIGHT = 600;
@@ -18,6 +19,13 @@ float DisplayManager::lastFrameTime;
 bool DisplayManager::resetMouse = true;
 
 int DisplayManager::createDisplay() {
+    // Apply window dimensions and title from ConfigManager (data-driven).
+    const auto& clientCfg = ConfigManager::get().client;
+    SRC_WIDTH  = clientCfg.windowWidth;
+    SRC_HEIGHT = clientCfg.windowHeight;
+    FBO_WIDTH  = RETINA_SCALE(SRC_WIDTH);
+    FBO_HEIGHT = RETINA_SCALE(SRC_HEIGHT);
+
     glfwInit();
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -28,8 +36,7 @@ int DisplayManager::createDisplay() {
 #endif
 
     glfwWindowHint(GLFW_SAMPLES, 4);
-//    window = glfwCreateWindow(Width(), Height(), "GAME ENGINE: Manifest (Alpha & Omega)", nullptr, nullptr);
-    window = glfwCreateWindow(Width(), Height(), "star wars scaperune", nullptr, nullptr);
+    window = glfwCreateWindow(Width(), Height(), clientCfg.windowTitle.c_str(), nullptr, nullptr);
     if (window == nullptr) {
         printf("Failed to create GLFW window\n");
         glfwTerminate();

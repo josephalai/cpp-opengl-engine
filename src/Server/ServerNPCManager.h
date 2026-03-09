@@ -6,6 +6,11 @@
 // PlayerInputPacket commands each tick based on each NPC's assigned AI
 // script type.
 //
+// [Data-Driven AI] When Lua is available (HAS_LUA), the manager loads .lua
+// scripts from src/Resources/scripts/ai/ and calls them each tick.  The C++
+// switch-statement logic is retained as a fallback when Lua scripts are not
+// found or Lua is not compiled in.
+//
 // JSON format (src/Resources/npcs.json):
 //   {
 //     "npcs": [
@@ -21,6 +26,7 @@
 #define ENGINE_SERVER_NPC_MANAGER_H
 
 #include "../Network/NetworkPackets.h"
+#include "../Scripting/LuaScriptEngine.h"
 #include <glm/glm.hpp>
 #include <string>
 #include <unordered_map>
@@ -75,8 +81,14 @@ public:
     /// Register an NPC's networkId so the manager can track its AI state.
     void registerNPC(uint32_t networkId, const std::string& scriptType);
 
+    /// Initialise the Lua scripting engine and load AI scripts.
+    /// Call once after all NPCs have been registered.
+    void initLua(const std::string& resourceRoot);
+
     /// Tick the AI for all registered NPCs.  Populates `outInputs` with one
     /// synthetic PlayerInputPacket per NPC keyed by networkId.
+    /// If Lua scripts are available, calls them; otherwise falls back to the
+    /// built-in C++ AI implementations.
     void tick(float dt,
               std::unordered_map<uint32_t, Network::PlayerInputPacket>& outInputs);
 
@@ -87,7 +99,16 @@ private:
     /// Script type per NPC, keyed by networkId.
     std::unordered_map<uint32_t, std::string> scripts_;
 
-    // --- AI helpers ---
+    /// Lua AI state per NPC, keyed by networkId.
+    std::unordered_map<uint32_t, LuaAIState> luaAIStates_;
+
+    /// Lua scripting engine instance.
+    LuaScriptEngine luaEngine_;
+
+    /// Whether Lua is initialised and at least one script was loaded.
+    bool luaReady_ = false;
+
+    // --- C++ fallback AI helpers ---
     void tickWander(uint32_t id, NPCAIState& ai, float dt,
                     Network::PlayerInputPacket& out);
     void tickGuard (uint32_t id, NPCAIState& ai, float dt,

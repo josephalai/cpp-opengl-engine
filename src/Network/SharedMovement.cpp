@@ -1,7 +1,28 @@
 // src/Network/SharedMovement.cpp
 
 #include "SharedMovement.h"
+#include "../Config/ConfigManager.h"
 #include <cmath>
+
+// -------------------------------------------------------------------------
+// Runtime accessors — read from ConfigManager, fall back to compiled defaults.
+// -------------------------------------------------------------------------
+
+float SharedMovement::runSpeed() {
+    return ConfigManager::get().physics.defaultRunSpeed;
+}
+
+float SharedMovement::turnSpeed() {
+    return ConfigManager::get().physics.defaultTurnSpeed;
+}
+
+float SharedMovement::gravity() {
+    return ConfigManager::get().physics.gravity.y;
+}
+
+float SharedMovement::jumpPower() {
+    return ConfigManager::get().physics.jumpPower;
+}
 
 void SharedMovement::applyInput(const Network::PlayerInputPacket& input,
                                 glm::vec3& position, glm::vec3& rotation) {
@@ -9,9 +30,10 @@ void SharedMovement::applyInput(const Network::PlayerInputPacket& input,
     rotation.y = input.cameraYaw;
 
     // --- Forward / backward translation ---
+    const float speed_val = runSpeed();
     float speed = 0.0f;
-    if      (input.moveForward)  speed =  kRunSpeed;
-    else if (input.moveBackward) speed = -kRunSpeed;
+    if      (input.moveForward)  speed =  speed_val;
+    else if (input.moveBackward) speed = -speed_val;
 
     float distance = speed * input.deltaTime;
     float sinY = std::sin(glm::radians(rotation.y));
@@ -22,8 +44,8 @@ void SharedMovement::applyInput(const Network::PlayerInputPacket& input,
 
     // --- Strafing (left / right) ---
     float strafeSpeed = 0.0f;
-    if      (input.moveLeft)  strafeSpeed = -kRunSpeed;
-    else if (input.moveRight) strafeSpeed =  kRunSpeed;
+    if      (input.moveLeft)  strafeSpeed = -speed_val;
+    else if (input.moveRight) strafeSpeed =  speed_val;
 
     float strafeDistance = strafeSpeed * input.deltaTime;
     position.x += strafeDistance *  cosY;
