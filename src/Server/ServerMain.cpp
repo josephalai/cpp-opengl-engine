@@ -561,6 +561,8 @@ int main() {
     float    serverTime  = 0.0f;
     uint32_t sequenceNum = 0;
 
+    std::unordered_map<uint32_t, bool> lastJumpState;
+
     using Clock = std::chrono::steady_clock;
     auto lastTick = Clock::now();
 
@@ -816,7 +818,13 @@ int main() {
                             auto& nidComp = inputView.get<NetworkIdComponent>(entity);
                             auto& queue   = inputView.get<InputQueueComponent>(entity);
 
-                            if (step >= static_cast<int>(queue.inputs.size())) continue;
+                            if (step >= static_cast<int>(queue.inputs.size())) {
+                                // Prevent infinite sliding when the input queue runs dry
+                                if (physicsSystem.hasCharacterController(entity)) {
+                                    physicsSystem.setEntityWalkDirection(entity, glm::vec3(0.0f));
+                                }
+                                continue;
+                            }
                             const auto& inp = queue.inputs[step];
 
                             if (inp.sequenceNumber > nidComp.lastInputSeq)
@@ -834,8 +842,10 @@ int main() {
                                     glm::vec3(disp.x, 0.0f, disp.z));
 
                                 // Trigger a jump impulse when requested and grounded.
-                                if (inp.jump)
+                                if (inp.jump && !lastJumpState[nidComp.id]) {
                                     physicsSystem.jumpCharacterController(entity);
+                                }
+                                lastJumpState[nidComp.id] = inp.jump;
                             } else {
                                 // Fallback (no character controller): apply horizontal only.
                                 SharedMovement::applyInput(inp, tc.position, tc.rotation);
@@ -854,6 +864,14 @@ int main() {
                         inputView.get<InputQueueComponent>(entity).inputs.clear();
                     }
                 } else {
+
+                    // No inputs this tick — clear velocities to prevent sliding
+                    for (auto entity : inputView) {
+                        if (physicsSystem.hasCharacterController(entity)) {
+                            physicsSystem.setEntityWalkDirection(entity, glm::vec3(0.0f));
+                            lastJumpState[inputView.get<NetworkIdComponent>(entity).id] = false;
+                        }
+                    }
                     // No inputs this tick — still advance the simulation so gravity,
                     // dynamic bodies, and standing collision remain active.
                     physicsSystem.update(kTickInterval);
