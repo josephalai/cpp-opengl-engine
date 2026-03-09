@@ -142,6 +142,11 @@ public:
     /// Returns true if a character controller has been registered for entity.
     bool hasCharacterController(entt::entity entity) const;
 
+    /// Teleport a character controller to a new position.
+    /// @param feetPos  World-space feet position (ground level); the ghost
+    ///                 capsule centre is placed at feetPos.y + capsuleHalfHeight.
+    void warpCharacterController(entt::entity entity, const glm::vec3& feetPos);
+
 #ifndef HEADLESS_SERVER
     // -------------------------------------------------------------------------
     // Legacy OOP convenience wrappers — client only.

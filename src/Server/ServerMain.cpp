@@ -757,6 +757,23 @@ int main() {
                                                NetworkIdComponent,
                                                InputQueueComponent>();
 
+                // Terrain-clamp all character controllers to the surface after each
+                // physics step.  Mirrors the client's PlayerMovementSystem legacy
+                // terrain clamp so server Y == HeadlessTerrain::getHeight().
+                auto clampCharsToTerrain = [&]() {
+                    if (!terrainMgr.isAnyValid()) return;
+                    auto tv = registry.view<TransformComponent, NetworkIdComponent>();
+                    for (auto entity : tv) {
+                        if (!physicsSystem.hasCharacterController(entity)) continue;
+                        auto& tc = tv.get<TransformComponent>(entity);
+                        float terrH = terrainMgr.getHeight(tc.position.x, tc.position.z);
+                        if (tc.position.y < terrH) {
+                            tc.position.y = terrH;
+                            physicsSystem.warpCharacterController(entity, tc.position);
+                        }
+                    }
+                };
+
                 // Find the maximum queue depth so we know how many sub-steps to run.
                 int maxDepth = 0;
                 for (auto entity : inputView) {
@@ -802,6 +819,9 @@ int main() {
 
                         // Step Bullet forward by one input-sized slice.
                         physicsSystem.update(subDt);
+
+                        // Terrain-clamp Y: snap any character below the surface back up.
+                        clampCharsToTerrain();
                     }
 
                     // Clear all queues now that every input has been consumed.
@@ -812,6 +832,9 @@ int main() {
                     // No inputs this tick — still advance the simulation so gravity,
                     // dynamic bodies, and standing collision remain active.
                     physicsSystem.update(kTickInterval);
+
+                    // Same terrain-clamp for the no-input path.
+                    clampCharsToTerrain();
                 }
             }
 

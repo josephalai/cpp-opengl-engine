@@ -74,15 +74,13 @@ void NetworkSystem::update(float deltaTime) {
     if (hasReconcileTarget_ && localPlayer_) {
         glm::vec3 cur = localPlayer_->getPosition();
 
-        // 1. Lerp XZ horizontally (always trust the server's XZ)
+        // Reconcile XZ only. Y is owned by client physics (terrain gravity +
+        // terrain-clamp in PlayerMovementSystem); pulling Y toward the server's
+        // physics result causes the client to fight its own terrain collision and
+        // produces the infinite bounce seen in the reconciliation log.
         cur.x = glm::mix(cur.x, reconcileTarget_.x, kReconcileLerp);
         cur.z = glm::mix(cur.z, reconcileTarget_.z, kReconcileLerp);
-
-        // 2. Threshold Y (Mask Bullet's collision margin discrepancies)
-        float yDiff = std::abs(cur.y - reconcileTarget_.y);
-        if (yDiff > 0.15f) { // Only correct Y if it's a real desync (e.g. jumping/falling)
-            cur.y = glm::mix(cur.y, reconcileTarget_.y, kReconcileLerp * 0.5f); // Softer vertical lerp
-        }
+        // cur.y intentionally unchanged — Y is never reconciled.
 
         localPlayer_->setPosition(cur);
 
@@ -230,25 +228,29 @@ void NetworkSystem::update(float deltaTime) {
 
                     if (snapshot.networkId == localPlayerId_) {
                         if (localPlayer_) {
-                            glm::vec3 diff = snapshot.position - localPlayer_->getPosition();
-                            
-                            if (std::abs(diff.y) < 0.15f) {
-                                diff.y = 0.0f; 
-                            }
-                            
+                            glm::vec3 clientPos = localPlayer_->getPosition();
+                            glm::vec3 diff = snapshot.position - clientPos;
+
+                            // Y is owned by client physics (terrain + gravity).
+                            // Exclude it from the XZ-only reconciliation check so a
+                            // server/client terrain-height difference never triggers
+                            // a correction that fights the client's own physics.
+                            diff.y = 0.0f;
+
                             float distSq = glm::dot(diff, diff);
                             if (distSq > kReconcileThreshSq) {
+                                // Accept server XZ, preserve client Y.
                                 reconcileTarget_    = snapshot.position;
+                                reconcileTarget_.y  = clientPos.y;
                                 hasReconcileTarget_ = true;
                                 localPlayer_->setRotation(snapshot.rotation);
-                                
-                                // FIX: Detailed Client-side logging
-                                std::cout << "[NetworkSystem] Server reconciliation triggered.\n"
-                                          << "   -> Client Physics Pos: (" << localPlayer_->getPosition().x << ", " 
-                                          << localPlayer_->getPosition().y << ", " << localPlayer_->getPosition().z << ")\n"
-                                          << "   -> Server Physics Pos: (" << snapshot.position.x << ", " 
+
+                                std::cout << "[NetworkSystem] Server reconciliation triggered (XZ).\n"
+                                          << "   -> Client Physics Pos: (" << clientPos.x << ", "
+                                          << clientPos.y << ", " << clientPos.z << ")\n"
+                                          << "   -> Server Physics Pos: (" << snapshot.position.x << ", "
                                           << snapshot.position.y << ", " << snapshot.position.z << ")\n"
-                                          << "   -> Discrepancy (Diff): (" << diff.x << ", " << diff.y << ", " << diff.z << ")\n";
+                                          << "   -> XZ Discrepancy: (" << diff.x << ", " << diff.z << ")\n";
                             }
                         }
                     } else {

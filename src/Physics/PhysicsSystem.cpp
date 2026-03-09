@@ -582,6 +582,19 @@ bool PhysicsSystem::hasCharacterController(entt::entity entity) const {
     return characterControllers_.count(static_cast<uint32_t>(entity)) > 0;
 }
 
+void PhysicsSystem::warpCharacterController(entt::entity entity,
+                                             const glm::vec3& feetPos) {
+    auto it = characterControllers_.find(static_cast<uint32_t>(entity));
+    if (it == characterControllers_.end()) return;
+    auto& data = it->second;
+    // Place the capsule centre (ghost object origin) at feetPos.y + capsuleHalfHeight
+    // so the capsule bottom sits exactly at feetPos.y (terrain surface).
+    btVector3 centre(feetPos.x,
+                     feetPos.y + data.capsuleHalfHeight,
+                     feetPos.z);
+    data.controller->warp(centre);
+}
+
 // ---------------------------------------------------------------------------
 // Legacy OOP convenience wrappers — client only (#ifndef HEADLESS_SERVER)
 // ---------------------------------------------------------------------------
