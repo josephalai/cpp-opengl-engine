@@ -571,6 +571,10 @@ int main() {
                       << ") spawned at (" << pos.x << ", " << pos.y << ", "
                       << pos.z << ") — " << d.scriptType << "\n";
         }
+
+        // Initialise Lua scripting engine and load AI scripts from prefab
+        // definitions.  Falls back to C++ AI if Lua is not available.
+        npcManager.initLua(HOME_PATH);
     }
 
     // --- Server Tick State ---

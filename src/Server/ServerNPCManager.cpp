@@ -2,6 +2,7 @@
 
 #include "ServerNPCManager.h"
 #include "../Config/ConfigManager.h"
+#include "../Config/PrefabManager.h"
 
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -119,6 +120,64 @@ void ServerNPCManager::registerNPC(uint32_t networkId,
                                    const std::string& scriptType) {
     scripts_[networkId]  = scriptType;
     aiStates_[networkId] = {};
+    luaAIStates_[networkId] = {};
+}
+
+// -------------------------------------------------------------------------
+// initLua — initialise the Lua scripting engine and load AI scripts
+// -------------------------------------------------------------------------
+
+void ServerNPCManager::initLua(const std::string& resourceRoot) {
+    luaEngine_.init(resourceRoot);
+
+    // Expose ConfigManager values to Lua's config table.
+#ifdef HAS_LUA
+    // The config table was already created by LuaScriptEngine::init().
+    // We populate it here where ConfigManager is guaranteed to be loaded.
+#endif
+
+    // Collect unique script paths from registered NPC prefabs.
+    // Walk through all registered NPCs, look up their prefab, and load
+    // the ai_script file declared in the prefab.
+    std::unordered_map<std::string, bool> loaded;
+
+    for (const auto& [nid, scriptType] : scripts_) {
+        // Try to find the prefab that corresponds to this NPC's model type.
+        // We search all loaded prefabs for a matching "ai_script" → scriptType.
+        for (const auto& prefabId : PrefabManager::get().allIds()) {
+            const auto& prefab = PrefabManager::get().getPrefab(prefabId);
+            // Match by AIComponent.script name
+            if (prefab.contains("components") &&
+                prefab["components"].contains("AIComponent") &&
+                prefab["components"]["AIComponent"].value("script", "") == scriptType) {
+                if (prefab.contains("ai_script")) {
+                    std::string scriptPath = prefab["ai_script"].get<std::string>();
+                    if (!loaded.count(scriptPath)) {
+                        luaEngine_.loadScript(scriptPath);
+                        loaded[scriptPath] = true;
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    // Check if any script functions loaded successfully.
+    bool anyLoaded = false;
+    for (const auto& [nid, scriptType] : scripts_) {
+        if (luaEngine_.hasScript(scriptType)) {
+            anyLoaded = true;
+            break;
+        }
+    }
+
+    if (anyLoaded) {
+        luaReady_ = true;
+        std::cout << "[ServerNPCManager] Lua AI scripts loaded — using script-driven AI.\n";
+    } else {
+        luaReady_ = false;
+        std::cout << "[ServerNPCManager] No Lua AI scripts available — using built-in C++ AI.\n";
+    }
 }
 
 // -------------------------------------------------------------------------
@@ -129,17 +188,33 @@ void ServerNPCManager::tick(float dt,
     std::unordered_map<uint32_t, Network::PlayerInputPacket>& outInputs) {
 
     for (auto& [id, ai] : aiStates_) {
-        Network::PlayerInputPacket pkt{};
-        pkt.deltaTime = dt;
-
         const auto& script = scripts_[id];
-        if (script == "GuardAI") {
-            tickGuard(id, ai, dt, pkt);
+
+        // Try Lua first if available.
+        if (luaReady_ && luaEngine_.hasScript(script)) {
+            auto& luaState = luaAIStates_[id];
+            auto pkt = luaEngine_.tickAI(script, id, dt, luaState);
+
+            // Sync the Lua AI state back to the C++ NPCAIState for consistency
+            // (e.g. if we ever need to inspect it from C++ or fall back mid-run).
+            ai.timer     = luaState.timer;
+            ai.phase     = luaState.phase;
+            ai.cameraYaw = luaState.cameraYaw;
+
+            outInputs[id] = pkt;
         } else {
-            // Default: WanderAI
-            tickWander(id, ai, dt, pkt);
+            // Fallback: use built-in C++ AI.
+            Network::PlayerInputPacket pkt{};
+            pkt.deltaTime = dt;
+
+            if (script == "GuardAI") {
+                tickGuard(id, ai, dt, pkt);
+            } else {
+                // Default: WanderAI
+                tickWander(id, ai, dt, pkt);
+            }
+            outInputs[id] = pkt;
         }
-        outInputs[id] = pkt;
     }
 }
 

@@ -48,6 +48,38 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glm)
 
 # =============================================================================
+# Sol2 — header-only C++↔Lua binding library (fetched automatically)
+# =============================================================================
+FetchContent_Declare(
+    sol2
+    GIT_REPOSITORY https://github.com/ThePhD/sol2.git
+    GIT_TAG        v3.3.0
+)
+FetchContent_MakeAvailable(sol2)
+
+# =============================================================================
+# Lua — scripting language (system library)
+# =============================================================================
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(LUA QUIET lua5.4)
+endif()
+if(NOT LUA_FOUND)
+    # Fallback: try common system paths directly.
+    find_path(LUA_INCLUDE_DIR lua.h PATH_SUFFIXES lua5.4)
+    find_library(LUA_LIBRARY NAMES lua5.4 lua54 lua)
+    if(LUA_INCLUDE_DIR AND LUA_LIBRARY)
+        set(LUA_FOUND TRUE)
+        set(LUA_INCLUDE_DIRS ${LUA_INCLUDE_DIR})
+        set(LUA_LIBRARIES ${LUA_LIBRARY})
+    endif()
+endif()
+
+if(NOT LUA_FOUND)
+    message(STATUS "Lua not found — Lua scripting will be disabled.")
+endif()
+
+# =============================================================================
 # Source file collection — Three-way split (GEA Build Wall)
 # =============================================================================
 #
@@ -73,6 +105,7 @@ file(GLOB_RECURSE COMMON_SOURCES
     "${CMAKE_SOURCE_DIR}/src/Util/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Collision/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Config/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/Scripting/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Terrain/HeightMap.cpp"
 )
 
@@ -220,6 +253,15 @@ target_include_directories(headless_server PRIVATE
     ${BULLET_INCLUDE_DIRS}
 )
 
+# Sol2 + Lua (scripting engine for data-driven NPC AI)
+if(LUA_FOUND)
+    target_include_directories(headless_server PRIVATE
+        ${sol2_SOURCE_DIR}/include
+        ${LUA_INCLUDE_DIRS}
+    )
+    target_compile_definitions(headless_server PRIVATE HAS_LUA)
+endif()
+
 target_compile_definitions(headless_server PRIVATE
     RESOURCE_ROOT="${CMAKE_SOURCE_DIR}"
     HEADLESS_SERVER          # Build Wall: disables OpenGL/GLFW code paths in shared headers
@@ -229,3 +271,8 @@ target_link_libraries(headless_server PRIVATE
     enet
     ${BULLET_LIBRARIES}
 )
+
+# Link Lua library when available
+if(LUA_FOUND)
+    target_link_libraries(headless_server PRIVATE ${LUA_LIBRARIES})
+endif()

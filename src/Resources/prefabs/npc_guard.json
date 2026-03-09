@@ -11,7 +11,7 @@
     "step_height": 0.35
   },
   "animation_controller": "animations/humanoid.json",
-  "ai_script": "scripts/ai/guard_behavior.lua",
+  "ai_script": "scripts/ai/guard.lua",
   "components": {
     "NetworkSyncComponent": {
       "interpolation_delay": 0.20,
