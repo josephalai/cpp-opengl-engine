@@ -89,8 +89,11 @@ void ChunkManager::update(const glm::vec3& playerPos) {
     }
 
     // Unload chunks beyond unloadRadius.
+    // Skip chunks in LOADING state — they are being processed by a
+    // background thread and must not be deleted until the load completes.
     std::vector<std::pair<int,int>> toRemove;
     for (auto& [key, chunk] : chunks_) {
+        if (!chunk || chunk->state == StreamingChunk::State::LOADING) continue;
         int distX = std::abs(key.first  - px);
         int distZ = std::abs(key.second - pz);
         int chebyshev = std::max(distX, distZ);

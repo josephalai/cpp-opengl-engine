@@ -98,19 +98,15 @@ public:
     /// region.  Call after spawning/removing a static building to refresh
     /// only the affected area without recalculating the entire mesh.
     /// @param tileMinX, tileMinZ, tileMaxX, tileMaxZ  World-space tile bounds.
-    void rebuildTile(float tileMinX, float tileMinZ,
-                     float tileMaxX, float tileMaxZ) {
+    void rebuildTile([[maybe_unused]] float tileMinX,
+                     [[maybe_unused]] float tileMinZ,
+                     [[maybe_unused]] float tileMaxX,
+                     [[maybe_unused]] float tileMaxZ) {
         // In the grid-based pathfinder, obstacle state is checked dynamically
         // during each A* query — no explicit tile rebuild is needed.
         // This method is provided as a future integration point for when the
         // engine migrates to RecastNavigation's dtTileCache, which requires
         // explicit tile rebuilds after geometry changes.
-        //
-        // For now, ensure the obstacle records are up to date (they are
-        // maintained by addObstacle/removeObstacle) and any cached paths
-        // are invalidated.
-        (void)tileMinX; (void)tileMinZ;
-        (void)tileMaxX; (void)tileMaxZ;
     }
 
     /// Find a path from start to goal using A* on the walkability grid.

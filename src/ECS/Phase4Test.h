@@ -259,6 +259,8 @@ private:
         assert(!path.empty());
 
         // Add a building via bounding box convenience method.
+        // center=(50,0,50), halfExtents=(10,5,60) → blocks X=[40..60], Z=[-10..110]
+        // This wide Z-range ensures the obstacle fully blocks the X=40..60 corridor.
         uint32_t obs = nav.addObstacleFromBounds(
             glm::vec3(50.0f, 0.0f, 50.0f),  // center
             glm::vec3(10.0f, 5.0f, 60.0f));  // half-extents (blocks X=40..60, Z=-10..110)
