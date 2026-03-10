@@ -33,11 +33,13 @@ void TerrainRenderer::render(std::vector<Terrain *> *terrains) {
             float tileCenterZ = terrain->getZ() + terrain->getSize() * 0.5f;
             int lod = terrainLOD_.selectLOD(tileCenterX, tileCenterZ,
                                              cameraPos_.x, cameraPos_.z);
-            // LOD0 = full count, LOD1 = ~1/4, LOD2 = ~1/16
-            // We approximate by dividing the vertex count.
+            // Reduce index count by the square of the LOD step (each level
+            // skips every-other vertex in both X and Z, quartering triangles).
+            static constexpr int kLODDivisorShift  = 2;  // bits per LOD level (÷4 each step)
+            static constexpr int kMinLODIndexCount = 6;  // minimum: one quad (2 triangles)
             int fullCount = terrain->getModel()->getVertexCount();
-            int divisor = 1 << (lod * 2);  // 1, 4, 16
-            int lodCount = std::max(fullCount / divisor, 6);
+            int divisor = 1 << (lod * kLODDivisorShift);  // 1, 4, 16
+            int lodCount = std::max(fullCount / divisor, kMinLODIndexCount);
             glDrawElements(GL_TRIANGLES, lodCount, GL_UNSIGNED_INT, 0);
         } else {
             glDrawElements(GL_TRIANGLES, terrain->getModel()->getVertexCount(),

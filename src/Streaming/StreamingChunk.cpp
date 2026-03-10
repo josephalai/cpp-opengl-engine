@@ -20,6 +20,8 @@ void StreamingChunk::load(Loader* loader,
 
 void StreamingChunk::finalizeAsync(const TerrainData& data, Loader* loader,
                                     TerrainTexturePack* texPack, TerrainTexture* blendMap) {
+    // Guard: if the chunk was already finalised (e.g. by a synchronous load
+    // that ran while the async job was still in-flight), skip re-creation.
     if (state == State::LOADED) return;
     if (data.valid) {
         terrain       = new Terrain(data, loader, texPack, blendMap);

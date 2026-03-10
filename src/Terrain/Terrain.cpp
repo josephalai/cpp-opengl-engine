@@ -33,9 +33,11 @@ Terrain::Terrain(int gridX, int gridZ, Loader *loader, TerrainTexturePack *textu
 }
 
 /// Phase 4 Step 4.2 — Construct from pre-parsed TerrainData + immediate GPU upload.
+/// The Heightmap member is initialised with an empty path (safe — it will have
+/// no height data) because all vertex data comes from the pre-parsed TerrainData.
 Terrain::Terrain(const TerrainData& data, Loader *loader,
                  TerrainTexturePack *texturePack, TerrainTexture *blendMap)
-    : heightMap(Heightmap(""))  // dummy heightmap — data already parsed
+    : heightMap(Heightmap(""))  // no file needed — data already parsed
 {
     this->texturePack = texturePack;
     this->blendMap    = blendMap;
