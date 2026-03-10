@@ -28,7 +28,7 @@ void NetworkInterpolationSystem::update(float deltaTime) {
         // render clock to the server's timestamp and enforce a 150ms playout delay.
         if (nsd.renderTime == 0.0f) {
             nsd.renderTime = nsd.buffer.front().timestamp;
-            nsd.interpolationDelay = 0.25f; // 150ms buffer for a 10Hz server
+            nsd.interpolationDelay = 0.35f; // 350ms buffer for a 10Hz server
         }
 
         // Advance the playback clock at real-time speed.

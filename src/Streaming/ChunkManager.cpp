@@ -48,7 +48,21 @@ void ChunkManager::update(const glm::vec3& playerPos) {
 
             // GEA Step 5.1 — Spawn baked entities for newly loaded chunks.
             if (justLoaded) {
+                auto* chunk = chunks_[key];
                 fireBakedSpawns(readBakedEntities(cx, cz), cx, cz);
+                chunk->bakedSpawned = true;
+            }
+
+            // GEA Step 5.4 — Also fire baked spawns for chunks that were
+            // pre-registered via registerTerrain() (state already LOADED)
+            // but haven't had their baked entities spawned yet.
+            if (!justLoaded) {
+                auto* chunk = chunks_[key];
+                if (chunk && chunk->state == StreamingChunk::State::LOADED
+                    && !chunk->bakedSpawned) {
+                    fireBakedSpawns(readBakedEntities(cx, cz), cx, cz);
+                    chunk->bakedSpawned = true;
+                }
             }
         }
     }
@@ -106,6 +120,7 @@ void ChunkManager::update(const glm::vec3& playerPos) {
                             // thread after the terrain tile is ready.
                             if (chunk->state == StreamingChunk::State::LOADED) {
                                 fireBakedSpawns(baked, chunk->gridX, chunk->gridZ);
+                                chunk->bakedSpawned = true;
                             }
                         });
                 });
