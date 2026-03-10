@@ -30,6 +30,7 @@ class ChunkManager;
 class NetworkSystem;
 class PlayerMovementSystem;
 class NetworkInterpolationSystem;
+class OriginShiftSystem;
 
 class Engine {
 public:
@@ -119,6 +120,9 @@ private:
     // --- Streaming ---
     ChunkManager* chunkManager = nullptr;
     std::string   terrainHeightmapFile = "heightMap"; ///< passed to ChunkManager
+
+    // --- Origin Shift (Phase 4 Step 4.2) ---
+    OriginShiftSystem* originShiftSystem_ = nullptr; ///< Non-owning ptr (owned by systems vec).
 
     // --- Network (Phase 5 Multi-Client) ---
     NetworkSystem* networkSystem_ = nullptr; ///< Non-owning ptr (owned by systems vec).

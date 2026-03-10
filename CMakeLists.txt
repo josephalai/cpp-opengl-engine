@@ -111,6 +111,7 @@ file(GLOB_RECURSE COMMON_SOURCES
     "${CMAKE_SOURCE_DIR}/src/Config/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Scripting/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Terrain/HeightMap.cpp"
+    "${CMAKE_SOURCE_DIR}/src/Engine/GLUploadQueue.cpp"
 )
 
 # Exclude OpenGL/GLFW-dependent files from COMMON

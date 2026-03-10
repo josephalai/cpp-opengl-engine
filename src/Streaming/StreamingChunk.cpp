@@ -18,6 +18,16 @@ void StreamingChunk::load(Loader* loader,
     state         = State::LOADED;
 }
 
+void StreamingChunk::finalizeAsync(const TerrainData& data, Loader* loader,
+                                    TerrainTexturePack* texPack, TerrainTexture* blendMap) {
+    if (state == State::LOADED) return;
+    if (data.valid) {
+        terrain       = new Terrain(data, loader, texPack, blendMap);
+        terrainOwned_ = true;
+    }
+    state = State::LOADED;
+}
+
 void StreamingChunk::setExternalTerrain(Terrain* t) {
     terrain       = t;
     terrainOwned_ = false;

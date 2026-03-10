@@ -23,7 +23,9 @@
 #include "../Engine/SpatialSystem.h"
 #include "../Engine/PathfindingSystem.h"
 #include "../Engine/LODSystem.h"
+#include "../Engine/GLUploadQueue.h"
 #include "../Navigation/NavMeshManager.h"
+#include "../Terrain/TerrainData.h"
 #include "../Terrain/TerrainLOD.h"
 
 class Phase4Test {
@@ -39,6 +41,8 @@ public:
         testOriginShift();
         testOriginShiftTransform();
         testTerrainLOD();
+        testTerrainDataStruct();
+        testGLUploadQueueDrain();
 
         std::cout << "[Phase4] All Phase 4 tests passed.\n";
     }
@@ -303,6 +307,54 @@ private:
         assert(std::abs(tc.position.z - 200.0f) < 0.01f);
 
         std::cout << "[Phase4] OriginShift TransformComponent tests passed.\n";
+    }
+
+    /// Phase 4 Step 4.2 — Test that TerrainData struct is correctly default
+    /// initialised.
+    static void testTerrainDataStruct() {
+        // Default-constructed TerrainData should be invalid.
+        TerrainData td;
+        assert(!td.valid);
+        assert(td.vertices.empty());
+        assert(td.normals.empty());
+        assert(td.indices.empty());
+        assert(td.gridX == 0 && td.gridZ == 0);
+        assert(td.originX == 0.0f && td.originZ == 0.0f);
+
+        // Populated TerrainData should carry its fields.
+        TerrainData td2;
+        td2.gridX  = 3;
+        td2.gridZ  = 5;
+        td2.originX = 2400.0f;
+        td2.originZ = 4000.0f;
+        td2.vertices = {1.0f, 2.0f, 3.0f};
+        td2.valid = true;
+        assert(td2.valid);
+        assert(td2.vertices.size() == 3);
+        assert(td2.gridX == 3);
+
+        std::cout << "[Phase4] TerrainData struct tests passed.\n";
+    }
+
+    /// Phase 4 Step 4.2 — Test GLUploadQueue can drain tasks.
+    static void testGLUploadQueueDrain() {
+        // The GLUploadQueue is used on the main (GL) thread. We test
+        // the enqueue + processAll flow with simple lambdas.
+        int counter = 0;
+        GLUploadQueue::instance().enqueue([&counter]() { counter += 1; });
+        GLUploadQueue::instance().enqueue([&counter]() { counter += 10; });
+        GLUploadQueue::instance().processAll(0); // drain all
+        assert(counter == 11);
+
+        // Test maxPerFrame limiting.
+        GLUploadQueue::instance().enqueue([&counter]() { counter += 100; });
+        GLUploadQueue::instance().enqueue([&counter]() { counter += 1000; });
+        GLUploadQueue::instance().processAll(1); // process only 1
+        assert(counter == 111);
+        GLUploadQueue::instance().processAll(0); // drain remaining
+        assert(counter == 1111);
+
+        std::cout << "[Phase4] GLUploadQueue drain tests passed.\n";
     }
 };
 

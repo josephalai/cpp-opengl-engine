@@ -3,6 +3,7 @@
 #include "ChunkManager.h"
 #include "../Terrain/Terrain.h"
 #include "../Entities/Entity.h"
+#include "../Engine/GLUploadQueue.h"
 #include <cmath>
 #include <algorithm>
 
@@ -42,10 +43,11 @@ void ChunkManager::update(const glm::vec3& playerPos) {
         }
     }
 
-    // Phase 4 Step 4.2.2 — Loading radius: trigger background I/O for chunks
-    // that are 2 cells out.  Heightmap parsing is pushed to the JobQueue
-    // background threads; only the final GL buffer upload runs on the main
-    // thread via GLUploadQueue.
+    // Phase 4 Step 4.2 — Loading radius: truly asynchronous chunk I/O.
+    // The background thread calls Terrain::parseCPU() which reads the
+    // heightmap image and fills a TerrainData struct (CPU only — no GL calls).
+    // It then enqueues the GL upload to GLUploadQueue so the main thread
+    // calls loadToVAO() in a microsecond-level time slice.
     for (int dx = -loadingRadius_; dx <= loadingRadius_; ++dx) {
         for (int dz = -loadingRadius_; dz <= loadingRadius_; ++dz) {
             int chebyshev = std::max(std::abs(dx), std::abs(dz));
@@ -70,19 +72,20 @@ void ChunkManager::update(const glm::vec3& playerPos) {
                 chunk->state = StreamingChunk::State::LOADING;
                 chunks_[key] = chunk;
 
-                // Push the heavy heightmap load to a background thread.
-                // NOTE: terrain->load() currently calls GL functions,
-                // so for now the actual load is still performed on this
-                // thread.  When the Terrain constructor is refactored to
-                // separate CPU parsing from GL upload, the lambda body
-                // below should call parseCPU() and enqueue the GPU upload
-                // via GLUploadQueue::instance().enqueue().
-                jobQueue_.push([this, chunk, cx, cz, key, ck]() {
-                    chunk->load(loader_, texPack_, blendMap_, heightmapFile_);
+                // Push CPU-only heightmap parsing to a background thread.
+                // When parsing completes, enqueue the GL upload to
+                // GLUploadQueue so it runs on the main thread.
+                jobQueue_.push([this, chunk, cx, cz, ck]() {
+                    TerrainData data = Terrain::parseCPU(cx, cz, heightmapFile_);
                     {
                         std::lock_guard<std::mutex> lock(pendingMutex_);
                         pendingLoads_.erase(ck);
                     }
+                    // Enqueue the GL upload to the main thread.
+                    GLUploadQueue::instance().enqueue(
+                        [this, chunk, data = std::move(data)]() mutable {
+                            chunk->finalizeAsync(data, loader_, texPack_, blendMap_);
+                        });
                 });
             }
         }
