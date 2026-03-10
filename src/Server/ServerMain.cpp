@@ -763,15 +763,19 @@ int main() {
     }
 
     // -------------------------------------------------------------------------
-    // Headless Scene — spawn static Bullet colliders for trees, stalls, lamps.
-    // Mirrors the client's scene.json parsing without any OpenGL dependency.
+    // Physics body configs — parsed once from scene.json and reused by the
+    // baked-chunk loader (loadBakedChunkEntities) for spawning Bullet colliders.
+    //
+    // GEA Step 5.1: loadHeadlessScene() is no longer called.  All static
+    // entities (trees, stalls, lamps) are now loaded exclusively from the
+    // pre-baked binary .dat files produced by the offline Asset Baker.
+    // This eliminates the old double-spawn (JSON + binary) and ensures the
+    // server boots with zero scene entities until the baked chunks are read.
     // -------------------------------------------------------------------------
-    // Parse physics body configs from scene.json (reused for baked chunk loading).
     std::unordered_map<std::string, PhysCfg> physBodiesCfg;
     {
         std::string scenePath = FileSystem::Scene("scene.json");
         physBodiesCfg = parsePhysBodies(scenePath);
-        loadHeadlessScene(registry, physicsSystem, terrainMgr, scenePath);
     }
 
     // -------------------------------------------------------------------------

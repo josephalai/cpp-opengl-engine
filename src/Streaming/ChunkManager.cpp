@@ -4,8 +4,10 @@
 #include "../Terrain/Terrain.h"
 #include "../Entities/Entity.h"
 #include "../Engine/GLUploadQueue.h"
+#include "../Util/FileSystem.h"
 #include <cmath>
 #include <algorithm>
+#include <iostream>
 
 ChunkManager::ChunkManager(Loader*             loader,
                             TerrainTexturePack* texPack,
@@ -33,12 +35,20 @@ void ChunkManager::update(const glm::vec3& playerPos) {
             auto key = std::make_pair(cx, cz);
 
             auto it = chunks_.find(key);
+            bool justLoaded = false;
             if (it == chunks_.end()) {
                 auto* chunk = new StreamingChunk(cx, cz);
                 chunk->load(loader_, texPack_, blendMap_, heightmapFile_);
                 chunks_[key] = chunk;
+                justLoaded = true;
             } else if (it->second->state == StreamingChunk::State::UNLOADED) {
                 it->second->load(loader_, texPack_, blendMap_, heightmapFile_);
+                justLoaded = true;
+            }
+
+            // GEA Step 5.1 — Spawn baked entities for newly loaded chunks.
+            if (justLoaded) {
+                fireBakedSpawns(readBakedEntities(cx, cz));
             }
         }
     }
@@ -77,14 +87,26 @@ void ChunkManager::update(const glm::vec3& playerPos) {
                 // GLUploadQueue so it runs on the main thread.
                 jobQueue_.push([this, chunk, cx, cz, ck]() {
                     TerrainData data = Terrain::parseCPU(cx, cz, heightmapFile_);
+
+                    // GEA Step 5.1 — Read baked entity data on the background
+                    // thread (pure I/O, no GL).
+                    auto bakedEntities = readBakedEntities(cx, cz);
+
                     {
                         std::lock_guard<std::mutex> lock(pendingMutex_);
                         pendingLoads_.erase(ck);
                     }
                     // Enqueue the GL upload to the main thread.
                     GLUploadQueue::instance().enqueue(
-                        [this, chunk, data = std::move(data)]() mutable {
+                        [this, chunk, data = std::move(data),
+                         baked = std::move(bakedEntities)]() mutable {
                             chunk->finalizeAsync(data, loader_, texPack_, blendMap_);
+
+                            // GEA Step 5.1 — Spawn baked entities on the main
+                            // thread after the terrain tile is ready.
+                            if (chunk->state == StreamingChunk::State::LOADED) {
+                                fireBakedSpawns(baked);
+                            }
                         });
                 });
             }
@@ -214,4 +236,25 @@ void ChunkManager::shutdown() {
         }
     }
     chunks_.clear();
+}
+
+// ---------------------------------------------------------------------------
+// GEA Step 5.1 — Baked chunk helpers
+// ---------------------------------------------------------------------------
+
+std::vector<BakedEntity> ChunkManager::readBakedEntities(int cx, int cz) {
+    std::string filename = "chunk_" + std::to_string(cx)
+                         + "_" + std::to_string(cz) + ".dat";
+    std::string path = FileSystem::BakedChunk(filename);
+    BakedChunkHeader header{};
+    std::vector<BakedEntity> entities;
+    readBakedChunk(path, header, entities);
+    return entities;
+}
+
+void ChunkManager::fireBakedSpawns(const std::vector<BakedEntity>& bakedEntities) {
+    if (!spawnCallback_) return;
+    for (const auto& be : bakedEntities) {
+        spawnCallback_(be);
+    }
 }
