@@ -105,5 +105,26 @@ void PlayerMovementSystem::update(float deltaTime) {
             }
         }
     }
+
+    // Phase 4 Step 4.2 — Origin Shift.
+    // When the player exceeds kOriginShiftThreshold from the local origin,
+    // subtract the player offset from every entity so float precision stays
+    // tight around (0,0,0) in render space.
+    auto tcView = registry_.view<TransformComponent, InputStateComponent>();
+    for (auto entity : tcView) {
+        auto& tc = tcView.get<TransformComponent>(entity);
+        float dist = std::sqrt(tc.position.x * tc.position.x +
+                               tc.position.z * tc.position.z);
+        if (dist > kOriginShiftThreshold) {
+            glm::vec3 shift = tc.position;
+            shift.y = 0.0f; // only shift XZ
+            auto allTransforms = registry_.view<TransformComponent>();
+            for (auto e : allTransforms) {
+                auto& t = allTransforms.get<TransformComponent>(e);
+                t.position -= shift;
+            }
+            break; // one shift per frame
+        }
+    }
 }
 

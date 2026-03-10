@@ -3,6 +3,7 @@
 #include "ChunkManager.h"
 #include "../Terrain/Terrain.h"
 #include "../Entities/Entity.h"
+#include "../Engine/GLUploadQueue.h"
 #include <cmath>
 #include <algorithm>
 
@@ -24,7 +25,7 @@ void ChunkManager::update(const glm::vec3& playerPos) {
     int px = static_cast<int>(std::floor(playerPos.x / kTerrainSize));
     int pz = static_cast<int>(std::floor(playerPos.z / kTerrainSize));
 
-    // Load chunks within loadRadius.
+    // Phase 4 Step 4.2.2 — Active radius: load synchronously (already loaded).
     for (int dx = -loadRadius_; dx <= loadRadius_; ++dx) {
         for (int dz = -loadRadius_; dz <= loadRadius_; ++dz) {
             int cx = px + dx;
@@ -42,9 +43,60 @@ void ChunkManager::update(const glm::vec3& playerPos) {
         }
     }
 
+    // Phase 4 Step 4.2 — Loading radius: truly asynchronous chunk I/O.
+    // The background thread calls Terrain::parseCPU() which reads the
+    // heightmap image and fills a TerrainData struct (CPU only — no GL calls).
+    // It then enqueues the GL upload to GLUploadQueue so the main thread
+    // calls loadToVAO() in a microsecond-level time slice.
+    for (int dx = -loadingRadius_; dx <= loadingRadius_; ++dx) {
+        for (int dz = -loadingRadius_; dz <= loadingRadius_; ++dz) {
+            int chebyshev = std::max(std::abs(dx), std::abs(dz));
+            if (chebyshev <= loadRadius_) continue; // already handled above
+
+            int cx = px + dx;
+            int cz = pz + dz;
+            auto key = std::make_pair(cx, cz);
+
+            auto it = chunks_.find(key);
+            if (it == chunks_.end()) {
+                // Mark as pending to avoid duplicate loads.
+                int64_t ck = chunkKey(cx, cz);
+                {
+                    std::lock_guard<std::mutex> lock(pendingMutex_);
+                    if (pendingLoads_.count(ck)) continue;
+                    pendingLoads_.insert(ck);
+                }
+                // Create the chunk in LOADING state on the main thread so
+                // subsequent frames don't re-enqueue it.
+                auto* chunk = new StreamingChunk(cx, cz);
+                chunk->state = StreamingChunk::State::LOADING;
+                chunks_[key] = chunk;
+
+                // Push CPU-only heightmap parsing to a background thread.
+                // When parsing completes, enqueue the GL upload to
+                // GLUploadQueue so it runs on the main thread.
+                jobQueue_.push([this, chunk, cx, cz, ck]() {
+                    TerrainData data = Terrain::parseCPU(cx, cz, heightmapFile_);
+                    {
+                        std::lock_guard<std::mutex> lock(pendingMutex_);
+                        pendingLoads_.erase(ck);
+                    }
+                    // Enqueue the GL upload to the main thread.
+                    GLUploadQueue::instance().enqueue(
+                        [this, chunk, data = std::move(data)]() mutable {
+                            chunk->finalizeAsync(data, loader_, texPack_, blendMap_);
+                        });
+                });
+            }
+        }
+    }
+
     // Unload chunks beyond unloadRadius.
+    // Skip chunks in LOADING state — they are being processed by a
+    // background thread and must not be deleted until the load completes.
     std::vector<std::pair<int,int>> toRemove;
     for (auto& [key, chunk] : chunks_) {
+        if (!chunk || chunk->state == StreamingChunk::State::LOADING) continue;
         int distX = std::abs(key.first  - px);
         int distZ = std::abs(key.second - pz);
         int chebyshev = std::max(distX, distZ);

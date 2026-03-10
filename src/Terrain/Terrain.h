@@ -10,6 +10,8 @@
 #include "../RenderEngine/Loader.h"
 #include "../Textures/TerrainTexturePack.h"
 #include "HeightMap.h"
+#include "TerrainData.h"
+#include <vector>
 
 class Terrain {
 private:
@@ -67,8 +69,22 @@ public:
 
     float getHeightOfTerrain(float worldX, float worldZ);
 
+    /// Original constructor — parses heightmap AND uploads to GPU (synchronous).
     Terrain(int gridX, int gridZ, Loader *loader, TerrainTexturePack *texturePack, TerrainTexture *blendMap,
             const std::string &heightMap);
+
+    /// Phase 4 Step 4.2 — Construct from pre-parsed CPU data + GPU upload.
+    /// The TerrainData must have been produced by parseCPU().
+    Terrain(const TerrainData& data, Loader *loader,
+            TerrainTexturePack *texturePack, TerrainTexture *blendMap);
+
+    /// Phase 4 Step 4.2 — Parse heightmap into CPU-only arrays (no GL calls).
+    /// Safe to call from a background thread.
+    static TerrainData parseCPU(int gridX, int gridZ, const std::string& heightmapPath);
+
+    /// Phase 4 Step 4.2 — Upload a TerrainData to the GPU.  Must be called on
+    /// the GL thread.
+    static RawModel* uploadGPU(Loader* loader, const TerrainData& data);
 
 private:
 

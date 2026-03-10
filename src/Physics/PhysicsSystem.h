@@ -114,6 +114,11 @@ public:
     void addHeadlessTerrainCollider(const std::vector<std::vector<float>>& heights,
                                     float terrainSize, float originX, float originZ);
 
+    /// Remove a headless terrain collider by its grid coordinates.
+    /// Used by the server's dynamic terrain streaming to free Bullet resources
+    /// when a chunk is unloaded beyond the unload radius.
+    void removeHeadlessTerrainCollider(int gridX, int gridZ);
+
     // -------------------------------------------------------------------------
     // ECS-native character controller API — server + client (no GL/GLFW needed)
     // -------------------------------------------------------------------------
@@ -219,6 +224,18 @@ private:
     std::vector<btRigidBody*>                     groundBodies_;   ///< ground planes + terrain tiles
     std::vector<btCollisionShape*>                groundShapes_;
     std::vector<std::vector<float>>               terrainHeightBuffers_; ///< keeps height data alive for terrain shapes
+
+    /// Track terrain colliders by grid coord for dynamic removal.
+    struct TerrainColliderRecord {
+        btRigidBody*         body   = nullptr;
+        btCollisionShape*    shape  = nullptr;
+        btDefaultMotionState* motion = nullptr;
+        int bufferIndex = -1;  ///< index into terrainHeightBuffers_
+    };
+    std::unordered_map<int64_t, TerrainColliderRecord> terrainColliders_;
+    static int64_t terrainGridKey(int gx, int gz) {
+        return (static_cast<int64_t>(gx) << 32) | static_cast<int64_t>(static_cast<uint32_t>(gz));
+    }
 
     /// ECS-native character controllers (server: all players/NPCs; client: remote players).
     /// Keyed by the raw uint32_t value of entt::entity to avoid needing a hash specialisation.

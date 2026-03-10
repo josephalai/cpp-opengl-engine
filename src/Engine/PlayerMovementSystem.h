@@ -7,6 +7,9 @@
 
 class PlayerMovementSystem : public ISystem {
 public:
+    /// Distance from origin that triggers an origin shift (Phase 4 Step 4.2).
+    static constexpr float kOriginShiftThreshold = 4000.0f;
+
     explicit PlayerMovementSystem(entt::registry& registry);
 
     void init()     override;

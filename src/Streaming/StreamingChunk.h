@@ -6,8 +6,8 @@
 
 #include <vector>
 #include <string>
+#include "../Terrain/Terrain.h"
 
-class Terrain;
 class Entity;
 class Loader;
 class TerrainTexturePack;
@@ -27,11 +27,16 @@ public:
     StreamingChunk() = default;
     StreamingChunk(int gx, int gz) : gridX(gx), gridZ(gz) {}
 
-    /// Create and load the terrain tile for this grid cell.
+    /// Create and load the terrain tile for this grid cell (synchronous).
     void load(Loader* loader,
               TerrainTexturePack* texPack,
               TerrainTexture*     blendMap,
               const std::string&  heightmapFile);
+
+    /// Phase 4 Step 4.2 — Finalize an async load by constructing a Terrain
+    /// from pre-parsed TerrainData on the GL thread.
+    void finalizeAsync(const TerrainData& data, Loader* loader,
+                       TerrainTexturePack* texPack, TerrainTexture* blendMap);
 
     /// Register an externally created Terrain (not owned by this chunk).
     /// The terrain will NOT be deleted when the chunk is unloaded.

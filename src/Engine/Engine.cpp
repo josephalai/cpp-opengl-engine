@@ -39,6 +39,7 @@
 #include "NetworkSystem.h"
 #include "PlayerMovementSystem.h"
 #include "NetworkInterpolationSystem.h"
+#include "OriginShiftSystem.h"
 #include "../Network/NetworkPackets.h"
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/InputStateComponent.h"
@@ -679,6 +680,15 @@ void Engine::buildSystems() {
             chunkManager, player, allTerrains, entities));
     }
 
+    // Phase 4 Step 4.2 — OriginShiftSystem: prevents float-precision jitter
+    // when the camera is far from the world origin.  Runs after streaming
+    // (so newly loaded chunks have correct positions) and before rendering.
+    {
+        auto oss = std::make_unique<OriginShiftSystem>(registry);
+        originShiftSystem_ = oss.get();
+        systems.push_back(std::move(oss));
+    }
+
     // NetworkSystem connects to the headless server via ENet and pushes
     // snapshots into the NetworkSyncData ECS component.  The local Player entity IS the
     // network entity — no separate dummy entity is needed.
@@ -726,6 +736,14 @@ void Engine::buildSystems() {
 void Engine::run() {
     while (DisplayManager::stayOpen()) {
         float dt = DisplayManager::getFrameTimeSeconds();
+
+        // Phase 4 Step 4.2 — Drive the OriginShiftSystem with the camera
+        // position each frame.  The shift is applied to all entity transforms
+        // so render-space float precision stays tight near (0,0,0).
+        if (originShiftSystem_ && playerCamera) {
+            originShiftSystem_->update(playerCamera->getPosition());
+        }
+
         for (auto& sys : systems) {
             sys->update(dt);
         }

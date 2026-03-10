@@ -28,6 +28,7 @@ enum class PacketType : uint8_t {
     Welcome           = 3,
     Spawn             = 4,
     Despawn           = 5,
+    ActionRequest     = 6,  ///< Phase 4 — Client requests a pathfound action on a target.
 };
 
 // -------------------------------------------------------------------------
@@ -78,6 +79,22 @@ struct SpawnPacket {
 /// Sent by the server when an entity leaves the world.
 struct DespawnPacket {
     uint32_t networkId = 0;
+};
+
+/// Phase 4 Step 4.4.2 — Client right-clicks a target and requests an action.
+/// The server validates the request, runs an A* / NavMesh query, and assigns
+/// a PathfindingComponent to auto-steer the player toward the target.
+enum class ActionType : uint8_t {
+    None    = 0,
+    Attack  = 1,
+    Harvest = 2,
+    Talk    = 3,
+    Use     = 4,
+};
+
+struct ActionRequestPacket {
+    uint32_t   targetNetworkId = 0;     ///< Target entity to interact with.
+    ActionType action          = ActionType::None;
 };
 
 // -------------------------------------------------------------------------

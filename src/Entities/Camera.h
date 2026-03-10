@@ -29,6 +29,9 @@ public:
     static float Yaw;
     static float Pitch;
 
+    // ADD THIS GETTER:
+    glm::vec3 getPosition() const { return Position; }
+
     /**
      * @brief A constructor with vectors... An abstract camera class
      *        that processes input and calculates the corresponding

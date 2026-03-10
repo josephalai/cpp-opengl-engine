@@ -2,6 +2,8 @@
 
 // Instanced rendering vertex shader.
 // Reads the model matrix from per-instance attributes (locations 3-6).
+// Phase 4 Step 4.3.3 — Distance-culled instancing: instances beyond
+// maxInstanceDistance from the camera are scaled to 0 (GPU-side discard).
 
 struct Light {
     vec3  position;
@@ -31,6 +33,8 @@ out float visibility;
 
 uniform mat4 viewMatrix;
 uniform mat4 projectionMatrix;
+uniform vec3 viewPosition;              // Phase 4: camera world position
+uniform float maxInstanceDistance;       // Phase 4: cull distance (default 75 m)
 
 const float density  = 0.007;
 const float gradient = 1.5;
@@ -42,6 +46,16 @@ void main() {
                                instanceMatrix3);
 
     worldPosition = instanceMatrix * vec4(position, 1.0);
+
+    // Phase 4 Step 4.3.3 — Distance-culled instancing.
+    // If the instance is farther than maxInstanceDistance from the camera,
+    // collapse it to a degenerate point (scale to 0).
+    float distToCamera = length(worldPosition.xyz - viewPosition);
+    if (maxInstanceDistance > 0.0 && distToCamera > maxInstanceDistance) {
+        gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
     vec4 posRelCam = viewMatrix * worldPosition;
     gl_Position    = projectionMatrix * posRelCam;
 

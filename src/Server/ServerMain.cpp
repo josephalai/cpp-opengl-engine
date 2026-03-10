@@ -18,6 +18,9 @@
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/NetworkIdComponent.h"
 #include "../ECS/Components/InputQueueComponent.h"
+#include "../ECS/Components/SpatialComponent.h"
+#include "../ECS/Components/PathfindingComponent.h"
+#include "../ECS/Components/OriginShiftComponent.h"
 #include "../Network/NetworkPackets.h"
 #include "../Network/SharedMovement.h"
 #include "ServerNPCManager.h"
@@ -27,6 +30,11 @@
 #include "../Config/ConfigManager.h"
 #include "../Config/PrefabManager.h"
 #include "../Config/EntityFactory.h"
+#include "../Streaming/SpatialGrid.h"
+#include "../Engine/SpatialSystem.h"
+#include "../Engine/PathfindingSystem.h"
+#include "../Navigation/NavMeshManager.h"
+#include "../ECS/Phase4Test.h"
 
 #include <nlohmann/json.hpp>
 
@@ -132,30 +140,142 @@ struct HeadlessTerrain {
 struct HeadlessTerrainManager {
     std::vector<HeadlessTerrain> tiles;
 
+    /// Base heightmap file path (without grid suffixes).
+    std::string baseHeightmapPath;
+
+    /// Streaming radii for dynamic server-side chunk loading.
+    int loadRadius   = 1;   ///< load tiles within this Chebyshev distance
+    int unloadRadius = 3;   ///< unload tiles beyond this distance
+
+    /// Track which grid cells are currently loaded.
+    struct PairHash {
+        std::size_t operator()(const std::pair<int,int>& p) const {
+            return std::hash<int>()(p.first) ^ (std::hash<int>()(p.second) << 16);
+        }
+    };
+    std::unordered_map<std::pair<int,int>, int, PairHash> loadedCells; ///< grid → tiles index
+
     void loadTile(const std::string& heightmapPath, int gx, int gz) {
+        auto key = std::make_pair(gx, gz);
+        if (loadedCells.count(key)) return; // already loaded
+
         tiles.emplace_back();
         tiles.back().load(heightmapPath, gx, gz);
         if (!tiles.back().valid) {
             std::cerr << "[Server] WARNING: Skipping terrain tile (" << gx << ", " << gz
                       << ") — heightmap could not be loaded from: " << heightmapPath << "\n";
             tiles.pop_back();
+        } else {
+            loadedCells[key] = static_cast<int>(tiles.size()) - 1;
         }
     }
 
+    /// Dynamically load/unload terrain tiles around the player position.
+    /// Returns lists of newly loaded and unloaded grid cells for Bullet
+    /// collider management.
+    struct StreamResult {
+        std::vector<std::pair<int,int>> loaded;     ///< newly loaded cells
+        std::vector<std::pair<int,int>> unloaded;   ///< newly unloaded cells
+    };
+    StreamResult updateDynamic(const glm::vec3& playerPos, float terrainSize) {
+        StreamResult result;
+        int px = static_cast<int>(std::floor(playerPos.x / terrainSize));
+        int pz = static_cast<int>(std::floor(playerPos.z / terrainSize));
+
+        // Load tiles within loadRadius.
+        for (int dx = -loadRadius; dx <= loadRadius; ++dx) {
+            for (int dz = -loadRadius; dz <= loadRadius; ++dz) {
+                int cx = px + dx;
+                int cz = pz + dz;
+                auto key = std::make_pair(cx, cz);
+                if (loadedCells.count(key)) continue;
+
+                // Build per-tile filename: baseName_X_Z.png
+                // If the per-tile file doesn't exist, fall back to the base file.
+                std::string tilePath = baseHeightmapPath;
+                {
+                    // Extract directory and basename from baseHeightmapPath.
+                    // baseHeightmapPath is e.g. "/path/to/heightMap.png"
+                    std::string dir, base, ext;
+                    auto lastSlash = tilePath.rfind('/');
+                    if (lastSlash != std::string::npos) {
+                        dir = tilePath.substr(0, lastSlash + 1);
+                        base = tilePath.substr(lastSlash + 1);
+                    } else {
+                        base = tilePath;
+                    }
+                    auto dotPos = base.rfind('.');
+                    if (dotPos != std::string::npos) {
+                        ext = base.substr(dotPos);
+                        base = base.substr(0, dotPos);
+                    }
+                    std::string perTile = dir + base + "_" + std::to_string(cx) + "_" + std::to_string(cz) + ext;
+                    // Check if per-tile file exists.
+                    std::ifstream probe(perTile);
+                    if (probe.is_open()) {
+                        tilePath = perTile;
+                        probe.close();
+                    }
+                    // Otherwise keep the original base path as fallback.
+                }
+
+                loadTile(tilePath, cx, cz);
+                if (loadedCells.count(key)) {
+                    result.loaded.push_back(key);
+                    std::cout << "[Server] LOADING Chunk [" << cx << ", " << cz << "]\n";
+                }
+            }
+        }
+
+        // Unload tiles beyond unloadRadius.
+        std::vector<std::pair<int,int>> toRemove;
+        for (auto& [cell, idx] : loadedCells) {
+            int distX = std::abs(cell.first  - px);
+            int distZ = std::abs(cell.second - pz);
+            int chebyshev = std::max(distX, distZ);
+            if (chebyshev > unloadRadius) {
+                toRemove.push_back(cell);
+            }
+        }
+        for (auto& cell : toRemove) {
+            int idx = loadedCells[cell];
+            if (idx >= 0 && idx < static_cast<int>(tiles.size())) {
+                // Mark invalid but don't erase from the vector — erasing would
+                // invalidate all indices stored in loadedCells.  The height data
+                // is freed (valid=false clears no vectors), so the only overhead
+                // is the HeadlessTerrain struct shell.  For a typical play
+                // session the tile count stays bounded by the exploration area.
+                tiles[idx].valid = false;
+                tiles[idx].heights.clear();   // free the bulk of the memory
+                tiles[idx].heights.shrink_to_fit();
+            }
+            loadedCells.erase(cell);
+            result.unloaded.push_back(cell);
+            std::cout << "[Server] UNLOADING Chunk [" << cell.first << ", " << cell.second << "]\n";
+        }
+
+        return result;
+    }
+
     bool isAnyValid() const {
-        return !tiles.empty();
+        for (const auto& t : tiles) if (t.valid) return true;
+        return false;
     }
 
     float getHeight(float worldX, float worldZ) const {
         for (const auto& tile : tiles) {
+            if (!tile.valid) continue;
             // Check if the world position falls within this tile's footprint.
             if (worldX >= tile.originX && worldX < tile.originX + tile.size &&
                 worldZ >= tile.originZ && worldZ < tile.originZ + tile.size) {
                 return tile.getHeight(worldX, worldZ);
             }
         }
-        // Fall back to the first tile's nearest-edge value, or 0 if no tiles loaded.
-        return tiles.empty() ? 0.0f : tiles[0].getHeight(worldX, worldZ);
+        // Fall back to the first valid tile's nearest-edge value, or 0 if no tiles loaded.
+        for (const auto& tile : tiles) {
+            if (tile.valid) return tile.getHeight(worldX, worldZ);
+        }
+        return 0.0f;
     }
 };
 
@@ -423,6 +543,9 @@ int main() {
     PrefabManager::get().loadAll(HOME_PATH);
     const auto& cfg = ConfigManager::get();
 
+    // --- Phase 4 self-test (validates spatial grid, pathfinding, LOD) ---
+    Phase4Test::run();
+
     // --- ENet Initialization ---
     if (enet_initialize() != 0) {
         std::cerr << "[Server] Failed to initialize ENet.\n";
@@ -482,6 +605,9 @@ int main() {
         if (!terrainMgr.isAnyValid()) {
             terrainMgr.loadTile(hmPath, 0, -1);
         }
+
+        // Store the base heightmap path for dynamic streaming.
+        terrainMgr.baseHeightmapPath = hmPath;
     }
 
     // -------------------------------------------------------------------------
@@ -514,12 +640,59 @@ int main() {
     }
 
     // -------------------------------------------------------------------------
+    // Phase 4 — Spatial Partitioning Grid (Interest Management)
+    // 50 m × 50 m cells.  For an 800 m chunk this produces a 16 × 16 grid.
+    // -------------------------------------------------------------------------
+    SpatialGrid   spatialGrid(50.0f);
+    SpatialSystem spatialSystem(registry, spatialGrid);
+
+    // Register all existing scene entities (static bodies) in the spatial grid.
+    {
+        auto sceneView = registry.view<TransformComponent>();
+        for (auto entity : sceneView) {
+            auto& tc = sceneView.get<TransformComponent>(entity);
+            bool isStatic = !registry.any_of<NetworkIdComponent>(entity);
+            spatialSystem.registerEntity(entity, tc.position, isStatic);
+        }
+        std::cout << "[Server] SpatialGrid initialized with "
+                  << spatialGrid.allCells().size() << " non-empty cells (50 m cells)\n";
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 4 — NavMesh (grid-based A* pathfinding)
+    // -------------------------------------------------------------------------
+    NavMeshManager navMesh(1.0f);
+    {
+        float terrainSize = cfg.physics.terrainSize;
+        // Build a walkable area covering all loaded terrain tiles.
+        float worldMinX = 0.0f, worldMinZ = 0.0f;
+        float worldMaxX = terrainSize, worldMaxZ = terrainSize;
+        for (const auto& tile : terrainMgr.tiles) {
+            worldMinX = std::min(worldMinX, tile.originX);
+            worldMinZ = std::min(worldMinZ, tile.originZ);
+            worldMaxX = std::max(worldMaxX, tile.originX + tile.size);
+            worldMaxZ = std::max(worldMaxZ, tile.originZ + tile.size);
+        }
+        navMesh.build(worldMinX, worldMinZ, worldMaxX, worldMaxZ);
+        std::cout << "[Server] NavMesh built — walkable area ("
+                  << worldMinX << "," << worldMinZ << ") to ("
+                  << worldMaxX << "," << worldMaxZ << ")\n";
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 4 — Pathfinding System (auto-steering via A* waypoints)
+    // -------------------------------------------------------------------------
+    PathfindingSystem pathfindingSystem(registry, cfg.physics.defaultRunSpeed);
+
+    // -------------------------------------------------------------------------
     // Network tracking maps
     //   peerToNetworkId    — peer → network ID (for input routing on receive)
     //   networkIdToEntity  — network ID → entt entity (for entity lookup)
+    //   peerToEntity       — peer → entt entity (for spatial AoI lookups)
     // -------------------------------------------------------------------------
     std::unordered_map<ENetPeer*, uint32_t>       peerToNetworkId;
     std::unordered_map<uint32_t, entt::entity>    networkIdToEntity;
+    std::unordered_map<ENetPeer*, entt::entity>   peerToEntity;
     uint32_t nextNetworkId = 100;
 
     // --- NPC Loading ---
@@ -567,6 +740,9 @@ int main() {
             }
             physicsSystem.addCharacterController(entity, capsuleRadius, capsuleHeight);
             npcManager.registerNPC(nid, d.scriptType);
+
+            // Phase 4: Register NPC in spatial grid (dynamic entity).
+            spatialSystem.registerEntity(entity, pos, /*isStatic=*/false);
 
             std::cout << "[Server] NPC " << nid << " (" << d.modelType
                       << ") spawned at (" << pos.x << ", " << pos.y << ", "
@@ -618,6 +794,10 @@ int main() {
                 if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
                     nid->id = newId;
                 }
+
+                // Phase 4: Register in spatial grid (dynamic entity).
+                peerToEntity[event.peer] = entity;
+                spatialSystem.registerEntity(entity, spawnPos, /*isStatic=*/false);
 
                 std::cout << "[Server] Client connected — networkId " << newId
                           << " from " << event.peer->address.host << ":"
@@ -671,10 +851,13 @@ int main() {
 
                     auto eit = networkIdToEntity.find(removedId);
                     if (eit != networkIdToEntity.end()) {
+                        // Phase 4: Unregister from spatial grid before destroying.
+                        spatialSystem.unregisterEntity(eit->second);
                         physicsSystem.removeCharacterController(eit->second);
                         registry.destroy(eit->second);
                         networkIdToEntity.erase(eit);
                     }
+                    peerToEntity.erase(event.peer);
 
                     std::cout << "[Server] Client disconnected — networkId "
                               << removedId << "\n";
@@ -725,6 +908,59 @@ int main() {
                         // Client no longer sends coordinates, making the distance
                         // validation (distSq <= maxDist*maxDist) obsolete.
                     }
+
+                    // Phase 4 Step 4.4.2 — ActionRequest: client right-clicks
+                    // a target → server runs A* and assigns PathfindingComponent.
+                    if (ptype == Network::PacketType::ActionRequest &&
+                        plen == sizeof(Network::ActionRequestPacket)) {
+
+                        Network::ActionRequestPacket req;
+                        std::memcpy(&req, payload, sizeof(req));
+
+                        auto pit = peerToNetworkId.find(event.peer);
+                        if (pit != peerToNetworkId.end()) {
+                            uint32_t nid = pit->second;
+                            auto playerIt = networkIdToEntity.find(nid);
+                            auto targetIt = networkIdToEntity.find(req.targetNetworkId);
+                            if (playerIt != networkIdToEntity.end() &&
+                                targetIt != networkIdToEntity.end()) {
+                                auto playerEntity = playerIt->second;
+                                auto targetEntity = targetIt->second;
+
+                                auto& playerTC = registry.get<TransformComponent>(playerEntity);
+                                auto& targetTC = registry.get<TransformComponent>(targetEntity);
+
+                                // Phase 4 Step 4.1 — Validate proximity using
+                                // SpatialGrid before allowing the action.  The
+                                // player and target must be in the same or an
+                                // adjacent cell (Chebyshev distance ≤ 1).
+                                int pCellX, pCellZ, tCellX, tCellZ;
+                                spatialGrid.worldToCell(playerTC.position.x,
+                                                        playerTC.position.z,
+                                                        pCellX, pCellZ);
+                                spatialGrid.worldToCell(targetTC.position.x,
+                                                        targetTC.position.z,
+                                                        tCellX, tCellZ);
+                                int cellDist = std::max(std::abs(pCellX - tCellX),
+                                                        std::abs(pCellZ - tCellZ));
+                                if (cellDist > 1) {
+                                    std::cout << "[Server] ActionRequest denied — "
+                                                 "target too far (cell dist "
+                                              << cellDist << ").\n";
+                                    break;
+                                }
+
+                                // Run A* to find a path from player to target.
+                                auto path = navMesh.findPath(playerTC.position, targetTC.position);
+                                if (!path.empty()) {
+                                    // Assign PathfindingComponent for auto-steering.
+                                    registry.emplace_or_replace<PathfindingComponent>(
+                                        playerEntity,
+                                        PathfindingComponent{path, 0, 1.5f, true});
+                                }
+                            }
+                        }
+                    }
                 }
                 enet_packet_destroy(event.packet);
                 break;
@@ -769,6 +1005,44 @@ int main() {
                 if (eit != networkIdToEntity.end()) {
                     auto& queue = registry.get<InputQueueComponent>(eit->second);
                     queue.inputs.push_back(inp);
+                }
+            }
+
+            // ----- Phase 4: Server-Side Dynamic Terrain Streaming -----
+            // Compute a representative position from all active entities (players
+            // + NPCs), then run a single updateDynamic() pass per tick.  This
+            // avoids redundant load/unload operations when multiple entities
+            // cluster in the same area.
+            {
+                auto pView = registry.view<TransformComponent, NetworkIdComponent>();
+                glm::vec3 centroid(0.0f);
+                int entityCount = 0;
+                for (auto entity : pView) {
+                    centroid += pView.get<TransformComponent>(entity).position;
+                    ++entityCount;
+                }
+                if (entityCount > 0) {
+                    centroid /= static_cast<float>(entityCount);
+                    auto streamResult = terrainMgr.updateDynamic(centroid, cfg.physics.terrainSize);
+
+                    // Add Bullet colliders for newly loaded tiles.
+                    for (auto& cell : streamResult.loaded) {
+                        auto cit = terrainMgr.loadedCells.find(cell);
+                        if (cit != terrainMgr.loadedCells.end()) {
+                            auto& tile = terrainMgr.tiles[cit->second];
+                            if (tile.valid) {
+                                physicsSystem.addHeadlessTerrainCollider(
+                                    tile.heights, tile.size, tile.originX, tile.originZ);
+                                std::cout << "[Server] Added Bullet collider for chunk ["
+                                          << cell.first << ", " << cell.second << "]\n";
+                            }
+                        }
+                    }
+
+                    // Remove Bullet colliders for unloaded tiles.
+                    for (auto& cell : streamResult.unloaded) {
+                        physicsSystem.removeHeadlessTerrainCollider(cell.first, cell.second);
+                    }
                 }
             }
 
@@ -838,6 +1112,29 @@ int main() {
                 }
 
                 if (maxDepth > 0) {
+                    // --- NEW FIX: STRETCH SHORT QUEUES ---
+                    // If a player sends multiple packets, maxDepth > 1. NPCs only ever 
+                    // generate 1 packet. We must divide the NPC's packet evenly across 
+                    // the maxDepth sub-steps, otherwise it sprints in Step 0 and stops in Step 1.
+                    for (auto entity : inputView) {
+                        auto& queue = inputView.get<InputQueueComponent>(entity).inputs;
+                        int qs = static_cast<int>(queue.size());
+                        if (qs > 0 && qs < maxDepth) {
+                            int deficit = maxDepth - qs;
+                            int parts = 1 + deficit;
+                            
+                            // Divide the deltaTime of the last input equally
+                            float splitDt = queue.back().deltaTime / static_cast<float>(parts);
+                            queue.back().deltaTime = splitDt;
+                            
+                            // Duplicate the scaled-down input to fill the remaining steps
+                            Network::PlayerInputPacket tail = queue.back();
+                            for (int i = 0; i < deficit; ++i) {
+                                queue.push_back(tail);
+                            }
+                        }
+                    }
+                    
                     float subDt = cfg.server.tickInterval / static_cast<float>(maxDepth);
 
                     for (int step = 0; step < maxDepth; ++step) {
@@ -909,22 +1206,48 @@ int main() {
                 }
             }
 
-            // ----- Broadcast all entity snapshots from the registry -----
-            auto view = registry.view<TransformComponent, NetworkIdComponent>();
-            for (auto entity : view) {
-                auto& tc  = view.get<TransformComponent>(entity);
-                auto& nid = view.get<NetworkIdComponent>(entity);
+            // ----- Phase 4: Update spatial partitioning grid -----
+            // Migrate entities that moved to a different cell since last tick.
+            spatialSystem.update(cfg.server.tickInterval);
 
-                Network::TransformSnapshot snap;
-                snap.networkId      = nid.id;
-                snap.sequenceNumber = sequenceNum++;
-                snap.timestamp      = serverTime;
-                snap.position       = tc.position;
-                snap.rotation       = tc.rotation;
-                snap.lastProcessedInputSequence = nid.lastInputSeq;
+            // ----- Phase 4: Update pathfinding auto-steering -----
+            pathfindingSystem.update(cfg.server.tickInterval);
 
-                broadcast(server, Network::PacketType::TransformSnapshot,
-                          &snap, sizeof(snap));
+            // ----- Broadcast entity snapshots with AoI filtering (Phase 4) -----
+            // Instead of broadcasting every entity to every client, iterate
+            // per-client: determine the client's spatial cell, query the 3×3
+            // neighbourhood (9 cells = 150 m × 150 m), and send snapshots
+            // only for entities inside those cells.
+            for (auto& [peer, clientNetId] : peerToNetworkId) {
+                auto peit = peerToEntity.find(peer);
+                if (peit == peerToEntity.end()) continue;
+                auto clientEntity = peit->second;
+                if (!registry.valid(clientEntity)) continue;
+
+                auto* clientSC = registry.try_get<SpatialComponent>(clientEntity);
+                if (!clientSC) continue;
+
+                // Query the 3×3 neighbourhood around the client's cell.
+                auto nearbyEntities = spatialGrid.queryNeighbourhood(
+                    clientSC->currentCellX, clientSC->currentCellZ);
+
+                for (auto entity : nearbyEntities) {
+                    if (!registry.valid(entity)) continue;
+                    auto* tc  = registry.try_get<TransformComponent>(entity);
+                    auto* nid = registry.try_get<NetworkIdComponent>(entity);
+                    if (!tc || !nid) continue;
+
+                    Network::TransformSnapshot snap;
+                    snap.networkId      = nid->id;
+                    snap.sequenceNumber = sequenceNum++;
+                    snap.timestamp      = serverTime;
+                    snap.position       = tc->position;
+                    snap.rotation       = tc->rotation;
+                    snap.lastProcessedInputSequence = nid->lastInputSeq;
+
+                    sendTo(peer, Network::PacketType::TransformSnapshot,
+                           &snap, sizeof(snap));
+                }
             }
 
             enet_host_flush(server);
@@ -944,6 +1267,7 @@ int main() {
 
     // --- Cleanup ---
     std::cout << "[Server] Shutting down...\n";
+    spatialSystem.shutdown();
     physicsSystem.shutdown();
     enet_host_destroy(server);
     enet_deinitialize();

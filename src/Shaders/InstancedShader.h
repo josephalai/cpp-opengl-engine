@@ -1,5 +1,7 @@
 // src/Shaders/InstancedShader.h
 // Shader for instanced rendering — model matrix supplied per-instance.
+// Phase 4 Step 4.3.3 — Adds maxInstanceDistance uniform for GPU-side
+// distance culling of individual instances (e.g. grass blades > 75 m).
 
 #ifndef ENGINE_INSTANCEDSHADER_H
 #define ENGINE_INSTANCEDSHADER_H
@@ -22,6 +24,11 @@ public:
     void loadSkyColor(const glm::vec3& color);
     void connectTexture();
 
+    /// Phase 4 Step 4.3.3 — Set the maximum distance at which instances
+    /// are drawn.  Instances beyond this distance are collapsed to zero
+    /// by the vertex shader.  Set to 0 to disable culling.
+    void loadMaxInstanceDistance(float distance);
+
 protected:
     void bindAttributes() override;
     void getAllUniformLocations() override;
@@ -35,6 +42,7 @@ private:
     GLint loc_viewPosition;
     GLint loc_skyColor;
     GLint loc_textureSampler;
+    GLint loc_maxInstanceDistance;
 
     GLint loc_materialShininess;
     GLint loc_materialReflectivity;

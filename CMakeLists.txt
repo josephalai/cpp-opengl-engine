@@ -56,39 +56,46 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(sol2)
 
 # =============================================================================
-# Lua 5.4 — Fetched and built from official source (Bypasses Homebrew entirely)
+# Lua 5.4 — Try system package first, then FetchContent as fallback
 # =============================================================================
-FetchContent_Declare(
-    lua54
-    URL https://www.lua.org/ftp/lua-5.4.6.tar.gz
-)
-FetchContent_MakeAvailable(lua54)
-
-# Create a static library out of the raw Lua C files
-if(NOT TARGET lua54_lib)
-    file(GLOB LUA_SOURCES "${lua54_SOURCE_DIR}/src/*.c")
-    # Remove the standalone executables so we only build the library
-    list(REMOVE_ITEM LUA_SOURCES 
-        "${lua54_SOURCE_DIR}/src/lua.c" 
-        "${lua54_SOURCE_DIR}/src/luac.c"
+find_package(Lua 5.4 QUIET)
+if(LUA_FOUND)
+    message(STATUS "Using system Lua: ${LUA_INCLUDE_DIR}")
+    set(LUA_INCLUDE_DIRS "${LUA_INCLUDE_DIR}")
+    set(LUA_LIBRARIES "${LUA_LIBRARIES}")
+else()
+    FetchContent_Declare(
+        lua54
+        URL https://www.lua.org/ftp/lua-5.4.6.tar.gz
     )
-    
-    add_library(lua54_lib STATIC ${LUA_SOURCES})
-    target_include_directories(lua54_lib PUBLIC "${lua54_SOURCE_DIR}/src")
-    
-    # OS-specific macros for Lua
-    if(APPLE)
-        target_compile_definitions(lua54_lib PRIVATE LUA_USE_MACOSX)
-    elseif(UNIX)
-        target_compile_definitions(lua54_lib PRIVATE LUA_USE_LINUX)
-    endif()
+    FetchContent_MakeAvailable(lua54)
 
-    # Expose variables to the rest of the CMake file
-    set(LUA_FOUND TRUE)
-    set(LUA_LIBRARIES lua54_lib)
-    set(LUA_INCLUDE_DIRS "${lua54_SOURCE_DIR}/src")
-    
-    message(STATUS "Lua 5.4 source downloaded and added as a build target.")
+    # Create a static library out of the raw Lua C files
+    if(NOT TARGET lua54_lib)
+        file(GLOB LUA_SOURCES "${lua54_SOURCE_DIR}/src/*.c")
+        # Remove the standalone executables so we only build the library
+        list(REMOVE_ITEM LUA_SOURCES 
+            "${lua54_SOURCE_DIR}/src/lua.c" 
+            "${lua54_SOURCE_DIR}/src/luac.c"
+        )
+        
+        add_library(lua54_lib STATIC ${LUA_SOURCES})
+        target_include_directories(lua54_lib PUBLIC "${lua54_SOURCE_DIR}/src")
+        
+        # OS-specific macros for Lua
+        if(APPLE)
+            target_compile_definitions(lua54_lib PRIVATE LUA_USE_MACOSX)
+        elseif(UNIX)
+            target_compile_definitions(lua54_lib PRIVATE LUA_USE_LINUX)
+        endif()
+
+        # Expose variables to the rest of the CMake file
+        set(LUA_FOUND TRUE)
+        set(LUA_LIBRARIES lua54_lib)
+        set(LUA_INCLUDE_DIRS "${lua54_SOURCE_DIR}/src")
+        
+        message(STATUS "Lua 5.4 source downloaded and added as a build target.")
+    endif()
 endif()
 
 # =============================================================================
@@ -98,13 +105,13 @@ file(GLOB_RECURSE COMMON_SOURCES
     "${CMAKE_SOURCE_DIR}/src/ECS/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Physics/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Toolbox/*.cpp"
-    "${CMAKE_SOURCE_DIR}/src/World/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Network/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Util/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Collision/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Config/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Scripting/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Terrain/HeightMap.cpp"
+    "${CMAKE_SOURCE_DIR}/src/Engine/GLUploadQueue.cpp"
 )
 
 # Exclude OpenGL/GLFW-dependent files from COMMON

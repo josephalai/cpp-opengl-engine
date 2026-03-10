@@ -25,6 +25,7 @@ void InstancedShader::getAllUniformLocations() {
     loc_viewPosition         = getUniformLocation("viewPosition");
     loc_skyColor             = getUniformLocation("skyColor");
     loc_textureSampler       = getUniformLocation("textureSampler");
+    loc_maxInstanceDistance   = getUniformLocation("maxInstanceDistance");
     loc_materialShininess    = getUniformLocation("material.shininess");
     loc_materialReflectivity = getUniformLocation("material.reflectivity");
 
@@ -45,6 +46,7 @@ void InstancedShader::loadProjectionMatrix(const glm::mat4& m) { setMat4(loc_pro
 void InstancedShader::loadViewPosition(Camera* c)              { setVec3(loc_viewPosition, c->Position); }
 void InstancedShader::loadSkyColor(const glm::vec3& c)         { setVec3(loc_skyColor, c); }
 void InstancedShader::connectTexture()                          { setInt(loc_textureSampler, 0); }
+void InstancedShader::loadMaxInstanceDistance(float d)          { setFloat(loc_maxInstanceDistance, d); }
 
 void InstancedShader::loadLight(const std::vector<Light*>& lights) {
     for (int i = 0; i < MAX_LIGHTS; ++i) {

@@ -1,4 +1,5 @@
 // src/RenderEngine/InstancedRenderer.h
+#define GLM_ENABLE_EXPERIMENTAL
 // Renders many identical objects with a single glDrawElementsInstanced call.
 
 #ifndef ENGINE_INSTANCEDRENDERER_H
@@ -19,6 +20,10 @@ public:
     /// Queue transform for a model.
     void addInstance(InstancedModel* model, const glm::mat4& transform);
 
+    /// Phase 4 Step 4.3 — Set the maximum view distance for instanced objects.
+    /// Instances beyond this distance from the camera are discarded.
+    void setMaxViewDistance(float distance) { maxViewDist_ = distance; }
+
     /// Draw all queued instances and then clear the queues.
     void render(const std::vector<Light*>& lights,
                 Camera* camera,
@@ -31,6 +36,7 @@ public:
 private:
     InstancedShader* shader;
     std::map<InstancedModel*, std::vector<glm::mat4>> batches;
+    float maxViewDist_ = 0.0f;   ///< 0 = no distance culling
 
     void drawBatch(InstancedModel* model,
                    const std::vector<glm::mat4>& transforms);
