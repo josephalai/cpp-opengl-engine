@@ -93,7 +93,13 @@ void ConfigManager::loadWorldConfig(const std::string& path) {
         physics.defaultCapsuleHeight = p.value("default_capsule_height", physics.defaultCapsuleHeight);
         physics.defaultStepHeight    = p.value("default_step_height", physics.defaultStepHeight);
         physics.defaultMass          = p.value("default_mass", physics.defaultMass);
+
+        physics.sprintMultiplier     = p.value("sprint_multiplier", physics.sprintMultiplier);
     }
+
+    // Default spawn position (top-level in world_config.json)
+    physics.defaultSpawnPosition = readVec3(root, "default_spawn_position",
+                                            physics.defaultSpawnPosition);
 
     // Server
     if (root.contains("server")) {
@@ -133,6 +139,16 @@ void ConfigManager::loadClientSettings(const std::string& path) {
     client.nearPlane    = root.value("near_plane",    client.nearPlane);
     client.farPlane     = root.value("far_plane",     client.farPlane);
     client.windowTitle  = root.value("window_title",  client.windowTitle);
+
+    // Camera settings
+    if (root.contains("camera")) {
+        const auto& cam = root["camera"];
+        client.camera.mouseSensitivity = cam.value("mouse_sensitivity", client.camera.mouseSensitivity);
+        client.camera.zoomSensitivity  = cam.value("zoom_sensitivity",  client.camera.zoomSensitivity);
+        client.camera.minZoomDistance   = cam.value("min_zoom",          client.camera.minZoomDistance);
+        client.camera.maxZoomDistance   = cam.value("max_zoom",          client.camera.maxZoomDistance);
+        client.camera.pitchOffset      = cam.value("pitch_offset",      client.camera.pitchOffset);
+    }
 
     std::cout << "[ConfigManager] Loaded client settings from " << path << "\n";
 }

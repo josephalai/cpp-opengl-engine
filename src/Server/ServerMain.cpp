@@ -26,6 +26,7 @@
 #include "../Toolbox/Maths.h"
 #include "../Config/ConfigManager.h"
 #include "../Config/PrefabManager.h"
+#include "../Config/EntityFactory.h"
 
 #include <nlohmann/json.hpp>
 
@@ -600,16 +601,22 @@ int main() {
                 uint32_t newId = nextNetworkId++;
                 peerToNetworkId[event.peer] = newId;
 
-                glm::vec3 spawnPos(100.0f, 3.0f, -80.0f);
+                glm::vec3 spawnPos = ConfigManager::get().physics.defaultSpawnPosition;
                 // TransformComponent.position is the feet position.  addCharacterController
                 // internally offsets the ghost by capsuleHalfHeight, so we must NOT add it
                 // here — doing so would place the capsule 2×capsuleHalfHeight above terrain.
                 if (terrainMgr.isAnyValid())
                     spawnPos.y = terrainMgr.getHeight(spawnPos.x, spawnPos.z);
 
-                auto entity = spawnEntity(registry, newId, spawnPos, "player");
+                // Spawn player using the universal prefab factory
+                auto entity = EntityFactory::spawn(registry, "player", spawnPos, &physicsSystem);
                 networkIdToEntity[newId] = entity;
-                physicsSystem.addCharacterController(entity, 0.5f, 1.8f);
+
+                // Assign the network ID to the entity (EntityFactory sets the
+                // default from the prefab; override with the actual network ID).
+                if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
+                    nid->id = newId;
+                }
 
                 std::cout << "[Server] Client connected — networkId " << newId
                           << " from " << event.peer->address.host << ":"

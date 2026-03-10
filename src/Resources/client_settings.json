@@ -6,5 +6,13 @@
   "fov": 45.0,
   "near_plane": 0.1,
   "far_plane": 1000.0,
-  "window_title": "star wars scaperune"
+  "window_title": "star wars scaperune",
+
+  "camera": {
+    "mouse_sensitivity": 0.1,
+    "zoom_sensitivity": 0.03,
+    "min_zoom": 5,
+    "max_zoom": 50,
+    "pitch_offset": 4
+  }
 }

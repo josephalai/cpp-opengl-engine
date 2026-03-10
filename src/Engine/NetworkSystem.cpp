@@ -81,27 +81,27 @@ void NetworkSystem::update(float deltaTime) {
         // ---> ADD THIS: Record the actual physical result of the PREVIOUS frame's input
         if (inputSequenceNumber_ > 0) {
             localHistory_.push_back({inputSequenceNumber_, localPlayer_->getPosition()});
-            if (localHistory_.size() > 100) localHistory_.erase(localHistory_.begin());
+            if (localHistory_.size() > kMaxLocalHistorySize) localHistory_.erase(localHistory_.begin());
         }
 
         Network::PlayerInputPacket input;
         input.sequenceNumber = ++inputSequenceNumber_;
         // --- ADD THESE TWO LINES ---
         // localHistory_.push_back({input.sequenceNumber, localPlayer_->getPosition()});
-        if (localHistory_.size() > 100) localHistory_.erase(localHistory_.begin());
+        if (localHistory_.size() > kMaxLocalHistorySize) localHistory_.erase(localHistory_.begin());
         // ---------------------------
 
         input.deltaTime      = deltaTime;
         input.cameraYaw      = localPlayer_->getRotation().y;
-        input.moveForward    = InputMaster::isKeyDown(W);
-        input.moveBackward   = InputMaster::isKeyDown(S);
+        input.moveForward    = InputMaster::isActionDown("MoveForward");
+        input.moveBackward   = InputMaster::isActionDown("MoveBackward");
         // [Phase 3.3] A/D are TURN keys on the client (they increment rotation.y
         // in PlayerMovementSystem). Their effect is already captured in cameraYaw.
         // Sending them as strafe flags caused the server to add a perpendicular
         // displacement that the client never applied → per-frame desync.
         input.moveLeft       = false;
         input.moveRight      = false;
-        input.jump           = InputMaster::isKeyDown(Space);
+        input.jump           = InputMaster::isActionDown("Jump");
 
         auto buf = Network::serialise(Network::PacketType::PlayerInput,
                                       input);

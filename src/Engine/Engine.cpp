@@ -61,6 +61,9 @@ void Engine::init() {
     ConfigManager::get().loadAll(HOME_PATH);
     PrefabManager::get().loadAll(HOME_PATH);
 
+    // Load input action bindings from controls.json.
+    InputMaster::loadBindings(std::string(HOME_PATH) + "/src/Resources/controls.json");
+
     // Initialize ENet before anything else that might use networking.
     if (enet_initialize() != 0) {
         std::cerr << "[Engine] Failed to initialize ENet.\n";
@@ -424,9 +427,9 @@ void Engine::initFramebuffersAndPickers() {
     for (auto* ae : animatedEntities) {
         if (ae && ae->controller && ae->isLocalPlayer) {
             ae->controller->setupDefaultTransitions(
-                []() { return InputMaster::isKeyDown(W) && !InputMaster::isKeyDown(LeftShift); },
-                []() { return InputMaster::isKeyDown(W) &&  InputMaster::isKeyDown(LeftShift); },
-                []() { return InputMaster::isKeyDown(Space); });
+                []() { return InputMaster::isActionDown("MoveForward") && !InputMaster::isKeyDown(LeftShift); },
+                []() { return InputMaster::isActionDown("MoveForward") &&  InputMaster::isKeyDown(LeftShift); },
+                []() { return InputMaster::isActionDown("Jump"); });
         }
     }
 

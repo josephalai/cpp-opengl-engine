@@ -32,11 +32,28 @@ struct PhysicsConfig {
     float     defaultCapsuleHeight = 1.8f;
     float     defaultStepHeight    = 0.35f;
     float     defaultMass          = 70.0f;
+
+    /// Default spawn position for new players.
+    glm::vec3 defaultSpawnPosition = {100.0f, 3.0f, -80.0f};
+
+    /// Sprint speed multiplier applied when the sprint key is held.
+    float     sprintMultiplier = 4.5f;
 };
 
 // -------------------------------------------------------------------------
 // Client rendering settings  (client_settings.json)
 // -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// Camera configuration  (camera block inside client_settings.json)
+// -------------------------------------------------------------------------
+struct CameraConfig {
+    float mouseSensitivity = 0.1f;
+    float zoomSensitivity  = 0.03f;
+    float minZoomDistance   = 5.0f;
+    float maxZoomDistance   = 50.0f;
+    float pitchOffset      = 4.0f;
+};
+
 struct ClientConfig {
     int         windowWidth   = 800;
     int         windowHeight  = 600;
@@ -44,6 +61,7 @@ struct ClientConfig {
     float       nearPlane     = 0.1f;
     float       farPlane      = 1000.0f;
     std::string windowTitle   = "star wars scaperune";
+    CameraConfig camera;
 };
 
 // -------------------------------------------------------------------------

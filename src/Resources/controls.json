@@ -1,0 +1,13 @@
+{
+  "_comment": "controls.json — Input action bindings. Maps logical action names to keyboard keys. Loaded by InputMaster on boot so that input can be rebound without recompiling.",
+
+  "bindings": {
+    "MoveForward": "W",
+    "MoveBackward": "S",
+    "MoveLeft": "A",
+    "MoveRight": "D",
+    "Jump": "Space",
+    "Sprint": "Tab",
+    "SprintReset": "Backslash"
+  }
+}

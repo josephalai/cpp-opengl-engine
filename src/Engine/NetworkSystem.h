@@ -96,6 +96,9 @@ private:
     uint32_t  localPlayerId_       = 0;
     uint32_t  inputSequenceNumber_ = 0;
 
+    // --- Local history buffer for server reconciliation ---
+    static constexpr size_t kMaxLocalHistorySize = 100;
+
     // --- Server reconciliation ---
     // When the server disagrees with our position by more than kReconcileThresh²
     // we do NOT hard-snap the player (which causes visible teleporting). Instead
