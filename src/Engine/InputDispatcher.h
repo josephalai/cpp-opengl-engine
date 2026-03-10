@@ -16,15 +16,18 @@
 #define ENGINE_INPUTDISPATCHER_H
 
 #include "ISystem.h"
+#include "EditorState.h"
 #include <glm/glm.hpp>
 
 class TerrainPicker;
 
 class InputDispatcher : public ISystem {
 public:
-    /// @param picker  Optional terrain picker used to resolve right-click
-    ///               terrain intersections for TargetLocationClickedEvent.
-    explicit InputDispatcher(TerrainPicker* picker = nullptr);
+    /// @param picker      Optional terrain picker used to resolve right-click
+    ///                    terrain intersections for TargetLocationClickedEvent.
+    /// @param editorState Shared editor state; tilde press toggles editor mode.
+    explicit InputDispatcher(TerrainPicker* picker      = nullptr,
+                             EditorState*   editorState = nullptr);
 
     void init()     override {}
     void update(float deltaTime) override;
@@ -32,6 +35,7 @@ public:
 
 private:
     TerrainPicker* picker_;
+    EditorState*   editorState_;
     bool           prevRightClick_ = false; ///< edge-detect: fire event only once per press
 };
 

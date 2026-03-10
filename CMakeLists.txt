@@ -56,6 +56,16 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(sol2)
 
 # =============================================================================
+# Dear ImGui — Bloat-free Graphical User Interface for C++ (fetched automatically)
+# =============================================================================
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG        v1.91.8
+)
+FetchContent_MakeAvailable(imgui)
+
+# =============================================================================
 # Lua 5.4 — Try system package first, then FetchContent as fallback
 # =============================================================================
 find_package(Lua 5.4 QUIET)
@@ -169,6 +179,21 @@ target_include_directories(client_engine PRIVATE ${BULLET_INCLUDE_DIRS})
 target_include_directories(client_engine PRIVATE ${enet_SOURCE_DIR}/include)
 target_include_directories(client_engine PRIVATE ${nlohmann_json_SOURCE_DIR}/include)
 target_include_directories(client_engine PRIVATE ${entt_SOURCE_DIR}/src)
+
+# --- Dear ImGui (client only) ---
+target_sources(client_engine PRIVATE
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/imgui_demo.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+)
+target_include_directories(client_engine PRIVATE
+    ${imgui_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}/backends
+)
 
 target_link_libraries(client_engine PRIVATE
     glfw

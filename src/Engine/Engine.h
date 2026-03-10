@@ -23,6 +23,7 @@
 #include "../RenderEngine/InstancedModel.h"
 #include "../RenderEngine/InstancedModelManager.h"
 #include "ISystem.h"
+#include "EditorState.h"
 #include "../Physics/PhysicsSystem.h"
 #include <entt/entt.hpp>
 #include <string>
@@ -70,6 +71,12 @@ private:
 
     /// Build the ordered list of ISystem instances that drive the game loop
     void buildSystems();
+
+    /// Initialize Dear ImGui (call after DisplayManager::createDisplay())
+    void initImGui();
+
+    /// Shut down Dear ImGui
+    void shutdownImGui();
 
     // --- Subsystems (owned) ---
     Loader* loader = nullptr;
@@ -128,6 +135,9 @@ private:
     // --- Network (Phase 5 Multi-Client) ---
     NetworkSystem* networkSystem_ = nullptr; ///< Non-owning ptr (owned by systems vec).
     std::string serverIP_ = "127.0.0.1"; ///< Read from ip.cfg or default.
+
+    // --- Editor (GEA Step 5.3) ---
+    EditorState editorState_;
 
     /// Read ip.cfg (if present) to set serverIP_.
     void loadIPConfig();
