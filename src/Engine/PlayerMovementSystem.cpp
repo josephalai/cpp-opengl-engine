@@ -5,6 +5,7 @@
 #include "../ECS/Components/InputStateComponent.h"
 #include "../Events/EventBus.h"
 #include "../Input/InputMaster.h"
+#include "../Config/ConfigManager.h"
 #include "../Physics/PhysicsSystem.h"
 #include "../Terrain/Terrain.h"
 #include <cmath>
@@ -41,7 +42,7 @@ void PlayerMovementSystem::update(float deltaTime) {
             else if (cmd.turn < 0.0f) input.currentTurnSpeed = -input.turnSpeed * input.speedHack / 2.0f;
             else                      input.currentTurnSpeed = 0.0f;
 
-            if (cmd.sprint)      input.speedHack = 4.5f;
+            if (cmd.sprint)      input.speedHack = ConfigManager::get().physics.sprintMultiplier;
             if (cmd.sprintReset) input.speedHack = 1.0f;
 
             if (cmd.jump && !input.isInAir) {
@@ -49,10 +50,10 @@ void PlayerMovementSystem::update(float deltaTime) {
                 input.isInAir      = true;
             }
         } else {
-            float fwd  = InputMaster::isKeyDown(W) ?  1.0f
-                       : InputMaster::isKeyDown(S) ? -1.0f : 0.0f;
-            float turn = InputMaster::isKeyDown(A) ?  1.0f
-                       : InputMaster::isKeyDown(D) ? -1.0f : 0.0f;
+            float fwd  = InputMaster::isActionDown("MoveForward") ?  1.0f
+                       : InputMaster::isActionDown("MoveBackward") ? -1.0f : 0.0f;
+            float turn = InputMaster::isActionDown("MoveLeft") ?  1.0f
+                       : InputMaster::isActionDown("MoveRight") ? -1.0f : 0.0f;
 
             // applyMovementCommand equivalent
             if      (fwd > 0.0f) input.currentSpeed =  input.runSpeed * input.speedHack;
@@ -63,10 +64,10 @@ void PlayerMovementSystem::update(float deltaTime) {
             else if (turn < 0.0f) input.currentTurnSpeed = -input.turnSpeed * input.speedHack / 2.0f;
             else                  input.currentTurnSpeed = 0.0f;
 
-            if (InputMaster::isKeyDown(Tab))       input.speedHack = 4.5f;
-            if (InputMaster::isKeyDown(Backslash)) input.speedHack = 1.0f;
+            if (InputMaster::isActionDown("Sprint"))      input.speedHack = ConfigManager::get().physics.sprintMultiplier;
+            if (InputMaster::isActionDown("SprintReset")) input.speedHack = 1.0f;
 
-            if (InputMaster::isKeyDown(Space) && !input.isInAir) {
+            if (InputMaster::isActionDown("Jump") && !input.isInAir) {
                 input.upwardsSpeed = InputStateComponent::kJumpPower;
                 input.isInAir      = true;
             }
@@ -83,7 +84,7 @@ void PlayerMovementSystem::update(float deltaTime) {
             input.physicsSystem->setPlayerWalkDirection(
                 input.currentSpeed * sinY * deltaTime,
                 input.currentSpeed * cosY * deltaTime,
-                InputMaster::isKeyDown(Space));
+                InputMaster::isActionDown("Jump"));
             continue;
         }
 

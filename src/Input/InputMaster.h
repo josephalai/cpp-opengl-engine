@@ -12,6 +12,8 @@
 #include <iostream>
 #include <vector>
 #include <map>
+#include <string>
+#include <unordered_map>
 
 enum ClickButtons {
     LeftClick = GLFW_MOUSE_BUTTON_LEFT,
@@ -194,9 +196,19 @@ public:
 
     static bool isMouseDown(ClickButtons click);
 
+    /// Load action-to-key bindings from a JSON file (e.g. controls.json).
+    static void loadBindings(const std::string& path);
+
+    /// Check whether the key bound to the given action name is pressed.
+    /// Falls back to false if the action is not bound.
+    static bool isActionDown(const std::string& action);
+
     static void resetClick();
 
 private:
+
+    /// Mapping from action name (e.g. "MoveForward") to GLFW key code.
+    static std::unordered_map<std::string, int> actionMap_;
 
     static void setKey(KeyboardKeys key);
 

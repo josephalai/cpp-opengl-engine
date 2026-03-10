@@ -16,13 +16,13 @@ void InputDispatcher::update(float /*deltaTime*/) {
     // and broadcast it.  Subscribers (e.g. Player) consume this instead of
     // polling InputMaster::isKeyDown() inside their own update loops.
     PlayerMoveCommandEvent moveCmd{};
-    moveCmd.forward     = InputMaster::isKeyDown(W)         ?  1.0f
-                        : InputMaster::isKeyDown(S)         ? -1.0f : 0.0f;
-    moveCmd.turn        = InputMaster::isKeyDown(A)         ?  1.0f
-                        : InputMaster::isKeyDown(D)         ? -1.0f : 0.0f;
-    moveCmd.jump        = InputMaster::isKeyDown(Space);
-    moveCmd.sprint      = InputMaster::isKeyDown(Tab);
-    moveCmd.sprintReset = InputMaster::isKeyDown(Backslash);
+    moveCmd.forward     = InputMaster::isActionDown("MoveForward")  ?  1.0f
+                        : InputMaster::isActionDown("MoveBackward") ? -1.0f : 0.0f;
+    moveCmd.turn        = InputMaster::isActionDown("MoveLeft")     ?  1.0f
+                        : InputMaster::isActionDown("MoveRight")    ? -1.0f : 0.0f;
+    moveCmd.jump        = InputMaster::isActionDown("Jump");
+    moveCmd.sprint      = InputMaster::isActionDown("Sprint");
+    moveCmd.sprintReset = InputMaster::isActionDown("SprintReset");
 
     EventBus::instance().publish(moveCmd);
 

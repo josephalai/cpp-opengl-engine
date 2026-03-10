@@ -2,6 +2,7 @@
 // Created by Joseph Alai on 7/18/21.
 //
 #include "PlayerCamera.h"
+#include "../Config/ConfigManager.h"
 
 /**
  * @brief move (MAIN LOOP), modifies the actual camera vectors based on the
@@ -45,17 +46,20 @@ glm::mat4 PlayerCamera::getViewMatrix() {
 
 void PlayerCamera::calculateAngleAroundPlayer() {
     if (glfwGetMouseButton(DisplayManager::window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS || cursorInvisible) {
-        float angleChange = InputMaster::mouseDx * 0.1f;
+        float angleChange = InputMaster::mouseDx *
+            ConfigManager::get().client.camera.mouseSensitivity;
         angleAroundPlayer -= angleChange;
     }
 }
 
 float PlayerCamera::calculateHorizontalDistance() const {
-    return (float) (distanceFromPlayer * cos(glm::radians(Pitch + 4)));
+    return (float) (distanceFromPlayer * cos(glm::radians(Pitch +
+        ConfigManager::get().client.camera.pitchOffset)));
 }
 
 float PlayerCamera::calculateVerticalDistance() const {
-    return (float) (distanceFromPlayer * sin(glm::radians(Pitch + 4)));
+    return (float) (distanceFromPlayer * sin(glm::radians(Pitch +
+        ConfigManager::get().client.camera.pitchOffset)));
 }
 
 void PlayerCamera::updateCameraVectors() {
@@ -65,9 +69,13 @@ void PlayerCamera::updateCameraVectors() {
 }
 
 void PlayerCamera::calculateZoom() {
-    float zoomLevel = ZoomOffset * 0.03f;
+    const auto& camCfg = ConfigManager::get().client.camera;
+    float zoomLevel = ZoomOffset * camCfg.zoomSensitivity;
     distanceFromPlayer += zoomLevel;
-    if (distanceFromPlayer < 5) {
-        distanceFromPlayer = 5;
+    if (distanceFromPlayer < camCfg.minZoomDistance) {
+        distanceFromPlayer = camCfg.minZoomDistance;
+    }
+    if (distanceFromPlayer > camCfg.maxZoomDistance) {
+        distanceFromPlayer = camCfg.maxZoomDistance;
     }
 }

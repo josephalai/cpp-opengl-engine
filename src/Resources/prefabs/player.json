@@ -1,0 +1,12 @@
+{
+  "id": "player",
+  "model_type": "player",
+  "is_npc": false,
+  "mesh": "models/player.glb",
+  "physics": {
+    "type": "kinematic_character",
+    "radius": 0.5,
+    "height": 1.8
+  },
+  "animation_controller": "animations/humanoid.json"
+}

@@ -1,6 +1,12 @@
 {
   "_comment": "world_config.json — Global physics, movement, and server tunables. Loaded by ConfigManager on boot. Both client and server read this file to ensure deterministic simulation.",
 
+  "default_spawn_position": {
+    "x": 100.0,
+    "y": 3.0,
+    "z": -80.0
+  },
+
   "physics": {
     "gravity": [0.0, -50.0, 0.0],
     "jump_power": 30.0,
@@ -12,7 +18,9 @@
     "default_capsule_radius": 0.5,
     "default_capsule_height": 1.8,
     "default_step_height": 0.35,
-    "default_mass": 70.0
+    "default_mass": 70.0,
+
+    "sprint_multiplier": 4.5
   },
 
   "server": {
