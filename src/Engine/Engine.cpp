@@ -87,13 +87,21 @@ void Engine::init() {
     DisplayManager::createDisplay();
     loader = new Loader();
 
-    initImGui();
-
     initFonts();
     loadScene();
     initRenderers();
     initGui();
     initFramebuffersAndPickers();
+
+    // initImGui() must be called AFTER loadScene() (which creates PlayerCamera
+    // → CameraInput → InputMaster::init() → installs glfwSetMouseButtonCallback
+    // and glfwSetKeyCallback).  With install_callbacks=true, ImGui_ImplGlfw
+    // wraps those callbacks so ImGui receives events first and chains to the
+    // engine's handlers.  Calling initImGui() before loadScene() caused
+    // InputMaster::init() to overwrite ImGui's mouse-button callback without
+    // chaining, making all ImGui widget clicks non-functional.
+    initImGui();
+
     buildSystems();
 
     // --- ECS Phase 2 Step 3 verification ---
