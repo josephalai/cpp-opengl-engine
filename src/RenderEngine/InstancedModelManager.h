@@ -57,6 +57,7 @@ private:
     };
 
     std::unordered_map<std::string, Bucket> buckets_;
+    bool initialized_ = false;
 };
 
 #endif // ENGINE_INSTANCED_MODEL_MANAGER_H

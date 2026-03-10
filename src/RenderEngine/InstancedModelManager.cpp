@@ -14,6 +14,12 @@
 // ---------------------------------------------------------------------------
 
 void InstancedModelManager::init(Loader* loader) {
+    if (initialized_) {
+        std::cerr << "[InstancedModelManager] WARNING: init() called twice — ignoring.\n";
+        return;
+    }
+    initialized_ = true;
+
     const auto& pm = PrefabManager::get();
 
     for (const auto& id : pm.allIds()) {
@@ -134,4 +140,5 @@ void InstancedModelManager::cleanup() {
         bucket.model = nullptr;
     }
     buckets_.clear();
+    initialized_ = false;
 }
