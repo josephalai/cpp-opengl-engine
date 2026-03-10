@@ -46,17 +46,10 @@ void ChunkManager::update(const glm::vec3& playerPos) {
                 justLoaded = true;
             }
 
-            // GEA Step 5.1 — Spawn baked entities for newly loaded chunks.
-            if (justLoaded) {
-                auto* chunk = chunks_[key];
-                fireBakedSpawns(readBakedEntities(cx, cz), cx, cz);
-                chunk->bakedSpawned = true;
-            }
-
-            // GEA Step 5.4 — Also fire baked spawns for chunks that were
-            // pre-registered via registerTerrain() (state already LOADED)
-            // but haven't had their baked entities spawned yet.
-            if (!justLoaded) {
+            // GEA Step 5.1 / 5.4 — Spawn baked entities for newly loaded chunks
+            // AND for pre-registered chunks (via registerTerrain) that haven't
+            // had their baked entities spawned yet.
+            {
                 auto* chunk = chunks_[key];
                 if (chunk && chunk->state == StreamingChunk::State::LOADED
                     && !chunk->bakedSpawned) {
