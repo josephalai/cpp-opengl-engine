@@ -51,6 +51,13 @@
     { "alias": "lamp",  "x": 110.0, "y": "terrain", "z":  -20.0 },
     { "alias": "crate", "x":   1.0, "y":     20.0,  "z":  -82.4, "rx": 0.0, "ry": 180.0, "rz": 0.0 }
   ],
+  "random": [
+    { "alias": "grass",      "count": 500, "scaleMin": 0.5, "scaleMax": 1.5 },
+    { "alias": "fluffytree", "count": 500, "scaleMin": 0.5, "scaleMax": 1.5 },
+    { "alias": "tree",       "count": 500, "scaleMin": 0.25, "scaleMax": 1.5 },
+    { "alias": "fern",       "count": 500, "scaleMin": 0.25, "scaleMax": 1.5, "atlas": true }
+  ],
+  "random_seed": 1,
   "player": {
     "alias": "stall",
     "x": 100.0, "y": 3.0, "z": -50.0,

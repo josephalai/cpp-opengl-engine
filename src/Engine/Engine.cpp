@@ -484,16 +484,25 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
     // 1. Create the ECS entity from prefab data.
     EntityFactory::spawn(registry, modelType, position, physicsSystem);
 
-    // 2. Create a visual Entity* for the legacy rendering + interpolation pipeline.
-    //    Try to load the model from the prefab's "model" block.
+    // 2. Determine whether this entity type uses an animated character model.
     const auto& prefab = PrefabManager::get().getPrefab(modelType);
+    bool isAnimated = !prefab.is_null() && prefab.value("animated", false);
 
+    // 3. Create a visual Entity* for the legacy rendering + interpolation pipeline.
     TexturedModel* remoteModel = nullptr;
     glm::vec3 modelMin(-0.5f, 0.0f, -0.5f);
     glm::vec3 modelMax( 0.5f, 2.0f,  0.5f);
+    float remoteScale = 1.0f;
 
-    // Try to load model from prefab data first.
-    if (!prefab.is_null() && prefab.contains("model")) {
+    if (isAnimated && player && player->getModel()) {
+        // For animated entities (remote players, NPCs), reuse the local
+        // player's TexturedModel as a proxy.  The actual visual comes from
+        // the AnimatedEntity paired below.  Match the local player's scale
+        // (usually 0) so the proxy mesh stays invisible.
+        remoteModel = player->getModel();
+        remoteScale = player->getScale();
+    } else if (!prefab.is_null() && prefab.contains("model")) {
+        // Load model from prefab data.
         const auto& modelBlock = prefab["model"];
         std::string objFile = modelBlock.value("obj", "");
         std::string texFile = modelBlock.value("texture", "");
@@ -509,7 +518,7 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
         }
     }
 
-    // Fallback: use a simple OBJ model (not the player clone).
+    // Fallback: use a simple OBJ model.
     if (!remoteModel) {
         ModelData fallbackData = OBJLoader::loadObjModel("Stall");
         if (fallbackData.getIndices().empty()) {
@@ -533,7 +542,7 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
     auto* bb    = new BoundingBox(rawBB, BoundingBoxIndex::genUniqueId());
     bb->setAABB(modelMin, modelMax);
 
-    auto* ent = new Entity(registry, remoteModel, bb, position, glm::vec3(0.0f), 1.0f);
+    auto* ent = new Entity(registry, remoteModel, bb, position, glm::vec3(0.0f), remoteScale);
 
     // Emplace the ECS NetworkSyncData so NetworkInterpolationSystem can drive it.
     registry.emplace<NetworkSyncData>(ent->getHandle());
@@ -546,10 +555,9 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
         chunkManager->registerEntity(ent, position);
     }
 
-    // Phase 5.4 — Only create an AnimatedEntity if the prefab explicitly
-    // declares animated: true.  NPCs/guards use their own mesh rather
-    // than cloning the local player's AnimatedModel.
-    bool isAnimated = !prefab.is_null() && prefab.value("animated", false);
+    // Create an AnimatedEntity for animated entity types (remote players, NPCs).
+    // Shares the local player's AnimatedModel — safe because AnimatedRenderer
+    // uploads bone matrices per-entity before each draw call.
     if (isAnimated && !animatedEntities.empty() &&
         animatedEntities[0] && animatedEntities[0]->model) {
         AnimatedModel* sharedModel = animatedEntities[0]->model;

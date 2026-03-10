@@ -10,6 +10,9 @@
 #include <assimp/scene.h>           // Output data structure
 #include <assimp/postprocess.h>     // Post processing flags
 
+#include <limits>
+#include <cstddef>
+
 using namespace std;
 
 /**
@@ -80,7 +83,7 @@ ModelData OBJLoader::loadAssImp(
 
     vector<GLfloat> outVertices, outUvs, outNormals;
     vector<GLint> outIndices(indices.begin(), indices.end());
-    for (int i = 0; i < vertices.size(); i++) {
+    for (size_t i = 0; i < vertices.size(); i++) {
         outVertices.push_back(vertices[i].x);
         outVertices.push_back(vertices[i].y);
         outVertices.push_back(vertices[i].z);
@@ -108,8 +111,8 @@ ModelData OBJLoader::loadObjModel(const std::string &filename) {
     std::vector<glm::vec3> normals;
     std::vector<glm::vec2> textures;
     std::vector<GLint> indices;
-    glm::vec3 vMin;
-    glm::vec3 vMax;
+    glm::vec3 vMin( std::numeric_limits<float>::max());
+    glm::vec3 vMax(-std::numeric_limits<float>::max());
 
     auto copy = FileSystem::Model(filename);
     FILE *file = std::fopen(std::move(FileSystem::Model(filename)).c_str(), "r");
@@ -187,6 +190,11 @@ ModelData OBJLoader::loadObjModel(const std::string &filename) {
 
 void OBJLoader::processVertex(float vertex, float uv, float normal, vector<Vertex *> *vertices, vector<int> *indices) {
     int index = static_cast<int>(vertex) - 1;
+    if (index < 0 || index >= static_cast<int>(vertices->size())) {
+        printf("OBJLoader: vertex index %d out of range [0, %d)\n",
+               index, static_cast<int>(vertices->size()));
+        return;
+    }
     Vertex *currentVertex = (*vertices)[index];
 
     int textureIndex = static_cast<int>(uv) - 1;
@@ -203,7 +211,7 @@ void OBJLoader::processVertex(float vertex, float uv, float normal, vector<Verte
 
 int *OBJLoader::convertIndicesListToArray(vector<int> indices) {
     int *indicesArray = new int[indices.size()];
-    for (int i = 0; i < indices.size(); i++) {
+    for (size_t i = 0; i < indices.size(); i++) {
         indicesArray[i] = indices[i];
     }
     return indicesArray;
@@ -226,7 +234,7 @@ float OBJLoader::convertDataToArrays(vector<Vertex *> vertices, vector<glm::vec2
                                      vector<float> *texturesArray,
                                      vector<float> *normalsArray) {
     float furthestPoint = 0;
-    for (int i = 0; i < vertices.size(); i++) {
+    for (size_t i = 0; i < vertices.size(); i++) {
         auto currentVertex = (vertices)[i];
         if (currentVertex->getLength() > furthestPoint) {
             furthestPoint = currentVertex->getLength();

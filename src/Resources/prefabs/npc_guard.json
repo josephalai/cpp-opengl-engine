@@ -2,6 +2,7 @@
   "id": "npc_guard",
   "description": "A stationary guard NPC that stands still and occasionally looks around.",
   "model_type": "npc_guard",
+  "animated": true,
   "mesh": "models/guard.glb",
   "physics": {
     "type": "kinematic_character",

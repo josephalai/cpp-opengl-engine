@@ -1,0 +1,6 @@
+{
+  "alias": "fern",
+  "model_type": "fern",
+  "render_mode": "instanced",
+  "model": { "obj": "fern", "texture": "fern" }
+}
