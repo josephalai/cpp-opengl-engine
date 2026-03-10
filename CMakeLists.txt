@@ -135,6 +135,7 @@ file(GLOB_RECURSE ALL_SOURCES
 )
 set(CLIENT_SOURCES ${ALL_SOURCES})
 list(FILTER CLIENT_SOURCES EXCLUDE REGEX ".*/Server/.*")
+list(FILTER CLIENT_SOURCES EXCLUDE REGEX ".*/Tools/.*")
 
 # =============================================================================
 # Client Engine executable (OpenGL + GLFW + full rendering pipeline)
@@ -246,22 +247,26 @@ target_link_libraries(headless_server PRIVATE
 # Reads scene.json + heightmaps, pre-calculates entity positions, and writes
 # binary chunk_X_Z.dat files for instantaneous runtime loading.
 # =============================================================================
-add_executable(AssetBaker
-    ${CMAKE_SOURCE_DIR}/src/Tools/AssetBaker.cpp
-    ${CMAKE_SOURCE_DIR}/src/Tools/ToolsStbImage.cpp
-    ${CMAKE_SOURCE_DIR}/src/Terrain/HeightMap.cpp
-    ${CMAKE_SOURCE_DIR}/src/Util/FileSystem.cpp
-)
+file(GLOB_RECURSE TOOL_SOURCES "${CMAKE_SOURCE_DIR}/src/Tools/*.cpp")
 
-target_include_directories(AssetBaker PRIVATE
+# We include COMMON_SOURCES so the baker can use ConfigManager, Maths, and FileSystem.
+add_executable(asset_baker ${TOOL_SOURCES} ${COMMON_SOURCES})
+
+target_include_directories(asset_baker PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${glm_SOURCE_DIR}
     ${nlohmann_json_SOURCE_DIR}/include
+    ${entt_SOURCE_DIR}/src
+    ${BULLET_INCLUDE_DIRS}
 )
 
-target_compile_definitions(AssetBaker PRIVATE
+target_compile_definitions(asset_baker PRIVATE
     RESOURCE_ROOT="${CMAKE_SOURCE_DIR}"
     HEADLESS_SERVER
+)
+
+target_link_libraries(asset_baker PRIVATE
+    ${BULLET_LIBRARIES}
 )
 
 # =============================================================================
