@@ -34,6 +34,7 @@
 #include "../Engine/SpatialSystem.h"
 #include "../Engine/PathfindingSystem.h"
 #include "../Navigation/NavMeshManager.h"
+#include "../ECS/Phase4Test.h"
 
 #include <nlohmann/json.hpp>
 
@@ -429,6 +430,9 @@ int main() {
     ConfigManager::get().loadAll(HOME_PATH);
     PrefabManager::get().loadAll(HOME_PATH);
     const auto& cfg = ConfigManager::get();
+
+    // --- Phase 4 self-test (validates spatial grid, pathfinding, LOD) ---
+    Phase4Test::run();
 
     // --- ENet Initialization ---
     if (enet_initialize() != 0) {
