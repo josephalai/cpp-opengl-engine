@@ -6,6 +6,7 @@
 #include "../Toolbox/Picker.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include <cctype>
 
 bool InputMaster::pendingClick;
 
@@ -77,8 +78,11 @@ static int keyNameToGLFW(const std::string& name) {
     };
     auto it = kMap.find(name);
     if (it != kMap.end()) return it->second;
-    // Single-character fallback
-    if (name.size() == 1) return static_cast<int>(name[0]);
+    // Single uppercase-letter fallback (GLFW key codes match uppercase ASCII).
+    if (name.size() == 1) {
+        char c = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
+        return static_cast<int>(c);
+    }
     return GLFW_KEY_UNKNOWN;
 }
 

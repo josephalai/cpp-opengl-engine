@@ -612,8 +612,9 @@ int main() {
                 auto entity = EntityFactory::spawn(registry, "player", spawnPos, &physicsSystem);
                 networkIdToEntity[newId] = entity;
 
-                // Assign the network ID to the entity (EntityFactory sets the
-                // default from the prefab; override with the actual network ID).
+                // Assign the runtime network ID.  EntityFactory initialises
+                // NetworkIdComponent from the prefab (modelType, isNPC) but
+                // leaves `id` at 0; we set the actual server-assigned ID here.
                 if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
                     nid->id = newId;
                 }
