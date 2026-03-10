@@ -21,6 +21,7 @@
 #include "../RenderEngine/AnimatedRenderer.h"
 #include "../Shaders/AnimatedShader.h"
 #include "../RenderEngine/InstancedModel.h"
+#include "../RenderEngine/InstancedModelManager.h"
 #include "ISystem.h"
 #include "../Physics/PhysicsSystem.h"
 #include <entt/entt.hpp>
@@ -115,7 +116,7 @@ private:
     PhysicsSystem* physicsSystem = nullptr;
 
     // --- Instanced Rendering ---
-    InstancedModel* instancedTreeModel = nullptr;
+    InstancedModelManager* instancedModelManager = nullptr;
 
     // --- Streaming ---
     ChunkManager* chunkManager = nullptr;

@@ -18,7 +18,7 @@ class Entity;
 class Terrain;
 class Light;
 class Camera;
-class InstancedModel;
+class InstancedModelManager;
 
 class RenderSystem : public ISystem {
 public:
@@ -30,7 +30,7 @@ public:
                  entt::registry&           registry,
                  Camera*                   camera,
                  const glm::mat4&          projectionMatrix,
-                 InstancedModel*           instancedModel = nullptr);
+                 InstancedModelManager*    instancedModelMgr = nullptr);
 
     void init()     override {}
     void update(float deltaTime) override;
@@ -44,10 +44,10 @@ private:
     std::vector<Light*>&       lights_;
     entt::registry&            registry_;
 
-    Camera*         camera_;
-    glm::mat4       projectionMatrix_;
-    FrustumCuller   culler_;
-    InstancedModel* instancedModel_;
+    Camera*                camera_;
+    glm::mat4              projectionMatrix_;
+    FrustumCuller          culler_;
+    InstancedModelManager* instancedModelMgr_;
 };
 
 #endif // ENGINE_RENDERSYSTEM_H

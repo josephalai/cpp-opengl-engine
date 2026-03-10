@@ -1,0 +1,8 @@
+{
+  "prefab_id": 108,
+  "alias": "boulder",
+  "model_type": "boulder",
+  "render_mode": "instanced",
+  "model": { "obj": "Stall", "texture": "stallTexture" },
+  "physics": { "type": "static", "shape": "sphere", "radius": 2.0 }
+}

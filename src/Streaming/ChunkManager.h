@@ -34,8 +34,15 @@ public:
     /// GEA Step 5.1 — Callback invoked on the main thread for each baked
     /// entity after a chunk finishes loading.  The Engine binds this to
     /// spawn visual/ECS entities from pre-baked .dat data.
-    using EntitySpawnCallback = std::function<void(const BakedEntity&)>;
+    /// Step 5.4 — now includes chunk coordinates for per-chunk instancing.
+    using EntitySpawnCallback = std::function<void(const BakedEntity&,
+                                                    int chunkX, int chunkZ)>;
     void setEntityCallback(EntitySpawnCallback cb) { spawnCallback_ = std::move(cb); }
+
+    /// GEA Step 5.4 — Callback invoked when a chunk is about to be unloaded.
+    /// The Engine uses this to purge instanced matrices for the chunk.
+    using ChunkUnloadCallback = std::function<void(int chunkX, int chunkZ)>;
+    void setUnloadCallback(ChunkUnloadCallback cb) { unloadCallback_ = std::move(cb); }
 
     ChunkManager(Loader*             loader,
                  TerrainTexturePack* texPack,
@@ -104,11 +111,15 @@ private:
     /// GEA Step 5.1 — Entity spawn callback (set by Engine).
     EntitySpawnCallback spawnCallback_;
 
+    /// GEA Step 5.4 — Chunk unload callback (set by Engine).
+    ChunkUnloadCallback unloadCallback_;
+
     /// GEA Step 5.1 — Read a baked chunk .dat file and return its entities.
     static std::vector<BakedEntity> readBakedEntities(int cx, int cz);
 
     /// GEA Step 5.1 — Fire spawnCallback_ for each baked entity (main thread).
-    void fireBakedSpawns(const std::vector<BakedEntity>& bakedEntities);
+    void fireBakedSpawns(const std::vector<BakedEntity>& bakedEntities,
+                          int chunkX, int chunkZ);
 
     int64_t chunkKey(int x, int z) const {
         return (static_cast<int64_t>(x) << 32) | static_cast<int64_t>(static_cast<uint32_t>(z));

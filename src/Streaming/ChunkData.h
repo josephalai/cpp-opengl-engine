@@ -56,6 +56,7 @@ namespace BakedPrefab {
         Lamp       = 105,
         Stall      = 106,
         Crate      = 107,
+        Boulder    = 108,
     };
 
     /// Convert a scene.json alias string to a prefab ID.
@@ -67,6 +68,7 @@ namespace BakedPrefab {
         if (alias == "lamp")       return Lamp;
         if (alias == "stall")      return Stall;
         if (alias == "crate")      return Crate;
+        if (alias == "boulder")    return Boulder;
         return Unknown;
     }
 
@@ -80,6 +82,7 @@ namespace BakedPrefab {
             case Lamp:       return "lamp";
             case Stall:      return "stall";
             case Crate:      return "crate";
+            case Boulder:    return "boulder";
             default:         return "";
         }
     }

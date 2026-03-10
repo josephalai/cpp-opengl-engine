@@ -310,6 +310,60 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // --- Baker-generated random scattering (independent of scene.json) ---
+    // When the scene.json "random" block has been removed, the baker still
+    // scatters entities using its own built-in configuration.  This makes the
+    // baker the single source of truth for world population.
+    {
+        unsigned int bakerSeed = root.value("random_seed", 42u);
+        std::mt19937 bakerRng(bakerSeed + 1000); // offset seed to avoid collisions
+        std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
+        auto randF = [&]() { return dist01(bakerRng); };
+
+        struct BakerScatter {
+            uint32_t prefabId;
+            int      count;
+            float    scaleMin;
+            float    scaleMax;
+        };
+
+        std::vector<BakerScatter> scatters = {
+            { BakedPrefab::Tree,    500, 0.25f, 1.5f },
+            { BakedPrefab::Boulder, 200, 0.75f, 2.0f },
+        };
+
+        for (const auto& sc : scatters) {
+            for (int i = 0; i < sc.count; ++i) {
+                float rx = randF();
+                float rz = randF();
+                float rr = randF();
+                float rs = randF();
+
+                float x  = std::floor(rx * 1500.f - 800.f);
+                float z  = std::floor(rz * -800.f);
+                float y  = terrainMgr.isAnyValid()
+                         ? terrainMgr.getHeight(x, z) : 0.0f;
+                float ry = (rr * 100.f - 50.f) * 180.0f;
+
+                float multiplier = (sc.scaleMax > 1.0f)
+                                 ? std::ceil(sc.scaleMax) : 1.0f;
+                float scale = rs * multiplier;
+                if (scale < sc.scaleMin) scale = sc.scaleMin;
+                if (scale > sc.scaleMax) scale = sc.scaleMax;
+
+                BakedEntity be{};
+                be.prefabId  = sc.prefabId;
+                be.x         = x;
+                be.y         = y;
+                be.z         = z;
+                be.rotationY = ry;
+                be.scale     = scale;
+                allEntities.push_back(be);
+            }
+        }
+        std::cout << "[Baker] Baker-generated scatter: trees + boulders.\n";
+    }
+
     std::cout << "[Baker] Collected " << allEntities.size()
               << " entities total.\n";
 

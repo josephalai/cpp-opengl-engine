@@ -48,7 +48,7 @@ void ChunkManager::update(const glm::vec3& playerPos) {
 
             // GEA Step 5.1 — Spawn baked entities for newly loaded chunks.
             if (justLoaded) {
-                fireBakedSpawns(readBakedEntities(cx, cz));
+                fireBakedSpawns(readBakedEntities(cx, cz), cx, cz);
             }
         }
     }
@@ -105,7 +105,7 @@ void ChunkManager::update(const glm::vec3& playerPos) {
                             // GEA Step 5.1 — Spawn baked entities on the main
                             // thread after the terrain tile is ready.
                             if (chunk->state == StreamingChunk::State::LOADED) {
-                                fireBakedSpawns(baked);
+                                fireBakedSpawns(baked, chunk->gridX, chunk->gridZ);
                             }
                         });
                 });
@@ -123,6 +123,10 @@ void ChunkManager::update(const glm::vec3& playerPos) {
         int distZ = std::abs(key.second - pz);
         int chebyshev = std::max(distX, distZ);
         if (chebyshev > unloadRadius_) {
+            // GEA Step 5.4 — Fire unload callback before destroying the chunk.
+            if (unloadCallback_) {
+                unloadCallback_(key.first, key.second);
+            }
             chunk->unload();
             toRemove.push_back(key);
         }
@@ -252,9 +256,10 @@ std::vector<BakedEntity> ChunkManager::readBakedEntities(int cx, int cz) {
     return entities;
 }
 
-void ChunkManager::fireBakedSpawns(const std::vector<BakedEntity>& bakedEntities) {
+void ChunkManager::fireBakedSpawns(const std::vector<BakedEntity>& bakedEntities,
+                                    int chunkX, int chunkZ) {
     if (!spawnCallback_) return;
     for (const auto& be : bakedEntities) {
-        spawnCallback_(be);
+        spawnCallback_(be, chunkX, chunkZ);
     }
 }

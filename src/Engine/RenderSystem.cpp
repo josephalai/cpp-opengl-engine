@@ -3,7 +3,7 @@
 #include "RenderSystem.h"
 #include "../RenderEngine/MasterRenderer.h"
 #include "../RenderEngine/FrameBuffers.h"
-#include "../RenderEngine/InstancedModel.h"
+#include "../RenderEngine/InstancedModelManager.h"
 #include "../ECS/Components/AssimpModelComponent.h"
 #include "../ECS/Components/LODComponent.h"
 #include "../Entities/Camera.h"
@@ -17,7 +17,7 @@ RenderSystem::RenderSystem(MasterRenderer*            renderer,
                             entt::registry&            registry,
                             Camera*                    camera,
                             const glm::mat4&           projectionMatrix,
-                            InstancedModel*            instancedModel)
+                            InstancedModelManager*     instancedModelMgr)
     : renderer_(renderer)
     , reflectFbo_(reflectFbo)
     , entities_(entities)
@@ -26,7 +26,7 @@ RenderSystem::RenderSystem(MasterRenderer*            renderer,
     , registry_(registry)
     , camera_(camera)
     , projectionMatrix_(projectionMatrix)
-    , instancedModel_(instancedModel)
+    , instancedModelMgr_(instancedModelMgr)
 {}
 
 void RenderSystem::update(float /*deltaTime*/) {
@@ -98,9 +98,9 @@ void RenderSystem::update(float /*deltaTime*/) {
     // Main scene render (culled lists)
     renderer_->renderScene(visibleEntities, visibleScenes, visibleTerrains, lights_);
 
-    // Instanced rendering (e.g. 500 trees in one draw call)
-    if (instancedModel_ && instancedModel_->getInstanceCount() > 0) {
-        renderer_->processInstancedEntity(instancedModel_, instancedModel_->getInstances());
+    // Instanced rendering — data-driven via InstancedModelManager (Phase 5.4)
+    if (instancedModelMgr_) {
+        instancedModelMgr_->submitToRenderer(renderer_);
         renderer_->renderInstanced(lights_);
     }
 
