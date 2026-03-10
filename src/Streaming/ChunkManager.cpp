@@ -109,8 +109,11 @@ void ChunkManager::update(const glm::vec3& playerPos) {
                          baked = std::move(bakedEntities)]() mutable {
                             chunk->finalizeAsync(data, loader_, texPack_, blendMap_);
 
+                            // ---> ADD THIS LOG <---
+                            std::cout << "[ChunkManager] STREAMED IN Chunk [" 
+                                      << chunk->gridX << ", " << chunk->gridZ << "]\n";
+
                             // GEA Step 5.1 — Spawn baked entities on the main
-                            // thread after the terrain tile is ready.
                             if (chunk->state == StreamingChunk::State::LOADED) {
                                 fireBakedSpawns(baked, chunk->gridX, chunk->gridZ);
                                 chunk->bakedSpawned = true;
@@ -131,6 +134,11 @@ void ChunkManager::update(const glm::vec3& playerPos) {
         int distZ = std::abs(key.second - pz);
         int chebyshev = std::max(distX, distZ);
         if (chebyshev > unloadRadius_) {
+            
+            // ---> ADD THIS LOG <---
+            std::cout << "[ChunkManager] STREAMED OUT Chunk [" 
+                      << key.first << ", " << key.second << "]\n";
+
             // GEA Step 5.4 — Fire unload callback before destroying the chunk.
             if (unloadCallback_) {
                 unloadCallback_(key.first, key.second);
