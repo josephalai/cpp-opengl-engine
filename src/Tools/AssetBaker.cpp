@@ -23,6 +23,7 @@
 #include <vector>
 #include <unordered_map>
 #include <cmath>
+#include <cerrno>
 #include <random>
 #include <algorithm>
 #include <sys/stat.h>
@@ -325,11 +326,16 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Create output directory ---
+    int mkdirResult;
 #ifdef _WIN32
-    _mkdir(outputDir.c_str());
+    mkdirResult = _mkdir(outputDir.c_str());
 #else
-    mkdir(outputDir.c_str(), 0755);
+    mkdirResult = mkdir(outputDir.c_str(), 0755);
 #endif
+    if (mkdirResult != 0 && errno != EEXIST) {
+        std::cerr << "[Baker] WARNING: Could not create output directory: "
+                  << outputDir << " (errno=" << errno << ")\n";
+    }
 
     // --- Write binary .dat files ---
     int filesWritten = 0;

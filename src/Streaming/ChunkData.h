@@ -107,6 +107,10 @@ inline bool writeBakedChunk(const std::string& path,
     header.gridZ       = gridZ;
 
     file.write(reinterpret_cast<const char*>(&header), sizeof(header));
+    if (!file.good()) {
+        std::cerr << "[BakedChunk] ERROR: Failed to write header to: " << path << "\n";
+        return false;
+    }
     if (!entities.empty()) {
         file.write(reinterpret_cast<const char*>(entities.data()),
                    static_cast<std::streamsize>(entities.size() * sizeof(BakedEntity)));
