@@ -343,8 +343,11 @@ int main(int argc, char* argv[]) {
                 float z  = std::floor(rz * -800.f);
                 float y  = terrainMgr.isAnyValid()
                          ? terrainMgr.getHeight(x, z) : 0.0f;
+                // Random Y rotation in degrees (mirrors SceneLoaderJson RNG).
                 float ry = (rr * 100.f - 50.f) * 180.0f;
 
+                // Scale with clamping (mirrors SceneLoaderJson RNG algorithm
+                // for bit-identical results with the same seed).
                 float multiplier = (sc.scaleMax > 1.0f)
                                  ? std::ceil(sc.scaleMax) : 1.0f;
                 float scale = rs * multiplier;
