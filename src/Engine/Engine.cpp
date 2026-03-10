@@ -47,8 +47,6 @@
 #include "../Toolbox/Maths.h"
 #include "../Config/ConfigManager.h"
 #include "../Config/PrefabManager.h"
-#include "../Config/EntityFactory.h"
-#include "../Streaming/ChunkData.h"
 #include <enet/enet.h>
 #include <thread>
 #include <fstream>
@@ -671,16 +669,12 @@ void Engine::buildSystems() {
                                         primaryTerrain->getBlendMap(),
                                         terrainHeightmapFile);
 
-        // GEA Step 5.1 — When the ChunkManager loads a baked .dat file,
-        // spawn each pre-calculated entity in the ECS via EntityFactory.
-        chunkManager->setEntityCallback([this](const BakedEntity& be) {
-            std::string prefabName = BakedPrefab::toAlias(be.prefabId);
-            if (prefabName.empty()) return;
-
-            EntityFactory::spawn(registry, prefabName,
-                                 glm::vec3(be.x, be.y, be.z),
-                                 physicsSystem);
-        });
+        // NOTE: The ChunkManager's EntitySpawnCallback is left unset on the
+        // client.  Client-side tree/entity visuals are rendered via the
+        // traditional Entity* pipeline populated by SceneLoaderJson's random
+        // entity generation.  The baked .dat system currently drives
+        // server-side physics only.  A future step will migrate the client
+        // rendering pipeline to use baked data directly.
 
         // Register existing terrain tiles so ChunkManager tracks them.
         for (auto* t : allTerrains) {
