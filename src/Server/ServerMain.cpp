@@ -539,7 +539,7 @@ int main() {
             bool isStatic = !registry.any_of<NetworkIdComponent>(entity);
             spatialSystem.registerEntity(entity, tc.position, isStatic);
         }
-        std::cout << "[Server] SpatialGrid initialised with "
+        std::cout << "[Server] SpatialGrid initialized with "
                   << spatialGrid.allCells().size() << " non-empty cells (50 m cells)\n";
     }
 

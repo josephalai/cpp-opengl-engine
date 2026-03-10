@@ -77,7 +77,7 @@ private:
     std::queue<std::function<void()>>  jobs_;
     mutable std::mutex                 mutex_;
     std::condition_variable            cv_;
-    bool                               shutdown_;
+    std::atomic<bool>                  shutdown_;
 };
 
 #endif // ENGINE_JOBQUEUE_H

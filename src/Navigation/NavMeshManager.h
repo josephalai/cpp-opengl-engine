@@ -100,6 +100,9 @@ public:
 
         struct NodeHash {
             std::size_t operator()(const std::pair<int,int>& p) const {
+                // Shift by 16 bits to spread the two 32-bit ints into
+                // non-overlapping halves of the hash, reducing collisions
+                // for grid coordinates.
                 return std::hash<int>()(p.first) ^ (std::hash<int>()(p.second) << 16);
             }
         };
@@ -121,7 +124,9 @@ public:
         const int dz8[] = {-1,-1,-1,  0, 0,  1, 1, 1};
         const float cost8[] = {1.414f,1.0f,1.414f, 1.0f,1.0f, 1.414f,1.0f,1.414f};
 
-        // Limit iterations to prevent runaway searches.
+        // Limit iterations to prevent runaway searches.  At 1 m grid resolution,
+        // 10,000 iterations covers paths up to ~100 m in a crowded environment.
+        // Increase for larger worlds or lower grid resolutions.
         constexpr int kMaxIterations = 10000;
         int iterations = 0;
 

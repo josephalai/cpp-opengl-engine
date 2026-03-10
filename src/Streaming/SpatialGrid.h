@@ -111,6 +111,7 @@ private:
         std::size_t operator()(const std::pair<int,int>& p) const {
             auto h1 = std::hash<int>()(p.first);
             auto h2 = std::hash<int>()(p.second);
+            // Knuth's multiplicative hash (golden ratio constant) for distribution.
             return h1 ^ (h2 * 2654435761u);
         }
     };
