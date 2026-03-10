@@ -668,6 +668,14 @@ void Engine::buildSystems() {
                                         primaryTerrain->getTexturePack(),
                                         primaryTerrain->getBlendMap(),
                                         terrainHeightmapFile);
+
+        // NOTE: The ChunkManager's EntitySpawnCallback is left unset on the
+        // client.  Client-side tree/entity visuals are rendered via the
+        // traditional Entity* pipeline populated by SceneLoaderJson's random
+        // entity generation.  The baked .dat system currently drives
+        // server-side physics only.  A future step will migrate the client
+        // rendering pipeline to use baked data directly.
+
         // Register existing terrain tiles so ChunkManager tracks them.
         for (auto* t : allTerrains) {
             if (t) chunkManager->registerTerrain(t);

@@ -10,6 +10,7 @@
 #define ENGINE_CHUNKMANAGER_H
 
 #include "StreamingChunk.h"
+#include "ChunkData.h"
 #include "JobQueue.h"
 #include "../Terrain/Terrain.h"
 #include <unordered_map>
@@ -17,6 +18,7 @@
 #include <vector>
 #include <string>
 #include <mutex>
+#include <functional>
 #include <glm/glm.hpp>
 
 class Loader;
@@ -28,6 +30,12 @@ class ChunkManager {
 public:
     /// Terrain tile size in world units — mirrors Terrain::kSize.
     static constexpr float kTerrainSize = Terrain::kSize;
+
+    /// GEA Step 5.1 — Callback invoked on the main thread for each baked
+    /// entity after a chunk finishes loading.  The Engine binds this to
+    /// spawn visual/ECS entities from pre-baked .dat data.
+    using EntitySpawnCallback = std::function<void(const BakedEntity&)>;
+    void setEntityCallback(EntitySpawnCallback cb) { spawnCallback_ = std::move(cb); }
 
     ChunkManager(Loader*             loader,
                  TerrainTexturePack* texPack,
@@ -92,6 +100,15 @@ private:
     JobQueue                                        jobQueue_{2};
     std::mutex                                      pendingMutex_;
     std::unordered_set<int64_t>                     pendingLoads_;
+
+    /// GEA Step 5.1 — Entity spawn callback (set by Engine).
+    EntitySpawnCallback spawnCallback_;
+
+    /// GEA Step 5.1 — Read a baked chunk .dat file and return its entities.
+    static std::vector<BakedEntity> readBakedEntities(int cx, int cz);
+
+    /// GEA Step 5.1 — Fire spawnCallback_ for each baked entity (main thread).
+    void fireBakedSpawns(const std::vector<BakedEntity>& bakedEntities);
 
     int64_t chunkKey(int x, int z) const {
         return (static_cast<int64_t>(x) << 32) | static_cast<int64_t>(static_cast<uint32_t>(z));

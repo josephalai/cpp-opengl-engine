@@ -20,6 +20,7 @@ public:
     static std::string TerrainTexture(std::string in);
     static std::string Skybox(std::string in);
     static std::string Scene(std::string in);
+    static std::string BakedChunk(std::string in);
 
 };
 #endif //ENGINE_FILESYSTEM_H

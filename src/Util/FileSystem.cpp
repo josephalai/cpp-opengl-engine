@@ -56,3 +56,7 @@ std::string FileSystem::Skybox(std::string in) {
 std::string FileSystem::Scene(std::string in) {
     return HOME_PATH + "/src/Resources/" + in;
 }
+
+std::string FileSystem::BakedChunk(std::string in) {
+    return HOME_PATH + "/src/Resources/baked_chunks/" + in;
+}
