@@ -49,6 +49,15 @@ void InstancedRenderer::render(const std::vector<Light*>& lights,
 
 void InstancedRenderer::drawBatch(InstancedModel* model,
                                    const std::vector<glm::mat4>& transforms) {
+    // Log once whenever the instance count changes (first draw, chunk load/unload).
+    static std::map<InstancedModel*, size_t> lastLoggedCount;
+    if (lastLoggedCount[model] != transforms.size()) {
+        lastLoggedCount[model] = transforms.size();
+        std::cout << "[InstancedRenderer] drawBatch: " << transforms.size()
+                  << " instance(s), VAO=" << model->vaoID
+                  << ", indexCount=" << model->indexCount << "\n";
+    }
+
     // Upload transforms to the instance VBO
     glBindBuffer(GL_ARRAY_BUFFER, model->getInstanceVBO());
     GLsizeiptr needed = static_cast<GLsizeiptr>(transforms.size() * sizeof(glm::mat4));

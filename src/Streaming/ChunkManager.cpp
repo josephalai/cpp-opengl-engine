@@ -37,11 +37,13 @@ void ChunkManager::update(const glm::vec3& playerPos) {
             auto it = chunks_.find(key);
             bool justLoaded = false;
             if (it == chunks_.end()) {
+                std::cout << "[ChunkManager] LOADING Chunk [" << cx << ", " << cz << "] (sync).\n";
                 auto* chunk = new StreamingChunk(cx, cz);
                 chunk->load(loader_, texPack_, blendMap_, heightmapFile_);
                 chunks_[key] = chunk;
                 justLoaded = true;
             } else if (it->second->state == StreamingChunk::State::UNLOADED) {
+                std::cout << "[ChunkManager] RELOADING Chunk [" << cx << ", " << cz << "] (sync).\n";
                 it->second->load(loader_, texPack_, blendMap_, heightmapFile_);
                 justLoaded = true;
             }
@@ -83,6 +85,7 @@ void ChunkManager::update(const glm::vec3& playerPos) {
                     if (pendingLoads_.count(ck)) continue;
                     pendingLoads_.insert(ck);
                 }
+                std::cout << "[ChunkManager] LOADING Chunk [" << cx << ", " << cz << "] (async).\n";
                 // Create the chunk in LOADING state on the main thread so
                 // subsequent frames don't re-enqueue it.
                 auto* chunk = new StreamingChunk(cx, cz);
@@ -258,15 +261,35 @@ std::vector<BakedEntity> ChunkManager::readBakedEntities(int cx, int cz) {
     std::string filename = "chunk_" + std::to_string(cx)
                          + "_" + std::to_string(cz) + ".dat";
     std::string path = FileSystem::BakedChunk(filename);
+
+    std::cout << "[ChunkManager] Reading baked entities: " << path << "\n";
+
     BakedChunkHeader header{};
     std::vector<BakedEntity> entities;
-    readBakedChunk(path, header, entities);
+    bool ok = readBakedChunk(path, header, entities);
+
+    if (!ok || entities.empty()) {
+        std::cout << "[ChunkManager] Chunk [" << cx << "," << cz
+                  << "]: no baked entities (file missing or empty).\n";
+    } else {
+        std::cout << "[ChunkManager] Chunk [" << cx << "," << cz
+                  << "]: read " << entities.size() << " baked entities.\n";
+    }
     return entities;
 }
 
 void ChunkManager::fireBakedSpawns(const std::vector<BakedEntity>& bakedEntities,
                                     int chunkX, int chunkZ) {
-    if (!spawnCallback_) return;
+    if (!spawnCallback_) {
+        std::cerr << "[ChunkManager] WARNING: spawnCallback_ is null for chunk ["
+                  << chunkX << "," << chunkZ << "]. Baked spawns will not fire!\n";
+        return;
+    }
+    if (bakedEntities.empty()) return;
+
+    std::cout << "[ChunkManager] Firing " << bakedEntities.size()
+              << " baked spawns for chunk [" << chunkX << "," << chunkZ << "].\n";
+
     for (const auto& be : bakedEntities) {
         spawnCallback_(be, chunkX, chunkZ);
     }

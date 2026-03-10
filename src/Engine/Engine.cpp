@@ -53,6 +53,7 @@
 #include <thread>
 #include <fstream>
 #include <algorithm>
+#include <unordered_set>
 
 // ---------------------------------------------------------------------------
 
@@ -686,7 +687,11 @@ void Engine::buildSystems() {
         chunkManager->setEntityCallback(
             [this](const BakedEntity& be, int chunkX, int chunkZ) {
                 std::string alias = BakedPrefab::toAlias(be.prefabId);
-                if (alias.empty()) return;
+                if (alias.empty()) {
+                    std::cerr << "[Engine] EntitySpawnCallback: unknown prefabId="
+                              << be.prefabId << " in chunk [" << chunkX << "," << chunkZ << "]\n";
+                    return;
+                }
 
                 // Check if this alias should be instanced.
                 if (instancedModelManager && instancedModelManager->hasAlias(alias)) {
@@ -698,6 +703,13 @@ void Engine::buildSystems() {
                         pos, rot, be.scale);
                     instancedModelManager->addInstance(alias, ck, transform);
                 } else {
+                    // Log unrecognised aliases once to help trace missing prefab registrations.
+                    static std::unordered_set<std::string> warnedEcs;
+                    if (!warnedEcs.count(alias)) {
+                        warnedEcs.insert(alias);
+                        std::cout << "[Engine] EntitySpawnCallback: ECS path for alias='"
+                                  << alias << "' (not instanced).\n";
+                    }
                     glm::vec3 pos(be.x, be.y, be.z);
                     EntityFactory::spawn(registry, alias, pos, physicsSystem);
                 }

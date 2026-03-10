@@ -6,8 +6,10 @@
 #include "../RenderEngine/ObjLoader.h"
 #include "../Config/PrefabManager.h"
 #include "../Toolbox/Maths.h"
+#include "../Util/FileSystem.h"
 
 #include <iostream>
+#include <unordered_set>
 
 // ---------------------------------------------------------------------------
 // init — scan PrefabManager for instanced prefabs and load their models
@@ -46,11 +48,15 @@ void InstancedModelManager::init(Loader* loader) {
             continue;
         }
 
+        // Log the full resolved path so it's easy to verify the file exists.
+        std::string fullObjPath = FileSystem::Model(objFile);
+        std::cout << "[InstancedModelManager] Loading OBJ: " << fullObjPath << "\n";
+
         // Load the OBJ mesh data.
         ModelData meshData = OBJLoader::loadObjModel(objFile);
         if (meshData.getIndices().empty()) {
             std::cerr << "[InstancedModelManager] Failed to load OBJ '"
-                      << objFile << "' for prefab '" << id << "'.\n";
+                      << fullObjPath << "' for prefab '" << id << "'.\n";
             continue;
         }
 
@@ -58,8 +64,16 @@ void InstancedModelManager::init(Loader* loader) {
         RawModel* rawModel = loader->loadToVAO(meshData);
         GLuint texId = 0;
         if (!textureFile.empty()) {
+            std::string fullTexPath = FileSystem::Texture(textureFile);
+            std::cout << "[InstancedModelManager] Loading texture: " << fullTexPath << "\n";
             auto* tex = loader->loadTexture(textureFile);
-            if (tex) texId = tex->getId();
+            if (tex) {
+                texId = tex->getId();
+                if (texId == 0) {
+                    std::cerr << "[InstancedModelManager] WARNING: Texture '"
+                              << fullTexPath << "' loaded with ID=0 (file missing?).\n";
+                }
+            }
         }
 
         // Create the InstancedModel and set up its instance VBO.
@@ -73,7 +87,9 @@ void InstancedModelManager::init(Loader* loader) {
         buckets_[alias].model = im;
 
         std::cout << "[InstancedModelManager] Registered instanced prefab '"
-                  << alias << "' (obj=" << objFile << ")\n";
+                  << alias << "' (obj=" << objFile << ", texId=" << texId
+                  << ", vao=" << rawModel->getVaoId()
+                  << ", indices=" << rawModel->getVertexCount() << ")\n";
     }
 
     std::cout << "[InstancedModelManager] Initialized with "
@@ -88,8 +104,26 @@ void InstancedModelManager::addInstance(const std::string& alias,
                                          int64_t chunkKey,
                                          const glm::mat4& transform) {
     auto it = buckets_.find(alias);
-    if (it == buckets_.end()) return;
+    if (it == buckets_.end()) {
+        static std::unordered_set<std::string> warnedAliases;
+        if (!warnedAliases.count(alias)) {
+            warnedAliases.insert(alias);
+            std::cerr << "[InstancedModelManager] addInstance: unknown alias '"
+                      << alias << "' — no bucket registered.\n";
+        }
+        return;
+    }
+
+    bool wasEmpty = it->second.chunkInstances.empty();
     it->second.chunkInstances[chunkKey].push_back(transform);
+
+    // Log the very first instance added for each alias to confirm pipeline is working.
+    if (wasEmpty) {
+        int chunkX = static_cast<int>(chunkKey >> 32);
+        int chunkZ = static_cast<int>(static_cast<uint32_t>(chunkKey));
+        std::cout << "[InstancedModelManager] First instance of '" << alias
+                  << "' added (chunk [" << chunkX << "," << chunkZ << "]).\n";
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +156,13 @@ void InstancedModelManager::submitToRenderer(MasterRenderer* renderer) {
         std::vector<glm::mat4> all;
         for (const auto& [ck, matrices] : bucket.chunkInstances) {
             all.insert(all.end(), matrices.begin(), matrices.end());
+        }
+
+        // Log when instance count changes (first submission or after chunk load/unload).
+        if (all.size() != bucket.lastLoggedCount) {
+            bucket.lastLoggedCount = all.size();
+            std::cout << "[InstancedModelManager] submitToRenderer: '"
+                      << alias << "' has " << all.size() << " instance(s).\n";
         }
 
         if (!all.empty()) {

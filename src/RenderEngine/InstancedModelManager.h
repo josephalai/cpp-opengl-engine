@@ -19,6 +19,7 @@
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
+#include <climits>
 #include <glm/glm.hpp>
 
 class Loader;
@@ -54,6 +55,8 @@ private:
         InstancedModel* model = nullptr;
         /// Per-chunk instance matrices.
         std::unordered_map<int64_t, std::vector<glm::mat4>> chunkInstances;
+        /// Tracks last-logged instance count for change-detection logging.
+        size_t lastLoggedCount = SIZE_MAX;
     };
 
     std::unordered_map<std::string, Bucket> buckets_;

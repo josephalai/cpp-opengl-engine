@@ -328,8 +328,11 @@ int main(int argc, char* argv[]) {
         };
 
         std::vector<BakerScatter> scatters = {
-            { BakedPrefab::Tree,    500, 0.25f, 1.5f },
-            { BakedPrefab::Boulder, 200, 0.75f, 2.0f },
+            { BakedPrefab::Tree,      500, 0.25f, 1.5f },
+            { BakedPrefab::FluffyTree,300, 0.5f,  1.5f },
+            { BakedPrefab::Fern,      400, 0.25f, 1.5f },
+            { BakedPrefab::Grass,     500, 0.5f,  1.5f },
+            { BakedPrefab::Boulder,   200, 0.75f, 2.0f },
         };
 
         for (const auto& sc : scatters) {
@@ -364,7 +367,7 @@ int main(int argc, char* argv[]) {
                 allEntities.push_back(be);
             }
         }
-        std::cout << "[Baker] Baker-generated scatter: trees + boulders.\n";
+        std::cout << "[Baker] Baker-generated scatter: tree, fluffytree, fern, grass, boulder.\n";
     }
 
     std::cout << "[Baker] Collected " << allEntities.size()
