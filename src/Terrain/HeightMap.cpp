@@ -3,6 +3,7 @@
 //
 
 #include "HeightMap.h"
+#include "../Util/FileSystem.h"
 
 const float Heightmap::MAX_HEIGHT = 40.0f;
 const float Heightmap::MIN_HEIGHT = -40.0f;
@@ -23,11 +24,21 @@ Heightmap::Heightmap(const std::string &fileName) {
 void Heightmap::calculateMapFromImage() {
     stbi_set_flip_vertically_on_load(1);
     int bytesPerPixel;
-    const auto imageData = stbi_load(fileName.c_str(), &imageInfo.width, &imageInfo.height, &bytesPerPixel, 0);
+    auto fileBytes = FileSystem::readAllBytes(fileName);
+    const stbi_uc* imageData = nullptr;
+    stbi_uc* loadedData = nullptr;
+    if (!fileBytes.empty()) {
+        loadedData = stbi_load_from_memory(fileBytes.data(),
+                                           static_cast<int>(fileBytes.size()),
+                                           &imageInfo.width, &imageInfo.height,
+                                           &bytesPerPixel, 0);
+        imageData = loadedData;
+    }
     if (imageData == nullptr) {
 
         // Return empty vector in case of failure
         std::cout << "Failed to load heightmap image " << fileName << "!" << std::endl;
+        stbi_set_flip_vertically_on_load(0);
         return;
     }
 
@@ -40,7 +51,7 @@ void Heightmap::calculateMapFromImage() {
         }
     }
     heightData = result;
-    stbi_image_free(imageData);
+    stbi_image_free(loadedData);
     // Reset global flip flag so subsequent texture loads (entity textures etc.)
     // are not unintentionally flipped; those rely on the UV-flip in the OBJ loader.
     stbi_set_flip_vertically_on_load(0);

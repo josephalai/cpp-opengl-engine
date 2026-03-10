@@ -122,6 +122,7 @@ void FileSystem::initVFS() {
 }
 
 void FileSystem::shutdownVFS() {
+    std::lock_guard<std::mutex> lock(s_pakMutex_);
     if (s_pakFile_) {
         std::fclose(s_pakFile_);
         s_pakFile_ = nullptr;
@@ -130,31 +131,35 @@ void FileSystem::shutdownVFS() {
 }
 
 std::vector<uint8_t> FileSystem::readAllBytes(const std::string& path) {
-    // If VFS is active, strip HOME_PATH prefix and look up in the pak index
-    if (s_pakFile_) {
-        std::string vPath = path;
-        if (vPath.size() > HOME_PATH.size() &&
-            vPath.compare(0, HOME_PATH.size(), HOME_PATH) == 0) {
-            vPath = vPath.substr(HOME_PATH.size());
-            if (!vPath.empty() && vPath[0] == '/') {
-                vPath = vPath.substr(1);
+    // If VFS is active, strip HOME_PATH prefix and look up in the pak index.
+    // The entire VFS lookup + read is guarded by s_pakMutex_ to prevent a race
+    // between readAllBytes (worker threads) and shutdownVFS (main thread).
+    {
+        std::lock_guard<std::mutex> lock(s_pakMutex_);
+        if (s_pakFile_) {
+            std::string vPath = path;
+            if (vPath.size() > HOME_PATH.size() &&
+                vPath.compare(0, HOME_PATH.size(), HOME_PATH) == 0) {
+                vPath = vPath.substr(HOME_PATH.size());
+                if (!vPath.empty() && vPath[0] == '/') {
+                    vPath = vPath.substr(1);
+                }
             }
-        }
 
-        auto it = s_pakIndex_.find(vPath);
-        if (it != s_pakIndex_.end()) {
-            const uint64_t offset = it->second.offset;
-            const uint64_t size   = it->second.size;
-            std::vector<uint8_t> data(size);
-            std::lock_guard<std::mutex> lock(s_pakMutex_);
+            auto it = s_pakIndex_.find(vPath);
+            if (it != s_pakIndex_.end()) {
+                const uint64_t offset = it->second.offset;
+                const uint64_t size   = it->second.size;
+                std::vector<uint8_t> data(size);
 #ifdef _WIN32
-            _fseeki64(s_pakFile_, static_cast<__int64>(offset), SEEK_SET);
+                _fseeki64(s_pakFile_, static_cast<__int64>(offset), SEEK_SET);
 #else
-            fseeko(s_pakFile_, static_cast<off_t>(offset), SEEK_SET);
+                fseeko(s_pakFile_, static_cast<off_t>(offset), SEEK_SET);
 #endif
-            auto nread = std::fread(data.data(), 1, size, s_pakFile_);
-            data.resize(nread);
-            return data;
+                auto nread = std::fread(data.data(), 1, size, s_pakFile_);
+                data.resize(nread);
+                return data;
+            }
         }
     }
 

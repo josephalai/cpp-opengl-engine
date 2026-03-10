@@ -2,8 +2,9 @@
 
 #include "ConfigManager.h"
 
+#include "../Util/FileSystem.h"
+
 #include <nlohmann/json.hpp>
-#include <fstream>
 #include <iostream>
 
 // -------------------------------------------------------------------------
@@ -64,15 +65,15 @@ static glm::vec3 readVec3(const nlohmann::json& j, const std::string& key,
 // -------------------------------------------------------------------------
 
 void ConfigManager::loadWorldConfig(const std::string& path) {
-    std::ifstream file(path);
-    if (!file.is_open()) {
+    auto bytes = FileSystem::readAllBytes(path);
+    if (bytes.empty()) {
         std::cerr << "[ConfigManager] Could not open " << path
                   << " — using defaults.\n";
         return;
     }
 
     nlohmann::json root;
-    try { file >> root; }
+    try { root = nlohmann::json::parse(bytes.begin(), bytes.end()); }
     catch (const nlohmann::json::parse_error& e) {
         std::cerr << "[ConfigManager] JSON parse error in " << path
                   << ": " << e.what() << "\n";
@@ -118,15 +119,15 @@ void ConfigManager::loadWorldConfig(const std::string& path) {
 // -------------------------------------------------------------------------
 
 void ConfigManager::loadClientSettings(const std::string& path) {
-    std::ifstream file(path);
-    if (!file.is_open()) {
+    auto bytes = FileSystem::readAllBytes(path);
+    if (bytes.empty()) {
         std::cerr << "[ConfigManager] Could not open " << path
                   << " — using defaults.\n";
         return;
     }
 
     nlohmann::json root;
-    try { file >> root; }
+    try { root = nlohmann::json::parse(bytes.begin(), bytes.end()); }
     catch (const nlohmann::json::parse_error& e) {
         std::cerr << "[ConfigManager] JSON parse error in " << path
                   << ": " << e.what() << "\n";
@@ -158,15 +159,15 @@ void ConfigManager::loadClientSettings(const std::string& path) {
 // -------------------------------------------------------------------------
 
 void ConfigManager::loadEnvironmentPresets(const std::string& path) {
-    std::ifstream file(path);
-    if (!file.is_open()) {
+    auto bytes = FileSystem::readAllBytes(path);
+    if (bytes.empty()) {
         std::cerr << "[ConfigManager] Could not open " << path
                   << " — using defaults.\n";
         return;
     }
 
     nlohmann::json root;
-    try { file >> root; }
+    try { root = nlohmann::json::parse(bytes.begin(), bytes.end()); }
     catch (const nlohmann::json::parse_error& e) {
         std::cerr << "[ConfigManager] JSON parse error in " << path
                   << ": " << e.what() << "\n";

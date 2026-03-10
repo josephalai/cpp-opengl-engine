@@ -854,4 +854,5 @@ void Engine::shutdown() {
 
     // Tear down ENet after all systems (including NetworkSystem) are destroyed.
     enet_deinitialize();
+    FileSystem::shutdownVFS();
 }

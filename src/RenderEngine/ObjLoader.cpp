@@ -120,6 +120,7 @@ ModelData OBJLoader::loadObjModel(const std::string &filename) {
     FILE *file = nullptr;
     if (!bytes.empty()) {
         // fmemopen is POSIX (Linux/macOS); on Windows we fall back to disk I/O below.
+        // `bytes` is alive for the entire function body, outliving all fscanf reads and fclose.
 #ifndef _WIN32
         file = fmemopen(bytes.data(), bytes.size(), "r");
 #endif

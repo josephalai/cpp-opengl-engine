@@ -2,7 +2,8 @@
 
 #include "PrefabManager.h"
 
-#include <fstream>
+#include "../Util/FileSystem.h"
+
 #include <iostream>
 #include <filesystem>
 
@@ -45,14 +46,14 @@ void PrefabManager::loadAll(const std::string& resourceRoot) {
 // -------------------------------------------------------------------------
 
 void PrefabManager::loadFile(const std::string& filePath) {
-    std::ifstream file(filePath);
-    if (!file.is_open()) {
+    auto bytes = FileSystem::readAllBytes(filePath);
+    if (bytes.empty()) {
         std::cerr << "[PrefabManager] Could not open " << filePath << "\n";
         return;
     }
 
     nlohmann::json root;
-    try { file >> root; }
+    try { root = nlohmann::json::parse(bytes.begin(), bytes.end()); }
     catch (const nlohmann::json::parse_error& e) {
         std::cerr << "[PrefabManager] JSON parse error in " << filePath
                   << ": " << e.what() << "\n";
