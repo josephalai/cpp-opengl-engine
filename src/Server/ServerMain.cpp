@@ -18,6 +18,9 @@
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/NetworkIdComponent.h"
 #include "../ECS/Components/InputQueueComponent.h"
+#include "../ECS/Components/SpatialComponent.h"
+#include "../ECS/Components/PathfindingComponent.h"
+#include "../ECS/Components/OriginShiftComponent.h"
 #include "../Network/NetworkPackets.h"
 #include "../Network/SharedMovement.h"
 #include "ServerNPCManager.h"
@@ -27,6 +30,10 @@
 #include "../Config/ConfigManager.h"
 #include "../Config/PrefabManager.h"
 #include "../Config/EntityFactory.h"
+#include "../Streaming/SpatialGrid.h"
+#include "../Engine/SpatialSystem.h"
+#include "../Engine/PathfindingSystem.h"
+#include "../Navigation/NavMeshManager.h"
 
 #include <nlohmann/json.hpp>
 
@@ -514,12 +521,59 @@ int main() {
     }
 
     // -------------------------------------------------------------------------
+    // Phase 4 — Spatial Partitioning Grid (Interest Management)
+    // 50 m × 50 m cells.  For an 800 m chunk this produces a 16 × 16 grid.
+    // -------------------------------------------------------------------------
+    SpatialGrid   spatialGrid(50.0f);
+    SpatialSystem spatialSystem(registry, spatialGrid);
+
+    // Register all existing scene entities (static bodies) in the spatial grid.
+    {
+        auto sceneView = registry.view<TransformComponent>();
+        for (auto entity : sceneView) {
+            auto& tc = sceneView.get<TransformComponent>(entity);
+            bool isStatic = !registry.any_of<NetworkIdComponent>(entity);
+            spatialSystem.registerEntity(entity, tc.position, isStatic);
+        }
+        std::cout << "[Server] SpatialGrid initialised with "
+                  << spatialGrid.allCells().size() << " non-empty cells (50 m cells)\n";
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 4 — NavMesh (grid-based A* pathfinding)
+    // -------------------------------------------------------------------------
+    NavMeshManager navMesh(1.0f);
+    {
+        float terrainSize = cfg.physics.terrainSize;
+        // Build a walkable area covering all loaded terrain tiles.
+        float worldMinX = 0.0f, worldMinZ = 0.0f;
+        float worldMaxX = terrainSize, worldMaxZ = terrainSize;
+        for (const auto& tile : terrainMgr.tiles) {
+            worldMinX = std::min(worldMinX, tile.originX);
+            worldMinZ = std::min(worldMinZ, tile.originZ);
+            worldMaxX = std::max(worldMaxX, tile.originX + tile.size);
+            worldMaxZ = std::max(worldMaxZ, tile.originZ + tile.size);
+        }
+        navMesh.build(worldMinX, worldMinZ, worldMaxX, worldMaxZ);
+        std::cout << "[Server] NavMesh built — walkable area ("
+                  << worldMinX << "," << worldMinZ << ") to ("
+                  << worldMaxX << "," << worldMaxZ << ")\n";
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 4 — Pathfinding System (auto-steering via A* waypoints)
+    // -------------------------------------------------------------------------
+    PathfindingSystem pathfindingSystem(registry, cfg.physics.defaultRunSpeed);
+
+    // -------------------------------------------------------------------------
     // Network tracking maps
     //   peerToNetworkId    — peer → network ID (for input routing on receive)
     //   networkIdToEntity  — network ID → entt entity (for entity lookup)
+    //   peerToEntity       — peer → entt entity (for spatial AoI lookups)
     // -------------------------------------------------------------------------
     std::unordered_map<ENetPeer*, uint32_t>       peerToNetworkId;
     std::unordered_map<uint32_t, entt::entity>    networkIdToEntity;
+    std::unordered_map<ENetPeer*, entt::entity>   peerToEntity;
     uint32_t nextNetworkId = 100;
 
     // --- NPC Loading ---
@@ -567,6 +621,9 @@ int main() {
             }
             physicsSystem.addCharacterController(entity, capsuleRadius, capsuleHeight);
             npcManager.registerNPC(nid, d.scriptType);
+
+            // Phase 4: Register NPC in spatial grid (dynamic entity).
+            spatialSystem.registerEntity(entity, pos, /*isStatic=*/false);
 
             std::cout << "[Server] NPC " << nid << " (" << d.modelType
                       << ") spawned at (" << pos.x << ", " << pos.y << ", "
@@ -618,6 +675,10 @@ int main() {
                 if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
                     nid->id = newId;
                 }
+
+                // Phase 4: Register in spatial grid (dynamic entity).
+                peerToEntity[event.peer] = entity;
+                spatialSystem.registerEntity(entity, spawnPos, /*isStatic=*/false);
 
                 std::cout << "[Server] Client connected — networkId " << newId
                           << " from " << event.peer->address.host << ":"
@@ -671,10 +732,13 @@ int main() {
 
                     auto eit = networkIdToEntity.find(removedId);
                     if (eit != networkIdToEntity.end()) {
+                        // Phase 4: Unregister from spatial grid before destroying.
+                        spatialSystem.unregisterEntity(eit->second);
                         physicsSystem.removeCharacterController(eit->second);
                         registry.destroy(eit->second);
                         networkIdToEntity.erase(eit);
                     }
+                    peerToEntity.erase(event.peer);
 
                     std::cout << "[Server] Client disconnected — networkId "
                               << removedId << "\n";
@@ -724,6 +788,39 @@ int main() {
                         // [Phase 3.3] Removed: old position-based speed-check anti-cheat.
                         // Client no longer sends coordinates, making the distance
                         // validation (distSq <= maxDist*maxDist) obsolete.
+                    }
+
+                    // Phase 4 Step 4.4.2 — ActionRequest: client right-clicks
+                    // a target → server runs A* and assigns PathfindingComponent.
+                    if (ptype == Network::PacketType::ActionRequest &&
+                        plen == sizeof(Network::ActionRequestPacket)) {
+
+                        Network::ActionRequestPacket req;
+                        std::memcpy(&req, payload, sizeof(req));
+
+                        auto pit = peerToNetworkId.find(event.peer);
+                        if (pit != peerToNetworkId.end()) {
+                            uint32_t nid = pit->second;
+                            auto playerIt = networkIdToEntity.find(nid);
+                            auto targetIt = networkIdToEntity.find(req.targetNetworkId);
+                            if (playerIt != networkIdToEntity.end() &&
+                                targetIt != networkIdToEntity.end()) {
+                                auto playerEntity = playerIt->second;
+                                auto targetEntity = targetIt->second;
+
+                                auto& playerTC = registry.get<TransformComponent>(playerEntity);
+                                auto& targetTC = registry.get<TransformComponent>(targetEntity);
+
+                                // Run A* to find a path from player to target.
+                                auto path = navMesh.findPath(playerTC.position, targetTC.position);
+                                if (!path.empty()) {
+                                    // Assign PathfindingComponent for auto-steering.
+                                    registry.emplace_or_replace<PathfindingComponent>(
+                                        playerEntity,
+                                        PathfindingComponent{path, 0, 1.5f, true});
+                                }
+                            }
+                        }
                     }
                 }
                 enet_packet_destroy(event.packet);
@@ -909,22 +1006,48 @@ int main() {
                 }
             }
 
-            // ----- Broadcast all entity snapshots from the registry -----
-            auto view = registry.view<TransformComponent, NetworkIdComponent>();
-            for (auto entity : view) {
-                auto& tc  = view.get<TransformComponent>(entity);
-                auto& nid = view.get<NetworkIdComponent>(entity);
+            // ----- Phase 4: Update spatial partitioning grid -----
+            // Migrate entities that moved to a different cell since last tick.
+            spatialSystem.update(cfg.server.tickInterval);
 
-                Network::TransformSnapshot snap;
-                snap.networkId      = nid.id;
-                snap.sequenceNumber = sequenceNum++;
-                snap.timestamp      = serverTime;
-                snap.position       = tc.position;
-                snap.rotation       = tc.rotation;
-                snap.lastProcessedInputSequence = nid.lastInputSeq;
+            // ----- Phase 4: Update pathfinding auto-steering -----
+            pathfindingSystem.update(cfg.server.tickInterval);
 
-                broadcast(server, Network::PacketType::TransformSnapshot,
-                          &snap, sizeof(snap));
+            // ----- Broadcast entity snapshots with AoI filtering (Phase 4) -----
+            // Instead of broadcasting every entity to every client, iterate
+            // per-client: determine the client's spatial cell, query the 3×3
+            // neighbourhood (9 cells = 150 m × 150 m), and send snapshots
+            // only for entities inside those cells.
+            for (auto& [peer, clientNetId] : peerToNetworkId) {
+                auto peit = peerToEntity.find(peer);
+                if (peit == peerToEntity.end()) continue;
+                auto clientEntity = peit->second;
+                if (!registry.valid(clientEntity)) continue;
+
+                auto* clientSC = registry.try_get<SpatialComponent>(clientEntity);
+                if (!clientSC) continue;
+
+                // Query the 3×3 neighbourhood around the client's cell.
+                auto nearbyEntities = spatialGrid.queryNeighbourhood(
+                    clientSC->currentCellX, clientSC->currentCellZ);
+
+                for (auto entity : nearbyEntities) {
+                    if (!registry.valid(entity)) continue;
+                    auto* tc  = registry.try_get<TransformComponent>(entity);
+                    auto* nid = registry.try_get<NetworkIdComponent>(entity);
+                    if (!tc || !nid) continue;
+
+                    Network::TransformSnapshot snap;
+                    snap.networkId      = nid->id;
+                    snap.sequenceNumber = sequenceNum++;
+                    snap.timestamp      = serverTime;
+                    snap.position       = tc->position;
+                    snap.rotation       = tc->rotation;
+                    snap.lastProcessedInputSequence = nid->lastInputSeq;
+
+                    sendTo(peer, Network::PacketType::TransformSnapshot,
+                           &snap, sizeof(snap));
+                }
             }
 
             enet_host_flush(server);
@@ -944,6 +1067,7 @@ int main() {
 
     // --- Cleanup ---
     std::cout << "[Server] Shutting down...\n";
+    spatialSystem.shutdown();
     physicsSystem.shutdown();
     enet_host_destroy(server);
     enet_deinitialize();

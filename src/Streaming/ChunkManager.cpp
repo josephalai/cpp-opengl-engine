@@ -24,7 +24,7 @@ void ChunkManager::update(const glm::vec3& playerPos) {
     int px = static_cast<int>(std::floor(playerPos.x / kTerrainSize));
     int pz = static_cast<int>(std::floor(playerPos.z / kTerrainSize));
 
-    // Load chunks within loadRadius.
+    // Phase 4 Step 4.2.2 — Active radius: load synchronously (already loaded).
     for (int dx = -loadRadius_; dx <= loadRadius_; ++dx) {
         for (int dz = -loadRadius_; dz <= loadRadius_; ++dz) {
             int cx = px + dx;
@@ -38,6 +38,39 @@ void ChunkManager::update(const glm::vec3& playerPos) {
                 chunks_[key] = chunk;
             } else if (it->second->state == StreamingChunk::State::UNLOADED) {
                 it->second->load(loader_, texPack_, blendMap_, heightmapFile_);
+            }
+        }
+    }
+
+    // Phase 4 Step 4.2.2 — Loading radius: trigger background I/O for chunks
+    // that are 2 cells out.  The actual load still happens synchronously on
+    // the main thread for now (terrain requires GL context); the JobQueue is
+    // available for future heightmap I/O offloading.
+    for (int dx = -loadingRadius_; dx <= loadingRadius_; ++dx) {
+        for (int dz = -loadingRadius_; dz <= loadingRadius_; ++dz) {
+            int chebyshev = std::max(std::abs(dx), std::abs(dz));
+            if (chebyshev <= loadRadius_) continue; // already handled above
+
+            int cx = px + dx;
+            int cz = pz + dz;
+            auto key = std::make_pair(cx, cz);
+
+            auto it = chunks_.find(key);
+            if (it == chunks_.end()) {
+                // Mark as pending to avoid duplicate loads.
+                int64_t ck = chunkKey(cx, cz);
+                {
+                    std::lock_guard<std::mutex> lock(pendingMutex_);
+                    if (pendingLoads_.count(ck)) continue;
+                    pendingLoads_.insert(ck);
+                }
+                auto* chunk = new StreamingChunk(cx, cz);
+                chunk->load(loader_, texPack_, blendMap_, heightmapFile_);
+                chunks_[key] = chunk;
+                {
+                    std::lock_guard<std::mutex> lock(pendingMutex_);
+                    pendingLoads_.erase(ck);
+                }
             }
         }
     }
