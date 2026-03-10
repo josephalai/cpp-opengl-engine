@@ -211,11 +211,9 @@ struct HeadlessTerrainManager {
                         base = base.substr(0, dotPos);
                     }
                     std::string perTile = dir + base + "_" + std::to_string(cx) + "_" + std::to_string(cz) + ext;
-                    // Check if per-tile file exists.
-                    std::ifstream probe(perTile);
-                    if (probe.is_open()) {
+                    // Check if per-tile file exists (via VFS or disk).
+                    if (!FileSystem::readAllBytes(perTile).empty()) {
                         tilePath = perTile;
-                        probe.close();
                     }
                     // Otherwise keep the original base path as fallback.
                 }
@@ -324,11 +322,11 @@ struct PhysCfg {
 static std::unordered_map<std::string, PhysCfg> parsePhysBodies(
         const std::string& jsonPath) {
     std::unordered_map<std::string, PhysCfg> physBodies;
-    std::ifstream file(jsonPath);
-    if (!file.is_open()) return physBodies;
+    auto bytes = FileSystem::readAllBytes(jsonPath);
+    if (bytes.empty()) return physBodies;
 
     nlohmann::json root;
-    try { file >> root; } catch (...) { return physBodies; }
+    try { root = nlohmann::json::parse(bytes.begin(), bytes.end()); } catch (...) { return physBodies; }
 
     if (root.contains("physics_bodies") && root["physics_bodies"].is_array()) {
         for (auto& pb : root["physics_bodies"]) {
@@ -463,8 +461,8 @@ static void loadHeadlessScene(entt::registry& registry,
                                PhysicsSystem& physics,
                                const HeadlessTerrainManager& terrain,
                                const std::string& jsonPath) {
-    std::ifstream file(jsonPath);
-    if (!file.is_open()) {
+    auto bytes = FileSystem::readAllBytes(jsonPath);
+    if (bytes.empty()) {
         std::cerr << "[Server] ERROR: scene.json not found — tried absolute path: "
                   << jsonPath
                   << "\n  The physics world will be empty (no trees/stalls/lamps).\n";
@@ -473,7 +471,7 @@ static void loadHeadlessScene(entt::registry& registry,
 
     nlohmann::json root;
     try {
-        file >> root;
+        root = nlohmann::json::parse(bytes.begin(), bytes.end());
     } catch (const std::exception& e) {
         std::cerr << "[Server] Failed to parse " << jsonPath
                   << ": " << e.what() << "\n";
@@ -670,6 +668,9 @@ int main() {
     std::signal(SIGINT,  signalHandler);
     std::signal(SIGTERM, signalHandler);
 
+    // --- VFS initialization (must happen before any file I/O) ---
+    FileSystem::initVFS();
+
     // --- Data-driven initialisation ---
     ConfigManager::get().loadAll(HOME_PATH);
     PrefabManager::get().loadAll(HOME_PATH);
@@ -707,11 +708,10 @@ int main() {
         std::string scenePath = FileSystem::Scene("scene.json");
         std::string hmPath    = FileSystem::Texture("heightMap"); // default fallback
 
-        std::ifstream sceneFile(scenePath);
-        if (sceneFile.is_open()) {
+        auto sceneBytes = FileSystem::readAllBytes(scenePath);
+        if (!sceneBytes.empty()) {
             try {
-                nlohmann::json sceneRoot;
-                sceneFile >> sceneRoot;
+                nlohmann::json sceneRoot = nlohmann::json::parse(sceneBytes.begin(), sceneBytes.end());
 
                 // Read heightmap filename from scene.json (default: "heightMap").
                 if (sceneRoot.contains("terrain") && sceneRoot["terrain"].contains("heightmap"))
@@ -865,9 +865,7 @@ int main() {
 
         std::vector<NPCDefinition> defs;
         {
-            std::ifstream probe(jsonPath);
-            if (probe.is_open()) {
-                probe.close();
+            if (!FileSystem::readAllBytes(jsonPath).empty()) {
                 defs = npcManager.loadFromJson(jsonPath);
             } else {
                 std::cout << "[Server] npcs.json not found — falling back to server_npcs.cfg\n";
@@ -1464,6 +1462,7 @@ int main() {
     physicsSystem.shutdown();
     enet_host_destroy(server);
     enet_deinitialize();
+    FileSystem::shutdownVFS();
 
     return 0;
 }

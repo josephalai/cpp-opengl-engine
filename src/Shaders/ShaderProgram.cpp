@@ -10,16 +10,9 @@ Shader::Shader(std::string file, ShaderType type) : fileName(std::move(file)){
 }
 
 void Shader::loadShader(std::string path, ShaderType type) {
-    std::string code;
-    std::ifstream shaderFile;
-    shaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-    try {
-        shaderFile.open(path);
-        std::stringstream vShaderStream;
-        vShaderStream << shaderFile.rdbuf();
-        shaderFile.close();
-        code = vShaderStream.str();
-    } catch (std::ifstream::failure &e) {
+    auto bytes = FileSystem::readAllBytes(path);
+    std::string code(bytes.begin(), bytes.end());
+    if (code.empty()) {
         std::cout << "ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ" << std::endl;
     }
     const char *vShaderCode = code.c_str();

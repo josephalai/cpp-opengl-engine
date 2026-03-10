@@ -60,6 +60,9 @@ Engine::Engine() = default;
 Engine::~Engine() = default;
 
 void Engine::init() {
+    // --- VFS initialization (must happen before any file I/O) ---
+    FileSystem::initVFS();
+
     // --- Data-driven initialisation (must happen before DisplayManager) ---
     ConfigManager::get().loadAll(HOME_PATH);
     PrefabManager::get().loadAll(HOME_PATH);
@@ -851,4 +854,5 @@ void Engine::shutdown() {
 
     // Tear down ENet after all systems (including NetworkSystem) are destroyed.
     enet_deinitialize();
+    FileSystem::shutdownVFS();
 }

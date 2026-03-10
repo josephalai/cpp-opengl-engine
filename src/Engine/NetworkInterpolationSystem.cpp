@@ -23,16 +23,33 @@ void NetworkInterpolationSystem::update(float deltaTime) {
         // Nothing to do until we have received at least one snapshot.
         if (nsd.buffer.empty()) continue;
 
-        // --- NEW: CLOCK SEEDING ---
-        // If this is the first time we are seeing this entity, sync its internal
-        // render clock to the server's timestamp and enforce a 150ms playout delay.
-        if (nsd.renderTime == 0.0f) {
-            nsd.renderTime = nsd.buffer.front().timestamp;
-            nsd.interpolationDelay = 0.25f; // 350ms buffer for a 10Hz server
+        // In NetworkInterpolationSystem::update():
+        // REMOVE the renderTime == 0.0f seed block entirely.
+        // Let NetworkSystem.cpp be the SOLE clock seeder via the "started" flag.
+        if (!nsd.started) {
+            // Not yet seeded — just snap to latest position, don't advance clock
+            tc.position = nsd.buffer.back().position;
+            tc.rotation = nsd.buffer.back().rotation;
+            continue;
         }
 
         // Advance the playback clock at real-time speed.
         nsd.renderTime += deltaTime;
+
+        // After: nsd.renderTime += deltaTime;
+
+        // The "ideal" renderTime is: latest server timestamp (i.e. what the
+        // server clock reads RIGHT NOW, from our perspective).
+        // We want renderTime to track (latestServerTime) so that
+        // targetTime = renderTime - delay always has data to interpolate.
+        float latestServerTime = nsd.buffer.back().timestamp;
+        float idealRenderTime  = latestServerTime; // We want to be HERE
+
+        // Gently steer renderTime toward the ideal.
+        // This corrects both drift directions (too fast AND too slow).
+        float clockError = idealRenderTime - nsd.renderTime;
+        float correction = clockError * 0.1f; // 10% per frame = smooth convergence
+        nsd.renderTime += correction;
 
         // --- CLOCK DRIFT CORRECTION ---
         const float maxRenderTime = nsd.buffer.back().timestamp + nsd.interpolationDelay + 0.01f;

@@ -3,6 +3,7 @@
 //
 
 #include "TextureLoader.h"
+#include "../Util/FileSystem.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 
@@ -44,7 +45,12 @@ void TextureLoader::loadJpgTexture(const char *file_name) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     // load and generate the texture
     int width, height, nrChannels;
-    unsigned char *data = stbi_load(file_name, &width, &height, &nrChannels, 0);
+    auto bytes = FileSystem::readAllBytes(std::string(file_name));
+    unsigned char *data = nullptr;
+    if (!bytes.empty()) {
+        data = stbi_load_from_memory(bytes.data(), static_cast<int>(bytes.size()),
+                                     &width, &height, &nrChannels, 0);
+    }
     if (data) {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
         glGenerateMipmap(GL_TEXTURE_2D);
@@ -64,7 +70,12 @@ void TextureLoader::loadPngTexture(const char *file_name) {
     int w;
     int h;
     int comp;
-    unsigned char *image = stbi_load(file_name, &w, &h, &comp, STBI_rgb_alpha);
+    auto bytes = FileSystem::readAllBytes(std::string(file_name));
+    unsigned char *image = nullptr;
+    if (!bytes.empty()) {
+        image = stbi_load_from_memory(bytes.data(), static_cast<int>(bytes.size()),
+                                      &w, &h, &comp, STBI_rgb_alpha);
+    }
 
     if (image == nullptr) {
         printf("Failed to load texture %s\n", file_name);

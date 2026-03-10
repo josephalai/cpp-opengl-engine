@@ -270,9 +270,13 @@ void NetworkSystem::update(float deltaTime) {
                                     }
 
                                     // Sync playback clock on 2nd snapshot.
+                                    // In NetworkSystem::update(), where snapshots are pushed:
                                     if (!nsd->started && nsd->buffer.size() >= 2) {
-                                        nsd->renderTime = nsd->buffer.back().timestamp;
-                                        nsd->started    = true;
+                                        // Seed renderTime to the OLDEST snapshot's timestamp
+                                        // (not the newest!) so that targetTime = renderTime - delay
+                                        // starts BEHIND the buffer, giving us data to interpolate through.
+                                        nsd->renderTime = nsd->buffer.front().timestamp + nsd->interpolationDelay;
+                                        nsd->started = true;
                                     }
                                 }
                             }
