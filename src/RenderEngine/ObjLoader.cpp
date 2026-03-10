@@ -114,10 +114,21 @@ ModelData OBJLoader::loadObjModel(const std::string &filename) {
     glm::vec3 vMin( std::numeric_limits<float>::max());
     glm::vec3 vMax(-std::numeric_limits<float>::max());
 
-    auto copy = FileSystem::Model(filename);
-    FILE *file = std::fopen(std::move(FileSystem::Model(filename)).c_str(), "r");
+    std::string fullPath = FileSystem::Model(filename);
+    auto bytes = FileSystem::readAllBytes(fullPath);
+
+    FILE *file = nullptr;
+    if (!bytes.empty()) {
+        // fmemopen is POSIX (Linux/macOS); on Windows we fall back to disk I/O below.
+#ifndef _WIN32
+        file = fmemopen(bytes.data(), bytes.size(), "r");
+#endif
+    }
+    if (!file) {
+        file = std::fopen(fullPath.c_str(), "r");
+    }
     if (file == nullptr) {
-        printf("Impossible to open the file: %s !\n", copy.c_str());
+        printf("Impossible to open the file: %s !\n", fullPath.c_str());
         return ModelData{};
     }
 

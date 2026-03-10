@@ -3,6 +3,7 @@
 //
 
 #include "AssimpEntityLoader.h"
+#include "../Util/FileSystem.h"
 
 AssimpMesh::AssimpMesh(string const &path,
                        Material
@@ -169,14 +170,18 @@ vector<TextureData> AssimpMesh::loadMaterialTextures(aiMaterial *mat, aiTextureT
 
 
 unsigned int AssimpMesh::textureFromFile(const char *path, const string &directory, bool gamma) {
-    string filename = string(path);
-    filename = directory + '/' + filename;
+    string filename = directory + '/' + string(path);
 
     unsigned int textureID;
     glGenTextures(1, &textureID);
 
     int width, height, nrComponents;
-    unsigned char *data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 0);
+    auto bytes = FileSystem::readAllBytes(filename);
+    unsigned char *data = nullptr;
+    if (!bytes.empty()) {
+        data = stbi_load_from_memory(bytes.data(), static_cast<int>(bytes.size()),
+                                     &width, &height, &nrComponents, 0);
+    }
     if (data) {
         GLenum format;
         if (nrComponents == 1)
@@ -197,8 +202,8 @@ unsigned int AssimpMesh::textureFromFile(const char *path, const string &directo
 
         stbi_image_free(data);
     } else {
+        // data is nullptr on failure — no stbi_image_free needed
         std::cout << "Texture failed to load at path: " << path << std::endl;
-        stbi_image_free(data);
     }
 
     return textureID;

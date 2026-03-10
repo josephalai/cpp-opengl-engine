@@ -101,15 +101,15 @@ bool SceneLoaderJson::load(
     std::vector<PhysicsBodyCfg>&   physicsBodyCfgs,
     std::vector<PhysicsGroundCfg>& physicsGroundCfgs)
 {
-    std::ifstream file(jsonPath);
-    if (!file.is_open()) {
+    auto bytes = FileSystem::readAllBytes(jsonPath);
+    if (bytes.empty()) {
         std::cerr << "[SceneLoaderJson] Cannot open: " << jsonPath << "\n";
         return false;
     }
 
     nlohmann::json root;
     try {
-        file >> root;
+        root = nlohmann::json::parse(bytes.begin(), bytes.end());
     } catch (const nlohmann::json::parse_error& e) {
         std::cerr << "[SceneLoaderJson] JSON parse error: " << e.what() << "\n";
         return false;

@@ -1,11 +1,13 @@
 // src/Tools/AssetBaker.cpp
 //
-// Offline CLI tool — Asset Conditioning Pipeline (GEA Step 5.1).
+// Offline CLI tool — Asset Conditioning Pipeline (GEA Step 5.1 / 5.2).
 //
 // Reads scene.json (entities + random arrays), loads ALL heightmaps into
 // memory, pre-calculates exact Y coordinates, spatially partitions entities
 // into 800×800 chunks, and writes binary .dat files that the runtime engine
 // can load via a single memcpy.
+//
+// Also packs all resource files into a single data.pak archive (Step 5.2).
 //
 // Usage:  AssetBaker [--scene path/to/scene.json] [--out path/to/output/]
 //         Defaults use RESOURCE_ROOT paths.
@@ -26,6 +28,8 @@
 #include <cerrno>
 #include <random>
 #include <algorithm>
+#include <filesystem>
+#include <set>
 #include <sys/stat.h>
 
 // ============================================================================
@@ -130,6 +134,130 @@ struct PairHash {
         return std::hash<int>()(p.first) ^ (std::hash<int>()(p.second) << 16);
     }
 };
+
+// ============================================================================
+// PAK archive generation (Step 5.2)
+// ============================================================================
+
+static void writePakArchive() {
+    namespace fs = std::filesystem;
+
+    std::cout << "[AssetBaker] === PAK Archive Generation (Step 5.2) ===\n";
+
+    const std::string resourceDir = HOME_PATH + "/src/Resources";
+
+    // File extensions to include in the archive
+    const std::set<std::string> allowedExts = {
+        ".png", ".obj", ".json", ".lua", ".cfg",
+        ".ttf", ".fnt", ".glsl", ".vert", ".frag"
+    };
+
+    struct FileEntry {
+        std::string relativePath; // relative to HOME_PATH, no leading slash
+        std::string absolutePath;
+        uint64_t    size   = 0;
+        uint64_t    offset = 0;  // absolute offset in the pak file
+    };
+
+    std::vector<FileEntry> entries;
+    std::set<std::string>  visitedDirs;
+
+    // Scan the resources directory recursively
+    std::error_code ec;
+    for (const auto& entry : fs::recursive_directory_iterator(resourceDir, ec)) {
+        // Print a message when entering each new directory
+        std::string dirPath = entry.path().parent_path().string();
+        if (visitedDirs.find(dirPath) == visitedDirs.end()) {
+            std::cout << "[AssetBaker] Scanning directory: " << dirPath << "\n";
+            visitedDirs.insert(dirPath);
+        }
+
+        if (!entry.is_regular_file()) continue;
+
+        std::string ext = entry.path().extension().string();
+        if (allowedExts.find(ext) == allowedExts.end()) continue;
+
+        FileEntry fe;
+        fe.absolutePath = entry.path().string();
+        fe.relativePath = fs::relative(entry.path(), HOME_PATH, ec).string();
+        fe.size         = static_cast<uint64_t>(entry.file_size(ec));
+        entries.push_back(fe);
+    }
+    if (ec) {
+        std::cerr << "[AssetBaker] WARNING: Directory scan error: " << ec.message() << "\n";
+    }
+
+    std::cout << "[AssetBaker] Found " << entries.size() << " files to pack\n";
+
+    // Calculate the size of the header + file table to determine data offsets:
+    //   Magic(4) + Count(4) + for each file: PathLen(4) + Path(N) + Offset(8) + Size(8)
+    uint64_t tableSize = 4 + 4; // magic + count
+    for (const auto& fe : entries) {
+        tableSize += 4 + static_cast<uint64_t>(fe.relativePath.size()) + 8 + 8;
+    }
+
+    // Assign absolute offsets for each file's data block
+    uint64_t currentOffset = tableSize;
+    for (auto& fe : entries) {
+        fe.offset      = currentOffset;
+        currentOffset += fe.size;
+    }
+
+    // Write data.pak to the project root
+    const std::string pakPath = HOME_PATH + "/data.pak";
+    std::ofstream out(pakPath, std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) {
+        std::cerr << "[AssetBaker] ERROR: Cannot write PAK file: " << pakPath << "\n";
+        return;
+    }
+
+    // --- Header ---
+    out.write("PAK1", 4);
+    uint32_t count = static_cast<uint32_t>(entries.size());
+    out.write(reinterpret_cast<const char*>(&count), 4);
+
+    // --- File table ---
+    for (const auto& fe : entries) {
+        uint32_t pathLen = static_cast<uint32_t>(fe.relativePath.size());
+        out.write(reinterpret_cast<const char*>(&pathLen), 4);
+        out.write(fe.relativePath.c_str(), pathLen);
+        out.write(reinterpret_cast<const char*>(&fe.offset), 8);
+        out.write(reinterpret_cast<const char*>(&fe.size),   8);
+    }
+
+    // --- Raw data block ---
+    char copyBuf[65536];
+    for (const auto& fe : entries) {
+        std::ifstream in(fe.absolutePath, std::ios::binary);
+        if (!in.is_open()) {
+            std::cerr << "[AssetBaker] WARNING: Cannot open for packing: "
+                      << fe.absolutePath << "\n";
+            // Write zero-padding to keep offsets consistent
+            std::fill(std::begin(copyBuf), std::end(copyBuf), 0);
+            for (uint64_t remaining = fe.size; remaining > 0; ) {
+                std::streamsize chunk = static_cast<std::streamsize>(
+                    std::min(remaining, static_cast<uint64_t>(sizeof(copyBuf))));
+                out.write(copyBuf, chunk);
+                remaining -= static_cast<uint64_t>(chunk);
+            }
+        } else {
+            uint64_t remaining = fe.size;
+            while (remaining > 0) {
+                std::streamsize toRead = static_cast<std::streamsize>(
+                    std::min(remaining, static_cast<uint64_t>(sizeof(copyBuf))));
+                in.read(copyBuf, toRead);
+                std::streamsize got = in.gcount();
+                out.write(copyBuf, got);
+                remaining -= static_cast<uint64_t>(got);
+                if (got == 0) break;
+            }
+        }
+        std::cout << "[AssetBaker] Packing: " << fe.relativePath
+                  << " (" << fe.size << " bytes)\n";
+    }
+
+    std::cout << "[AssetBaker] PAK archive written: " << count << " files)\n";
+}
 
 // ============================================================================
 // Main
@@ -413,6 +541,9 @@ int main(int argc, char* argv[]) {
     std::cout << "=== Asset Baker complete: Processed "
               << allEntities.size() << " entities. Generated "
               << filesWritten << " chunk files. ===\n";
+
+    // --- Step 5.2: PAK archive generation ---
+    writePakArchive();
 
     return 0;
 }

@@ -10,6 +10,7 @@
 #include "../Animation/Skeleton.h"
 #include "../Animation/Bone.h"
 #include "../Libraries/images/stb_image.h"
+#include "../Util/FileSystem.h"
 
 #define GL_SILENCE_DEPRECATION
 #define GLFW_INCLUDE_GLCOREARB
@@ -110,7 +111,12 @@ static RawTextureData loadTextureCPU(const std::string& texPath,
         }
     } else {
         std::string filename = directory + '/' + texPath;
-        data = stbi_load(filename.c_str(), &w, &h, &ch, 0);
+        auto fileBytes = FileSystem::readAllBytes(filename);
+        if (!fileBytes.empty()) {
+            data = stbi_load_from_memory(fileBytes.data(),
+                                         static_cast<int>(fileBytes.size()),
+                                         &w, &h, &ch, 0);
+        }
     }
 
     if (data && w > 0 && h > 0) {
@@ -343,8 +349,14 @@ void AsyncResourceLoader::loadAnimatedModelAsync(const std::string& path,
 void AsyncResourceLoader::loadTextureAsync(const std::string& path,
                                             std::function<void(unsigned int)> callback) {
     std::thread([path, callback]() {
+        auto fileBytes = FileSystem::readAllBytes(path);
         int w = 0, h = 0, ch = 0;
-        unsigned char* data = stbi_load(path.c_str(), &w, &h, &ch, 0);
+        unsigned char* data = nullptr;
+        if (!fileBytes.empty()) {
+            data = stbi_load_from_memory(fileBytes.data(),
+                                         static_cast<int>(fileBytes.size()),
+                                         &w, &h, &ch, 0);
+        }
         if (!data) {
             std::cerr << "[AsyncResourceLoader] Texture failed: " << path << "\n";
             GLUploadQueue::instance().enqueue([callback]() { callback(0); });
