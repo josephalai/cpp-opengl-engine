@@ -8,6 +8,7 @@
 #include "../ECS/Components/LODComponent.h"
 #include "../Entities/Camera.h"
 #include <cmath>
+#include <iostream>
 
 RenderSystem::RenderSystem(MasterRenderer*            renderer,
                             FrameBuffers*              reflectFbo,
@@ -107,4 +108,3 @@ void RenderSystem::update(float /*deltaTime*/) {
     // Water rendering — must run after opaque geometry
     renderer_->renderWater(camera_, lights_.empty() ? nullptr : lights_[0]);
 }
-

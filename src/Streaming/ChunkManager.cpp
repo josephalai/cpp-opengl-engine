@@ -266,6 +266,9 @@ std::vector<BakedEntity> ChunkManager::readBakedEntities(int cx, int cz) {
 
 void ChunkManager::fireBakedSpawns(const std::vector<BakedEntity>& bakedEntities,
                                     int chunkX, int chunkZ) {
+    std::cout << "[ChunkManager] fireBakedSpawns chunk [" << chunkX << ", " << chunkZ
+              << "] — " << bakedEntities.size() << " entities, callback="
+              << (spawnCallback_ ? "SET" : "NULL") << "\n";
     if (!spawnCallback_) return;
     for (const auto& be : bakedEntities) {
         spawnCallback_(be, chunkX, chunkZ);

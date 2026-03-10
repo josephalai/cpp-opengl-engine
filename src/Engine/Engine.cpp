@@ -94,10 +94,6 @@ void Engine::init() {
         for (auto e : viewT) { (void)e; ++countT; }
         for (auto e : viewI) { (void)e; ++countI; }
         for (auto e : viewN) { (void)e; ++countN; }
-        std::cout << "[ECS] Phase 2 Step 3 complete: "
-                  << countT << " TransformComponent, "
-                  << countI << " InputStateComponent, "
-                  << countN << " NetworkSyncData in registry.\n";
     }
 }
 
@@ -683,38 +679,41 @@ void Engine::buildSystems() {
         //   - If the prefab has "render_mode": "instanced", push its
         //     transform matrix into the InstancedModelManager.
         //   - Otherwise, create a standard ECS entity via EntityFactory.
-        chunkManager->setEntityCallback(
-            [this](const BakedEntity& be, int chunkX, int chunkZ) {
-                std::string alias = BakedPrefab::toAlias(be.prefabId);
-                if (alias.empty()) return;
+        if (instancedModelManager) {
+            chunkManager->setEntityCallback(
+                [this](const BakedEntity& be, int cx, int cz) {
+                    // Use the well-known BakedPrefab mapping (ChunkData.h)
+                    std::string alias = BakedPrefab::toAlias(be.prefabId);
+                    if (alias.empty()) {
+                        return;
+                    }
 
-                // Check if this alias should be instanced.
-                if (instancedModelManager && instancedModelManager->hasAlias(alias)) {
-                    int64_t ck = (static_cast<int64_t>(chunkX) << 32) |
-                                  static_cast<int64_t>(static_cast<uint32_t>(chunkZ));
-                    glm::vec3 pos(be.x, be.y, be.z);
-                    glm::vec3 rot(0.0f, be.rotationY, 0.0f);
-                    glm::mat4 transform = Maths::createTransformationMatrix(
-                        pos, rot, be.scale);
-                    instancedModelManager->addInstance(alias, ck, transform);
-                } else {
-                    glm::vec3 pos(be.x, be.y, be.z);
-                    EntityFactory::spawn(registry, alias, pos, physicsSystem);
-                }
-            });
+                    // Check if this alias should be instanced.
+                    if (instancedModelManager->hasAlias(alias)) {
+                        int64_t chunkKey = (static_cast<int64_t>(cx) << 32)
+                                         | static_cast<int64_t>(static_cast<uint32_t>(cz));
 
-        // GEA Phase 5.4 — Wire the unload callback to purge instanced
-        // matrices when a chunk is streamed out.
-        chunkManager->setUnloadCallback(
-            [this](int chunkX, int chunkZ) {
-                if (instancedModelManager) {
-                    int64_t ck = (static_cast<int64_t>(chunkX) << 32) |
-                                  static_cast<int64_t>(static_cast<uint32_t>(chunkZ));
-                    instancedModelManager->removeChunk(ck);
-                    std::cout << "[Engine] UNLOADING Chunk (" << chunkX
-                              << ", " << chunkZ << ") — instanced matrices purged.\n";
-                }
-            });
+                        glm::mat4 transform = Maths::createTransformationMatrix(
+                            glm::vec3(be.x, be.y, be.z),
+                            glm::vec3(0.0f, be.rotationY, 0.0f),
+                            be.scale);
+
+                        instancedModelManager->addInstance(alias, chunkKey, transform);
+
+                    } else {
+                        // Non-instanced baked entity — spawn as regular ECS entity
+                        glm::vec3 pos(be.x, be.y, be.z);
+                        EntityFactory::spawn(registry, alias, pos, physicsSystem);
+                    }
+                });
+
+            chunkManager->setUnloadCallback(
+                [this](int cx, int cz) {
+                    int64_t chunkKey = (static_cast<int64_t>(cx) << 32)
+                                     | static_cast<int64_t>(static_cast<uint32_t>(cz));
+                    instancedModelManager->removeChunk(chunkKey);
+                });
+        }
 
         // Register existing terrain tiles so ChunkManager tracks them.
         for (auto* t : allTerrains) {

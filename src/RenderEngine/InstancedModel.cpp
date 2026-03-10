@@ -8,6 +8,16 @@ InstancedModel::InstancedModel(GLuint vao, int idxCount, GLuint tex)
 void InstancedModel::setupInstanceVBO() {
     glBindVertexArray(vaoID);
 
+    // ─── FIX: Enable the mesh vertex attributes (0=pos, 1=uv, 2=normal) ───
+    // Loader::loadToVAO() uploads the data and sets glVertexAttribPointer
+    // but never calls glEnableVertexAttribArray. The EntityRenderer enables
+    // them in its own render loop, but InstancedRenderer does not — so we
+    // must enable them here as part of the VAO state.
+    glEnableVertexAttribArray(0);  // position
+    glEnableVertexAttribArray(1);  // textureCoords
+    glEnableVertexAttribArray(2);  // normal
+
+    // ─── Instance matrix VBO (locations 3-6) ───
     glGenBuffers(1, &instanceVBO);
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
 

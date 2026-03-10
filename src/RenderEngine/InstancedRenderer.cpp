@@ -2,6 +2,7 @@
 
 #include "InstancedRenderer.h"
 #include <algorithm>
+#include <iostream>
 #include <glm/gtx/norm.hpp>
 
 InstancedRenderer::InstancedRenderer(InstancedShader* s) : shader(s) {}
@@ -22,7 +23,7 @@ void InstancedRenderer::render(const std::vector<Light*>& lights,
     shader->loadSkyColor(skyColor);
     shader->connectTexture();
 
-    for (auto& [model, transforms] : batches) {
+    for (auto& [mdl, transforms] : batches) {
         if (transforms.empty()) continue;
 
         // Phase 4 Step 4.3 — Discard instances beyond maxViewDist_.
@@ -40,7 +41,7 @@ void InstancedRenderer::render(const std::vector<Light*>& lights,
             if (transforms.empty()) continue;
         }
 
-        drawBatch(model, transforms);
+        drawBatch(mdl, transforms);
     }
 
     shader->stop();

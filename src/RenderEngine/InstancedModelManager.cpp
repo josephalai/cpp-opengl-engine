@@ -48,6 +48,7 @@ void InstancedModelManager::init(Loader* loader) {
 
         // Load the OBJ mesh data.
         ModelData meshData = OBJLoader::loadObjModel(objFile);
+
         if (meshData.getIndices().empty()) {
             std::cerr << "[InstancedModelManager] Failed to load OBJ '"
                       << objFile << "' for prefab '" << id << "'.\n";
@@ -71,13 +72,8 @@ void InstancedModelManager::init(Loader* loader) {
         // Use the prefab alias as the bucket key.
         std::string alias = prefab.value("alias", id);
         buckets_[alias].model = im;
-
-        std::cout << "[InstancedModelManager] Registered instanced prefab '"
-                  << alias << "' (obj=" << objFile << ")\n";
     }
 
-    std::cout << "[InstancedModelManager] Initialized with "
-              << buckets_.size() << " instanced prefab(s).\n";
 }
 
 // ---------------------------------------------------------------------------
