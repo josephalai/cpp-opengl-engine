@@ -242,6 +242,29 @@ target_link_libraries(headless_server PRIVATE
 )
 
 # =============================================================================
+# Asset Baker — offline CLI tool (GEA Step 5.1)
+# Reads scene.json + heightmaps, pre-calculates entity positions, and writes
+# binary chunk_X_Z.dat files for instantaneous runtime loading.
+# =============================================================================
+add_executable(AssetBaker
+    ${CMAKE_SOURCE_DIR}/src/Tools/AssetBaker.cpp
+    ${CMAKE_SOURCE_DIR}/src/Tools/ToolsStbImage.cpp
+    ${CMAKE_SOURCE_DIR}/src/Terrain/HeightMap.cpp
+    ${CMAKE_SOURCE_DIR}/src/Util/FileSystem.cpp
+)
+
+target_include_directories(AssetBaker PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${glm_SOURCE_DIR}
+    ${nlohmann_json_SOURCE_DIR}/include
+)
+
+target_compile_definitions(AssetBaker PRIVATE
+    RESOURCE_ROOT="${CMAKE_SOURCE_DIR}"
+    HEADLESS_SERVER
+)
+
+# =============================================================================
 # Sol2 + Lua Linking (for both Server and Client)
 # =============================================================================
 if(LUA_FOUND)

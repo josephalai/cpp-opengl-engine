@@ -31,6 +31,7 @@
 #include "../Config/PrefabManager.h"
 #include "../Config/EntityFactory.h"
 #include "../Streaming/SpatialGrid.h"
+#include "../Streaming/ChunkData.h"
 #include "../Engine/SpatialSystem.h"
 #include "../Engine/PathfindingSystem.h"
 #include "../Navigation/NavMeshManager.h"
@@ -304,6 +305,147 @@ static void broadcast(ENetHost* host, Network::PacketType type,
 }
 
 // ---------------------------------------------------------------------------
+// Physics body configuration — used by both loadHeadlessScene and
+// loadBakedChunkEntities for spawning Bullet colliders.
+// ---------------------------------------------------------------------------
+
+struct PhysCfg {
+    std::string   type        = "static";  // "static" | "dynamic"
+    std::string   shape       = "box";     // "box" | "sphere" | "capsule"
+    glm::vec3     halfExtents = glm::vec3(0.5f);
+    float         mass        = 1.0f;
+    float         friction    = 0.5f;
+    float         restitution = 0.3f;
+    float         radius      = 0.5f;
+    float         height      = 1.8f;
+};
+
+/// Parse the "physics_bodies" array from scene.json into a reusable map.
+static std::unordered_map<std::string, PhysCfg> parsePhysBodies(
+        const std::string& jsonPath) {
+    std::unordered_map<std::string, PhysCfg> physBodies;
+    std::ifstream file(jsonPath);
+    if (!file.is_open()) return physBodies;
+
+    nlohmann::json root;
+    try { file >> root; } catch (...) { return physBodies; }
+
+    if (root.contains("physics_bodies") && root["physics_bodies"].is_array()) {
+        for (auto& pb : root["physics_bodies"]) {
+            std::string alias = pb.value("alias", "");
+            if (alias.empty()) continue;
+            PhysCfg cfg;
+            cfg.type        = pb.value("type",        "static");
+            cfg.shape       = pb.value("shape",       "box");
+            cfg.friction    = pb.value("friction",    0.5f);
+            cfg.restitution = pb.value("restitution", 0.3f);
+            cfg.mass        = pb.value("mass",        1.0f);
+            cfg.radius      = pb.value("radius",      0.5f);
+            cfg.height      = pb.value("height",      1.8f);
+            if (pb.contains("halfExtents") && pb["halfExtents"].is_array()
+                    && pb["halfExtents"].size() >= 3) {
+                auto& he = pb["halfExtents"];
+                cfg.halfExtents = glm::vec3(he[0].get<float>(),
+                                            he[1].get<float>(),
+                                            he[2].get<float>());
+            }
+            physBodies[alias] = cfg;
+        }
+    }
+    return physBodies;
+}
+
+/// Spawn one scene entity with a Bullet body from alias and physics config.
+/// Returns the created entity, or entt::null if the alias has no physics config.
+static entt::entity spawnSceneBodyFromCfg(
+        entt::registry& registry,
+        PhysicsSystem& physics,
+        const std::unordered_map<std::string, PhysCfg>& physBodies,
+        const std::string& alias,
+        float x, float y, float z, float ry,
+        float scale = 1.0f) {
+    auto it = physBodies.find(alias);
+    if (it == physBodies.end()) return entt::null;
+    const auto& cfg = it->second;
+
+    auto entity = registry.create();
+    registry.emplace<TransformComponent>(entity,
+        TransformComponent{glm::vec3(x, y, z), glm::vec3(0.0f, ry, 0.0f), scale});
+
+    ColliderShape colShape = ColliderShape::Box;
+    if (cfg.shape == "sphere")  colShape = ColliderShape::Sphere;
+    if (cfg.shape == "capsule") colShape = ColliderShape::Capsule;
+
+    glm::vec3 scaledHalfExtents = cfg.halfExtents * scale;
+    float     scaledRadius      = cfg.radius      * scale;
+    float     scaledHeight      = cfg.height      * scale;
+
+    PhysicsBodyDef def;
+    def.shape       = colShape;
+    def.halfExtents = scaledHalfExtents;
+    def.radius      = scaledRadius;
+    def.height      = scaledHeight;
+    def.friction    = cfg.friction;
+    def.restitution = cfg.restitution;
+
+    if (cfg.type == "dynamic") {
+        def.type = BodyType::Dynamic;
+        def.mass = cfg.mass;
+    } else {
+        def.type = BodyType::Static;
+        def.mass = 0.0f;
+    }
+    physics.addDynamicBody(entity, def);
+    return entity;
+}
+
+// ---------------------------------------------------------------------------
+// Load baked chunk entities from a binary .dat file (GEA Step 5.1).
+//
+// Reads chunk_X_Z.dat and spawns Bullet bodies for each baked entity.
+// Returns the list of spawned ECS entities so they can be tracked and
+// destroyed when the chunk is unloaded.
+// ---------------------------------------------------------------------------
+
+static std::vector<entt::entity> loadBakedChunkEntities(
+        entt::registry& registry,
+        PhysicsSystem& physics,
+        const std::unordered_map<std::string, PhysCfg>& physBodies,
+        int gridX, int gridZ) {
+    std::vector<entt::entity> spawned;
+
+    std::string filename = "chunk_" + std::to_string(gridX)
+                         + "_" + std::to_string(gridZ) + ".dat";
+    std::string path = FileSystem::BakedChunk(filename);
+
+    BakedChunkHeader header{};
+    std::vector<BakedEntity> entities;
+    if (!readBakedChunk(path, header, entities)) {
+        // No baked data for this chunk — not an error, just nothing to load.
+        return spawned;
+    }
+
+    spawned.reserve(entities.size());
+    for (const auto& be : entities) {
+        std::string alias = BakedPrefab::toAlias(be.prefabId);
+        if (alias.empty()) continue;
+
+        auto entity = spawnSceneBodyFromCfg(
+            registry, physics, physBodies,
+            alias, be.x, be.y, be.z, be.rotationY, be.scale);
+        if (entity != entt::null) {
+            spawned.push_back(entity);
+        }
+    }
+
+    if (!spawned.empty()) {
+        std::cout << "[Server] Loaded " << spawned.size()
+                  << " baked entities for chunk [" << gridX << ", " << gridZ << "]\n";
+    }
+    return spawned;
+}
+
+// ---------------------------------------------------------------------------
 // Headless scene loader — Step 2 of Phase 3 Physics.
 //
 // Parses scene.json WITHOUT touching OpenGL.  Only the "physics_bodies",
@@ -339,16 +481,6 @@ static void loadHeadlessScene(entt::registry& registry,
     }
 
     // ---- Parse physics_bodies by alias ------------------------------------
-    struct PhysCfg {
-        std::string   type        = "static";  // "static" | "dynamic"
-        std::string   shape       = "box";     // "box" | "sphere" | "capsule"
-        glm::vec3     halfExtents = glm::vec3(0.5f);
-        float         mass        = 1.0f;
-        float         friction    = 0.5f;
-        float         restitution = 0.3f;
-        float         radius      = 0.5f;
-        float         height      = 1.8f;
-    };
     std::unordered_map<std::string, PhysCfg> physBodies;
 
     if (root.contains("physics_bodies") && root["physics_bodies"].is_array()) {
@@ -634,9 +766,34 @@ int main() {
     // Headless Scene — spawn static Bullet colliders for trees, stalls, lamps.
     // Mirrors the client's scene.json parsing without any OpenGL dependency.
     // -------------------------------------------------------------------------
+    // Parse physics body configs from scene.json (reused for baked chunk loading).
+    std::unordered_map<std::string, PhysCfg> physBodiesCfg;
     {
         std::string scenePath = FileSystem::Scene("scene.json");
+        physBodiesCfg = parsePhysBodies(scenePath);
         loadHeadlessScene(registry, physicsSystem, terrainMgr, scenePath);
+    }
+
+    // -------------------------------------------------------------------------
+    // GEA Step 5.1 — Baked Chunk Entity Tracking
+    // Maps grid (x,z) → list of ECS entities spawned from baked .dat files.
+    // When a chunk is unloaded, these entities are destroyed.
+    // -------------------------------------------------------------------------
+    struct ChunkPairHash {
+        std::size_t operator()(const std::pair<int,int>& p) const {
+            return std::hash<int>()(p.first) ^ (std::hash<int>()(p.second) << 16);
+        }
+    };
+    std::unordered_map<std::pair<int,int>, std::vector<entt::entity>, ChunkPairHash>
+        bakedChunkEntities;
+
+    // Load baked chunk entities for all initially loaded terrain tiles.
+    for (const auto& [cell, idx] : terrainMgr.loadedCells) {
+        auto spawned = loadBakedChunkEntities(
+            registry, physicsSystem, physBodiesCfg, cell.first, cell.second);
+        if (!spawned.empty()) {
+            bakedChunkEntities[cell] = std::move(spawned);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -1037,11 +1194,43 @@ int main() {
                                           << cell.first << ", " << cell.second << "]\n";
                             }
                         }
+
+                        // GEA Step 5.1 — Load baked entities for this chunk.
+                        if (bakedChunkEntities.find(cell) == bakedChunkEntities.end()) {
+                            auto spawned = loadBakedChunkEntities(
+                                registry, physicsSystem, physBodiesCfg,
+                                cell.first, cell.second);
+                            if (!spawned.empty()) {
+                                // Register baked entities in the spatial grid.
+                                for (auto entity : spawned) {
+                                    if (registry.valid(entity)) {
+                                        auto& tc = registry.get<TransformComponent>(entity);
+                                        spatialSystem.registerEntity(entity, tc.position, /*isStatic=*/true);
+                                    }
+                                }
+                                bakedChunkEntities[cell] = std::move(spawned);
+                            }
+                        }
                     }
 
                     // Remove Bullet colliders for unloaded tiles.
                     for (auto& cell : streamResult.unloaded) {
                         physicsSystem.removeHeadlessTerrainCollider(cell.first, cell.second);
+
+                        // GEA Step 5.1 — Destroy baked entities for this chunk.
+                        auto bit = bakedChunkEntities.find(cell);
+                        if (bit != bakedChunkEntities.end()) {
+                            for (auto entity : bit->second) {
+                                if (registry.valid(entity)) {
+                                    spatialSystem.unregisterEntity(entity);
+                                    registry.destroy(entity);
+                                }
+                            }
+                            std::cout << "[Server] Unloaded " << bit->second.size()
+                                      << " baked entities for chunk ["
+                                      << cell.first << ", " << cell.second << "]\n";
+                            bakedChunkEntities.erase(bit);
+                        }
                     }
                 }
             }
