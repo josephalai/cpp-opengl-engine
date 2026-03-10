@@ -118,6 +118,9 @@ inline bool writeBakedChunk(const std::string& path,
     return file.good();
 }
 
+/// Maximum entities per chunk — prevents OOM from malformed files.
+static constexpr uint32_t kMaxEntitiesPerChunk = 1000000;
+
 /// Read a chunk's baked data from a binary file.
 /// Returns true on success, false if the file doesn't exist or is malformed.
 inline bool readBakedChunk(const std::string& path,
@@ -137,6 +140,14 @@ inline bool readBakedChunk(const std::string& path,
     if (outHeader.version != kBakedChunkVersion) {
         std::cerr << "[BakedChunk] ERROR: Unsupported version "
                   << outHeader.version << " in " << path << "\n";
+        return false;
+    }
+
+    // Validate entity count to prevent OOM from malformed files.
+    if (outHeader.entityCount > kMaxEntitiesPerChunk) {
+        std::cerr << "[BakedChunk] ERROR: entityCount " << outHeader.entityCount
+                  << " exceeds maximum " << kMaxEntitiesPerChunk
+                  << " in " << path << "\n";
         return false;
     }
 
