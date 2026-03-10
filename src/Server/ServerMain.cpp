@@ -959,6 +959,29 @@ int main() {
                 }
 
                 if (maxDepth > 0) {
+                    // --- NEW FIX: STRETCH SHORT QUEUES ---
+                    // If a player sends multiple packets, maxDepth > 1. NPCs only ever 
+                    // generate 1 packet. We must divide the NPC's packet evenly across 
+                    // the maxDepth sub-steps, otherwise it sprints in Step 0 and stops in Step 1.
+                    for (auto entity : inputView) {
+                        auto& queue = inputView.get<InputQueueComponent>(entity).inputs;
+                        int qs = static_cast<int>(queue.size());
+                        if (qs > 0 && qs < maxDepth) {
+                            int deficit = maxDepth - qs;
+                            int parts = 1 + deficit;
+                            
+                            // Divide the deltaTime of the last input equally
+                            float splitDt = queue.back().deltaTime / static_cast<float>(parts);
+                            queue.back().deltaTime = splitDt;
+                            
+                            // Duplicate the scaled-down input to fill the remaining steps
+                            Network::PlayerInputPacket tail = queue.back();
+                            for (int i = 0; i < deficit; ++i) {
+                                queue.push_back(tail);
+                            }
+                        }
+                    }
+                    
                     float subDt = cfg.server.tickInterval / static_cast<float>(maxDepth);
 
                     for (int step = 0; step < maxDepth; ++step) {

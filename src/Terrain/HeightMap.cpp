@@ -11,6 +11,9 @@ const float Heightmap::MAX_COLOR_VALUE = 256 * 256 * 256;
 Heightmap::Heightmap(const std::string &fileName) {
     this->fileName = fileName;
     imageInfo = ImageInfo{.filename = fileName};
+    if (fileName.empty()) {
+        return; 
+    }
     calculateMapFromImage();
     if (heightData.empty()) {
         return;

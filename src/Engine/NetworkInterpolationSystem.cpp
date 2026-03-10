@@ -23,6 +23,14 @@ void NetworkInterpolationSystem::update(float deltaTime) {
         // Nothing to do until we have received at least one snapshot.
         if (nsd.buffer.empty()) continue;
 
+        // --- NEW: CLOCK SEEDING ---
+        // If this is the first time we are seeing this entity, sync its internal
+        // render clock to the server's timestamp and enforce a 150ms playout delay.
+        if (nsd.renderTime == 0.0f) {
+            nsd.renderTime = nsd.buffer.front().timestamp;
+            nsd.interpolationDelay = 0.15f; // 150ms buffer for a 10Hz server
+        }
+
         // Advance the playback clock at real-time speed.
         nsd.renderTime += deltaTime;
 

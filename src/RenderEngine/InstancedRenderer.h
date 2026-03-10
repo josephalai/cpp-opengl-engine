@@ -1,4 +1,5 @@
 // src/RenderEngine/InstancedRenderer.h
+#define GLM_ENABLE_EXPERIMENTAL
 // Renders many identical objects with a single glDrawElementsInstanced call.
 
 #ifndef ENGINE_INSTANCEDRENDERER_H
