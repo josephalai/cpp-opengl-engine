@@ -33,10 +33,21 @@ public:
     /// @param worldMinX, worldMinZ, worldMaxX, worldMaxZ  Walkable area bounds.
     void build(float worldMinX, float worldMinZ,
                float worldMaxX, float worldMaxZ) {
+        if (worldMaxX <= worldMinX || worldMaxZ <= worldMinZ || gridRes_ <= 0.0f) {
+            built_ = false;
+            return;
+        }
         minX_ = worldMinX;
         minZ_ = worldMinZ;
-        gridW_ = static_cast<int>(std::ceil((worldMaxX - worldMinX) / gridRes_));
-        gridH_ = static_cast<int>(std::ceil((worldMaxZ - worldMinZ) / gridRes_));
+        float rawW = (worldMaxX - worldMinX) / gridRes_;
+        float rawH = (worldMaxZ - worldMinZ) / gridRes_;
+        // Cap grid dimensions to prevent unbounded memory allocation.
+        if (rawW > 1e6f || rawH > 1e6f) {
+            built_ = false;
+            return;
+        }
+        gridW_ = std::max(1, static_cast<int>(std::ceil(rawW)));
+        gridH_ = std::max(1, static_cast<int>(std::ceil(rawH)));
         blocked_.clear();
         built_ = true;
     }
@@ -191,8 +202,8 @@ private:
     int worldToCellZ(float z) const {
         return static_cast<int>(std::floor((z - minZ_) / gridRes_));
     }
-    int clampX(int x) const { return std::max(0, std::min(x, gridW_ - 1)); }
-    int clampZ(int z) const { return std::max(0, std::min(z, gridH_ - 1)); }
+    int clampX(int x) const { return gridW_ <= 0 ? 0 : std::max(0, std::min(x, gridW_ - 1)); }
+    int clampZ(int z) const { return gridH_ <= 0 ? 0 : std::max(0, std::min(z, gridH_ - 1)); }
 
     int64_t cellKey(int x, int z) const {
         return (static_cast<int64_t>(x) << 32) | static_cast<int64_t>(static_cast<uint32_t>(z));
