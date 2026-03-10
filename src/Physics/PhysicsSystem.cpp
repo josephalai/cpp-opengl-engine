@@ -503,8 +503,8 @@ void PhysicsSystem::addHeadlessTerrainCollider(
     groundBodies_.push_back(body);
 
     // Track for dynamic removal by grid coordinates.
-    int gx = static_cast<int>(std::round(originX / terrainSize));
-    int gz = static_cast<int>(std::round(originZ / terrainSize));
+    int gx = static_cast<int>(std::floor(originX / terrainSize));
+    int gz = static_cast<int>(std::floor(originZ / terrainSize));
     TerrainColliderRecord rec;
     rec.body        = body;
     rec.shape       = shape;

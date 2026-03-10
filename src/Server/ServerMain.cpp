@@ -240,7 +240,14 @@ struct HeadlessTerrainManager {
         for (auto& cell : toRemove) {
             int idx = loadedCells[cell];
             if (idx >= 0 && idx < static_cast<int>(tiles.size())) {
-                tiles[idx].valid = false; // mark invalid but don't erase (index stability)
+                // Mark invalid but don't erase from the vector — erasing would
+                // invalidate all indices stored in loadedCells.  The height data
+                // is freed (valid=false clears no vectors), so the only overhead
+                // is the HeadlessTerrain struct shell.  For a typical play
+                // session the tile count stays bounded by the exploration area.
+                tiles[idx].valid = false;
+                tiles[idx].heights.clear();   // free the bulk of the memory
+                tiles[idx].heights.shrink_to_fit();
             }
             loadedCells.erase(cell);
             result.unloaded.push_back(cell);
@@ -1002,19 +1009,25 @@ int main() {
             }
 
             // ----- Phase 4: Server-Side Dynamic Terrain Streaming -----
-            // For each connected player, check their position and dynamically
-            // load/unload terrain tiles + Bullet heightfield colliders so the
-            // physics world always extends beyond the player's reach.
+            // Compute a representative position from all active entities (players
+            // + NPCs), then run a single updateDynamic() pass per tick.  This
+            // avoids redundant load/unload operations when multiple entities
+            // cluster in the same area.
             {
                 auto pView = registry.view<TransformComponent, NetworkIdComponent>();
+                glm::vec3 centroid(0.0f);
+                int entityCount = 0;
                 for (auto entity : pView) {
-                    auto& tc  = pView.get<TransformComponent>(entity);
-                    auto streamResult = terrainMgr.updateDynamic(tc.position, cfg.physics.terrainSize);
+                    centroid += pView.get<TransformComponent>(entity).position;
+                    ++entityCount;
+                }
+                if (entityCount > 0) {
+                    centroid /= static_cast<float>(entityCount);
+                    auto streamResult = terrainMgr.updateDynamic(centroid, cfg.physics.terrainSize);
 
                     // Add Bullet colliders for newly loaded tiles.
                     for (auto& cell : streamResult.loaded) {
-                        auto key = cell;
-                        auto cit = terrainMgr.loadedCells.find(key);
+                        auto cit = terrainMgr.loadedCells.find(cell);
                         if (cit != terrainMgr.loadedCells.end()) {
                             auto& tile = terrainMgr.tiles[cit->second];
                             if (tile.valid) {

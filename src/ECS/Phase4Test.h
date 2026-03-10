@@ -367,6 +367,10 @@ private:
 
     /// Phase 4 — Test PhysicsSystem terrain collider add/remove.
     static void testPhysicsTerrainColliderRemoval() {
+        // Matches Terrain::kSize — can't reference directly in headless builds
+        // because Terrain.h pulls in GL headers.
+        static constexpr float kTerrainSize = 800.0f;
+
         PhysicsSystem physics;
         entt::registry reg;
         physics.setRegistry(reg);
@@ -378,8 +382,8 @@ private:
         heights[2][2] = 3.0f;
 
         // Add two terrain colliders at different grid positions.
-        physics.addHeadlessTerrainCollider(heights, 800.0f, 0.0f, 0.0f);     // grid (0,0)
-        physics.addHeadlessTerrainCollider(heights, 800.0f, 800.0f, 0.0f);   // grid (1,0)
+        physics.addHeadlessTerrainCollider(heights, kTerrainSize, 0.0f, 0.0f);                // grid (0,0)
+        physics.addHeadlessTerrainCollider(heights, kTerrainSize, kTerrainSize, 0.0f);         // grid (1,0)
 
         // The Bullet world should have rigid bodies.
         assert(physics.getWorld()->getNumCollisionObjects() >= 2);
@@ -402,6 +406,8 @@ private:
     /// logic correctly derives per-tile names.
     /// Only available on client builds (Terrain.h requires GL headers).
     static void testMultiTileFilenames() {
+        // Matches Terrain::kSize — can't reference directly in headless builds.
+        static constexpr float kTerrainSize = 800.0f;
 #ifndef HEADLESS_SERVER
         // parseCPU should try "heightMap_X_Z" first, then fall back to base.
         // Since we may not have actual files in CI, we just verify the method
@@ -411,11 +417,12 @@ private:
         assert(!td.valid);
         assert(td.gridX == 99);
         assert(td.gridZ == 99);
-        assert(td.originX == 99 * 800.0f);
-        assert(td.originZ == 99 * 800.0f);
+        assert(td.originX == 99 * kTerrainSize);
+        assert(td.originZ == 99 * kTerrainSize);
 
         std::cout << "[Phase4] Multi-tile filename tests passed.\n";
 #else
+        (void)kTerrainSize;
         std::cout << "[Phase4] Multi-tile filename tests skipped (headless build).\n";
 #endif
     }
