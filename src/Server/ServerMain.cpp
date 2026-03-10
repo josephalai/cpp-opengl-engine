@@ -140,30 +140,135 @@ struct HeadlessTerrain {
 struct HeadlessTerrainManager {
     std::vector<HeadlessTerrain> tiles;
 
+    /// Base heightmap file path (without grid suffixes).
+    std::string baseHeightmapPath;
+
+    /// Streaming radii for dynamic server-side chunk loading.
+    int loadRadius   = 1;   ///< load tiles within this Chebyshev distance
+    int unloadRadius = 3;   ///< unload tiles beyond this distance
+
+    /// Track which grid cells are currently loaded.
+    struct PairHash {
+        std::size_t operator()(const std::pair<int,int>& p) const {
+            return std::hash<int>()(p.first) ^ (std::hash<int>()(p.second) << 16);
+        }
+    };
+    std::unordered_map<std::pair<int,int>, int, PairHash> loadedCells; ///< grid → tiles index
+
     void loadTile(const std::string& heightmapPath, int gx, int gz) {
+        auto key = std::make_pair(gx, gz);
+        if (loadedCells.count(key)) return; // already loaded
+
         tiles.emplace_back();
         tiles.back().load(heightmapPath, gx, gz);
         if (!tiles.back().valid) {
             std::cerr << "[Server] WARNING: Skipping terrain tile (" << gx << ", " << gz
                       << ") — heightmap could not be loaded from: " << heightmapPath << "\n";
             tiles.pop_back();
+        } else {
+            loadedCells[key] = static_cast<int>(tiles.size()) - 1;
         }
     }
 
+    /// Dynamically load/unload terrain tiles around the player position.
+    /// Returns lists of newly loaded and unloaded grid cells for Bullet
+    /// collider management.
+    struct StreamResult {
+        std::vector<std::pair<int,int>> loaded;     ///< newly loaded cells
+        std::vector<std::pair<int,int>> unloaded;   ///< newly unloaded cells
+    };
+    StreamResult updateDynamic(const glm::vec3& playerPos, float terrainSize) {
+        StreamResult result;
+        int px = static_cast<int>(std::floor(playerPos.x / terrainSize));
+        int pz = static_cast<int>(std::floor(playerPos.z / terrainSize));
+
+        // Load tiles within loadRadius.
+        for (int dx = -loadRadius; dx <= loadRadius; ++dx) {
+            for (int dz = -loadRadius; dz <= loadRadius; ++dz) {
+                int cx = px + dx;
+                int cz = pz + dz;
+                auto key = std::make_pair(cx, cz);
+                if (loadedCells.count(key)) continue;
+
+                // Build per-tile filename: baseName_X_Z.png
+                // If the per-tile file doesn't exist, fall back to the base file.
+                std::string tilePath = baseHeightmapPath;
+                {
+                    // Extract directory and basename from baseHeightmapPath.
+                    // baseHeightmapPath is e.g. "/path/to/heightMap.png"
+                    std::string dir, base, ext;
+                    auto lastSlash = tilePath.rfind('/');
+                    if (lastSlash != std::string::npos) {
+                        dir = tilePath.substr(0, lastSlash + 1);
+                        base = tilePath.substr(lastSlash + 1);
+                    } else {
+                        base = tilePath;
+                    }
+                    auto dotPos = base.rfind('.');
+                    if (dotPos != std::string::npos) {
+                        ext = base.substr(dotPos);
+                        base = base.substr(0, dotPos);
+                    }
+                    std::string perTile = dir + base + "_" + std::to_string(cx) + "_" + std::to_string(cz) + ext;
+                    // Check if per-tile file exists.
+                    std::ifstream probe(perTile);
+                    if (probe.is_open()) {
+                        tilePath = perTile;
+                        probe.close();
+                    }
+                    // Otherwise keep the original base path as fallback.
+                }
+
+                loadTile(tilePath, cx, cz);
+                if (loadedCells.count(key)) {
+                    result.loaded.push_back(key);
+                    std::cout << "[Server] LOADING Chunk [" << cx << ", " << cz << "]\n";
+                }
+            }
+        }
+
+        // Unload tiles beyond unloadRadius.
+        std::vector<std::pair<int,int>> toRemove;
+        for (auto& [cell, idx] : loadedCells) {
+            int distX = std::abs(cell.first  - px);
+            int distZ = std::abs(cell.second - pz);
+            int chebyshev = std::max(distX, distZ);
+            if (chebyshev > unloadRadius) {
+                toRemove.push_back(cell);
+            }
+        }
+        for (auto& cell : toRemove) {
+            int idx = loadedCells[cell];
+            if (idx >= 0 && idx < static_cast<int>(tiles.size())) {
+                tiles[idx].valid = false; // mark invalid but don't erase (index stability)
+            }
+            loadedCells.erase(cell);
+            result.unloaded.push_back(cell);
+            std::cout << "[Server] UNLOADING Chunk [" << cell.first << ", " << cell.second << "]\n";
+        }
+
+        return result;
+    }
+
     bool isAnyValid() const {
-        return !tiles.empty();
+        for (const auto& t : tiles) if (t.valid) return true;
+        return false;
     }
 
     float getHeight(float worldX, float worldZ) const {
         for (const auto& tile : tiles) {
+            if (!tile.valid) continue;
             // Check if the world position falls within this tile's footprint.
             if (worldX >= tile.originX && worldX < tile.originX + tile.size &&
                 worldZ >= tile.originZ && worldZ < tile.originZ + tile.size) {
                 return tile.getHeight(worldX, worldZ);
             }
         }
-        // Fall back to the first tile's nearest-edge value, or 0 if no tiles loaded.
-        return tiles.empty() ? 0.0f : tiles[0].getHeight(worldX, worldZ);
+        // Fall back to the first valid tile's nearest-edge value, or 0 if no tiles loaded.
+        for (const auto& tile : tiles) {
+            if (tile.valid) return tile.getHeight(worldX, worldZ);
+        }
+        return 0.0f;
     }
 };
 
@@ -493,6 +598,9 @@ int main() {
         if (!terrainMgr.isAnyValid()) {
             terrainMgr.loadTile(hmPath, 0, -1);
         }
+
+        // Store the base heightmap path for dynamic streaming.
+        terrainMgr.baseHeightmapPath = hmPath;
     }
 
     // -------------------------------------------------------------------------
@@ -890,6 +998,38 @@ int main() {
                 if (eit != networkIdToEntity.end()) {
                     auto& queue = registry.get<InputQueueComponent>(eit->second);
                     queue.inputs.push_back(inp);
+                }
+            }
+
+            // ----- Phase 4: Server-Side Dynamic Terrain Streaming -----
+            // For each connected player, check their position and dynamically
+            // load/unload terrain tiles + Bullet heightfield colliders so the
+            // physics world always extends beyond the player's reach.
+            {
+                auto pView = registry.view<TransformComponent, NetworkIdComponent>();
+                for (auto entity : pView) {
+                    auto& tc  = pView.get<TransformComponent>(entity);
+                    auto streamResult = terrainMgr.updateDynamic(tc.position, cfg.physics.terrainSize);
+
+                    // Add Bullet colliders for newly loaded tiles.
+                    for (auto& cell : streamResult.loaded) {
+                        auto key = cell;
+                        auto cit = terrainMgr.loadedCells.find(key);
+                        if (cit != terrainMgr.loadedCells.end()) {
+                            auto& tile = terrainMgr.tiles[cit->second];
+                            if (tile.valid) {
+                                physicsSystem.addHeadlessTerrainCollider(
+                                    tile.heights, tile.size, tile.originX, tile.originZ);
+                                std::cout << "[Server] Added Bullet collider for chunk ["
+                                          << cell.first << ", " << cell.second << "]\n";
+                            }
+                        }
+                    }
+
+                    // Remove Bullet colliders for unloaded tiles.
+                    for (auto& cell : streamResult.unloaded) {
+                        physicsSystem.removeHeadlessTerrainCollider(cell.first, cell.second);
+                    }
                 }
             }
 

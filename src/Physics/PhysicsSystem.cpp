@@ -16,6 +16,7 @@
 #include <BulletCollision/CollisionShapes/btHeightfieldTerrainShape.h>
 
 #include <glm/gtc/quaternion.hpp>
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -454,6 +455,7 @@ void PhysicsSystem::addHeadlessTerrainCollider(
     if (vertexCount < 2) return;
 
     terrainHeightBuffers_.emplace_back(vertexCount * vertexCount);
+    int bufIdx = static_cast<int>(terrainHeightBuffers_.size()) - 1;
     auto& buf = terrainHeightBuffers_.back();
     // NOTE: btHeightfieldTerrainShape holds a raw pointer into buf.data() and
     // does NOT copy the data.  The buffer must remain alive for the lifetime of
@@ -499,6 +501,48 @@ void PhysicsSystem::addHeadlessTerrainCollider(
     auto* body = new btRigidBody(ci);
     dynamicsWorld_->addRigidBody(body);
     groundBodies_.push_back(body);
+
+    // Track for dynamic removal by grid coordinates.
+    int gx = static_cast<int>(std::round(originX / terrainSize));
+    int gz = static_cast<int>(std::round(originZ / terrainSize));
+    TerrainColliderRecord rec;
+    rec.body        = body;
+    rec.shape       = shape;
+    rec.motion      = motionState;
+    rec.bufferIndex = bufIdx;
+    terrainColliders_[terrainGridKey(gx, gz)] = rec;
+}
+
+void PhysicsSystem::removeHeadlessTerrainCollider(int gridX, int gridZ) {
+    if (!dynamicsWorld_) return;
+
+    int64_t key = terrainGridKey(gridX, gridZ);
+    auto it = terrainColliders_.find(key);
+    if (it == terrainColliders_.end()) return;
+
+    auto& rec = it->second;
+
+    // Remove from Bullet world.
+    dynamicsWorld_->removeRigidBody(rec.body);
+
+    // Remove from groundBodies_ vector.
+    auto bit = std::find(groundBodies_.begin(), groundBodies_.end(), rec.body);
+    if (bit != groundBodies_.end()) groundBodies_.erase(bit);
+
+    // Remove from groundShapes_ vector.
+    auto sit = std::find(groundShapes_.begin(), groundShapes_.end(), rec.shape);
+    if (sit != groundShapes_.end()) groundShapes_.erase(sit);
+
+    // Free Bullet objects.
+    delete rec.body;
+    delete rec.motion;
+    delete rec.shape;
+
+    // Note: we intentionally do NOT erase the height buffer from
+    // terrainHeightBuffers_ because it would invalidate indices of other
+    // records.  The buffer memory is reclaimed when PhysicsSystem shuts down.
+
+    terrainColliders_.erase(it);
 }
 
 // ---------------------------------------------------------------------------

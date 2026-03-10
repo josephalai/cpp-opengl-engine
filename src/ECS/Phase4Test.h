@@ -27,6 +27,12 @@
 #include "../Navigation/NavMeshManager.h"
 #include "../Terrain/TerrainData.h"
 #include "../Terrain/TerrainLOD.h"
+#include "../Physics/PhysicsSystem.h"
+
+// Terrain.h pulls in OpenGL headers, so only include on client builds.
+#ifndef HEADLESS_SERVER
+#include "../Terrain/Terrain.h"
+#endif
 
 class Phase4Test {
 public:
@@ -43,6 +49,8 @@ public:
         testTerrainLOD();
         testTerrainDataStruct();
         testGLUploadQueueDrain();
+        testPhysicsTerrainColliderRemoval();
+        testMultiTileFilenames();
 
         std::cout << "[Phase4] All Phase 4 tests passed.\n";
     }
@@ -355,6 +363,61 @@ private:
         assert(counter == 1111);
 
         std::cout << "[Phase4] GLUploadQueue drain tests passed.\n";
+    }
+
+    /// Phase 4 — Test PhysicsSystem terrain collider add/remove.
+    static void testPhysicsTerrainColliderRemoval() {
+        PhysicsSystem physics;
+        entt::registry reg;
+        physics.setRegistry(reg);
+        physics.init();
+
+        // Create a small 4×4 height grid.
+        std::vector<std::vector<float>> heights(4, std::vector<float>(4, 0.0f));
+        heights[1][1] = 5.0f;
+        heights[2][2] = 3.0f;
+
+        // Add two terrain colliders at different grid positions.
+        physics.addHeadlessTerrainCollider(heights, 800.0f, 0.0f, 0.0f);     // grid (0,0)
+        physics.addHeadlessTerrainCollider(heights, 800.0f, 800.0f, 0.0f);   // grid (1,0)
+
+        // The Bullet world should have rigid bodies.
+        assert(physics.getWorld()->getNumCollisionObjects() >= 2);
+
+        // Remove one terrain collider.
+        int beforeCount = physics.getWorld()->getNumCollisionObjects();
+        physics.removeHeadlessTerrainCollider(0, 0);
+        int afterCount = physics.getWorld()->getNumCollisionObjects();
+        assert(afterCount == beforeCount - 1);
+
+        // Removing a non-existent collider should be a no-op.
+        physics.removeHeadlessTerrainCollider(99, 99);
+        assert(physics.getWorld()->getNumCollisionObjects() == afterCount);
+
+        physics.shutdown();
+        std::cout << "[Phase4] Physics terrain collider removal tests passed.\n";
+    }
+
+    /// Phase 4 Step 3 — Test that Terrain::parseCPU multi-tile filename
+    /// logic correctly derives per-tile names.
+    /// Only available on client builds (Terrain.h requires GL headers).
+    static void testMultiTileFilenames() {
+#ifndef HEADLESS_SERVER
+        // parseCPU should try "heightMap_X_Z" first, then fall back to base.
+        // Since we may not have actual files in CI, we just verify the method
+        // runs without crashing and returns a TerrainData with valid=false
+        // when no heightmap file exists.
+        TerrainData td = Terrain::parseCPU(99, 99, "nonexistent_heightmap");
+        assert(!td.valid);
+        assert(td.gridX == 99);
+        assert(td.gridZ == 99);
+        assert(td.originX == 99 * 800.0f);
+        assert(td.originZ == 99 * 800.0f);
+
+        std::cout << "[Phase4] Multi-tile filename tests passed.\n";
+#else
+        std::cout << "[Phase4] Multi-tile filename tests skipped (headless build).\n";
+#endif
     }
 };
 
