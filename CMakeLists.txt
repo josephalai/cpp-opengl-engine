@@ -105,7 +105,6 @@ file(GLOB_RECURSE COMMON_SOURCES
     "${CMAKE_SOURCE_DIR}/src/ECS/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Physics/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Toolbox/*.cpp"
-    "${CMAKE_SOURCE_DIR}/src/World/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Network/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Util/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Collision/*.cpp"

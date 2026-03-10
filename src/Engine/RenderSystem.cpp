@@ -5,6 +5,9 @@
 #include "../RenderEngine/FrameBuffers.h"
 #include "../RenderEngine/InstancedModel.h"
 #include "../ECS/Components/AssimpModelComponent.h"
+#include "../ECS/Components/LODComponent.h"
+#include "../Entities/Camera.h"
+#include <cmath>
 
 RenderSystem::RenderSystem(MasterRenderer*            renderer,
                             FrameBuffers*              reflectFbo,
@@ -36,17 +39,56 @@ void RenderSystem::update(float /*deltaTime*/) {
     }
 
     // Collect Assimp model components from the registry.
+    // Phase 4 Step 4.3 — Apply LOD selection based on camera distance.
+    // Entities with a LODComponent get their mesh pointer swapped to the
+    // appropriate LOD level's mesh.
     std::vector<AssimpModelComponent> allScenes;
     auto assimpView = registry_.view<AssimpModelComponent>();
-    // allScenes.reserve(assimpView.size_hint());
     for (auto e : assimpView) {
-        allScenes.push_back(assimpView.get<AssimpModelComponent>(e));
+        auto comp = assimpView.get<AssimpModelComponent>(e);
+        if (camera_) {
+            auto* lod = registry_.try_get<LODComponent>(e);
+            if (lod) {
+                float dist = glm::length(camera_->getPosition() - comp.position);
+                if (dist < lod->lodDistance0) {
+                    lod->currentLOD = 0;
+                    // mesh stays as LOD0 (default)
+                } else if (dist < lod->lodDistance1) {
+                    lod->currentLOD = 1;
+                    if (comp.meshLOD1) comp.mesh = comp.meshLOD1;
+                } else {
+                    lod->currentLOD = 2;
+                    if (comp.meshLOD2) comp.mesh = comp.meshLOD2;
+                }
+            }
+        }
+        allScenes.push_back(comp);
+    }
+
+    // Phase 4 Step 4.1 — Pre-filter entities by SpatialGrid cell visibility.
+    // Group entities by their spatial cell, test the cell AABB against the
+    // frustum, and skip all entities in cells that are entirely off-screen.
+    std::vector<Entity*> cellFilteredEntities;
+    if (camera_) {
+        static constexpr float kCellSize = 50.0f; // matches SpatialGrid default
+        cellFilteredEntities.reserve(entities_.size());
+        for (Entity* ent : entities_) {
+            if (!ent) continue;
+            const glm::vec3& pos = ent->getPosition();
+            int cx = static_cast<int>(std::floor(pos.x / kCellSize));
+            int cz = static_cast<int>(std::floor(pos.z / kCellSize));
+            if (culler_.isCellVisible(cx, cz, kCellSize)) {
+                cellFilteredEntities.push_back(ent);
+            }
+        }
+    } else {
+        cellFilteredEntities = entities_;
     }
 
     // Cull entities, assimp scenes, and terrain tiles to only visible subsets.
-    auto visibleEntities  = camera_ ? culler_.cull(entities_)         : entities_;
-    auto visibleScenes    = camera_ ? culler_.cull(allScenes)         : allScenes;
-    auto visibleTerrains  = camera_ ? culler_.cullTerrains(terrains_) : terrains_;
+    auto visibleEntities  = camera_ ? culler_.cull(cellFilteredEntities) : cellFilteredEntities;
+    auto visibleScenes    = camera_ ? culler_.cull(allScenes)            : allScenes;
+    auto visibleTerrains  = camera_ ? culler_.cullTerrains(terrains_)    : terrains_;
 
     // Render bounding boxes for entities that have them into the reflection FBO
     reflectFbo_->bindReflectionFrameBuffer();

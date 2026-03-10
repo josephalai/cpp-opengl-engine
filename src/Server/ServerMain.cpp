@@ -815,6 +815,26 @@ int main() {
                                 auto& playerTC = registry.get<TransformComponent>(playerEntity);
                                 auto& targetTC = registry.get<TransformComponent>(targetEntity);
 
+                                // Phase 4 Step 4.1 — Validate proximity using
+                                // SpatialGrid before allowing the action.  The
+                                // player and target must be in the same or an
+                                // adjacent cell (Chebyshev distance ≤ 1).
+                                int pCellX, pCellZ, tCellX, tCellZ;
+                                spatialGrid.worldToCell(playerTC.position.x,
+                                                        playerTC.position.z,
+                                                        pCellX, pCellZ);
+                                spatialGrid.worldToCell(targetTC.position.x,
+                                                        targetTC.position.z,
+                                                        tCellX, tCellZ);
+                                int cellDist = std::max(std::abs(pCellX - tCellX),
+                                                        std::abs(pCellZ - tCellZ));
+                                if (cellDist > 1) {
+                                    std::cout << "[Server] ActionRequest denied — "
+                                                 "target too far (cell dist "
+                                              << cellDist << ").\n";
+                                    break;
+                                }
+
                                 // Run A* to find a path from player to target.
                                 auto path = navMesh.findPath(playerTC.position, targetTC.position);
                                 if (!path.empty()) {

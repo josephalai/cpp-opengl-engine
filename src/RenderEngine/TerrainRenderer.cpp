@@ -13,15 +13,19 @@ TerrainRenderer::TerrainRenderer(TerrainShader *shader, glm::mat4 projectionMatr
     shader->stop();
 }
 
+/// Phase 4 Step 4.3.2 — Enable terrain GeoMipMapping.
+void TerrainRenderer::enableLOD(int vertexCount, float terrainSize, float patchSize) {
+    terrainLOD_.build(vertexCount, terrainSize, patchSize);
+    lodEnabled_ = terrainLOD_.isBuilt();
+}
+
 void TerrainRenderer::render(std::vector<Terrain *> *terrains) {
     for (Terrain *terrain: *terrains) {
         prepareTerrain(terrain);
         loadModelMatrix(terrain);
         glDrawElements(GL_TRIANGLES, terrain->getModel()->getVertexCount(), GL_UNSIGNED_INT, 0);
-
     }
     unbindTexturedModel();
-
 }
 
 void TerrainRenderer::prepareTerrain(Terrain *terrain) {

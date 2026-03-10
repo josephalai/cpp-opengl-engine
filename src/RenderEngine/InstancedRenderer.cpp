@@ -1,6 +1,8 @@
 // src/RenderEngine/InstancedRenderer.cpp
 
 #include "InstancedRenderer.h"
+#include <algorithm>
+#include <glm/gtx/norm.hpp>
 
 InstancedRenderer::InstancedRenderer(InstancedShader* s) : shader(s) {}
 
@@ -22,6 +24,22 @@ void InstancedRenderer::render(const std::vector<Light*>& lights,
 
     for (auto& [model, transforms] : batches) {
         if (transforms.empty()) continue;
+
+        // Phase 4 Step 4.3 — Discard instances beyond maxViewDist_.
+        if (maxViewDist_ > 0.0f && camera) {
+            glm::vec3 camPos = camera->getPosition();
+            float maxDist2 = maxViewDist_ * maxViewDist_;
+            transforms.erase(
+                std::remove_if(transforms.begin(), transforms.end(),
+                    [&](const glm::mat4& m) {
+                        glm::vec3 instancePos(m[3][0], m[3][1], m[3][2]);
+                        glm::vec3 diff = instancePos - camPos;
+                        return glm::dot(diff, diff) > maxDist2;
+                    }),
+                transforms.end());
+            if (transforms.empty()) continue;
+        }
+
         drawBatch(model, transforms);
     }
 

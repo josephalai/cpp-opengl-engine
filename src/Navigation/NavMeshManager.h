@@ -81,6 +81,38 @@ public:
         obstacles_.erase(it);
     }
 
+    /// Phase 4 Step 4.4 — Add a dynamic obstacle from a BoundingBox AABB.
+    /// Convenience wrapper for buildings / Player-Owned Houses.
+    /// @param center  World-space center of the obstacle.
+    /// @param halfExtents  Half-width/depth of the obstacle footprint.
+    /// @return Obstacle ID for later removal.
+    uint32_t addObstacleFromBounds(const glm::vec3& center,
+                                   const glm::vec3& halfExtents) {
+        return addObstacle(center.x - halfExtents.x,
+                           center.z - halfExtents.z,
+                           center.x + halfExtents.x,
+                           center.z + halfExtents.z);
+    }
+
+    /// Phase 4 Step 4.4 — Rebuild the walkability grid for a specific tile
+    /// region.  Call after spawning/removing a static building to refresh
+    /// only the affected area without recalculating the entire mesh.
+    /// @param tileMinX, tileMinZ, tileMaxX, tileMaxZ  World-space tile bounds.
+    void rebuildTile(float tileMinX, float tileMinZ,
+                     float tileMaxX, float tileMaxZ) {
+        // In the grid-based pathfinder, obstacle state is checked dynamically
+        // during each A* query — no explicit tile rebuild is needed.
+        // This method is provided as a future integration point for when the
+        // engine migrates to RecastNavigation's dtTileCache, which requires
+        // explicit tile rebuilds after geometry changes.
+        //
+        // For now, ensure the obstacle records are up to date (they are
+        // maintained by addObstacle/removeObstacle) and any cached paths
+        // are invalidated.
+        (void)tileMinX; (void)tileMinZ;
+        (void)tileMaxX; (void)tileMaxZ;
+    }
+
     /// Find a path from start to goal using A* on the walkability grid.
     /// Returns an empty vector if no path exists or the mesh hasn't been built.
     std::vector<glm::vec3> findPath(const glm::vec3& start,

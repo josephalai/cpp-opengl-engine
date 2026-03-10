@@ -34,8 +34,10 @@ public:
         testSpatialSystem();
         testPathfinding();
         testNavMesh();
+        testNavMeshDynamicObstacles();
         testLODSystem();
         testOriginShift();
+        testOriginShiftTransform();
         testTerrainLOD();
 
         std::cout << "[Phase4] All Phase 4 tests passed.\n";
@@ -244,6 +246,61 @@ private:
         assert(level == 2);  // Very far → lowest detail.
 
         std::cout << "[Phase4] TerrainLOD tests passed.\n";
+    }
+
+    /// Phase 4 Step 4.4 — Test dynamic obstacle via addObstacleFromBounds()
+    /// and rebuildTile().
+    static void testNavMeshDynamicObstacles() {
+        NavMeshManager nav(1.0f);
+        nav.build(0.0f, 0.0f, 100.0f, 100.0f);
+
+        // Path from (5,0,50) to (95,0,50) should succeed on open grid.
+        auto path = nav.findPath({5, 0, 50}, {95, 0, 50});
+        assert(!path.empty());
+
+        // Add a building via bounding box convenience method.
+        uint32_t obs = nav.addObstacleFromBounds(
+            glm::vec3(50.0f, 0.0f, 50.0f),  // center
+            glm::vec3(10.0f, 5.0f, 60.0f));  // half-extents (blocks X=40..60, Z=-10..110)
+
+        // Call rebuildTile (no-op for grid-based pathfinder, but exercises the API).
+        nav.rebuildTile(40.0f, -10.0f, 60.0f, 110.0f);
+
+        // Direct path should now be blocked.
+        auto path2 = nav.findPath({5, 0, 50}, {95, 0, 50});
+        assert(path2.empty());
+
+        // Remove obstacle — path should work again.
+        nav.removeObstacle(obs);
+        auto path3 = nav.findPath({5, 0, 50}, {95, 0, 50});
+        assert(!path3.empty());
+
+        std::cout << "[Phase4] NavMesh dynamic obstacle tests passed.\n";
+    }
+
+    /// Phase 4 Step 4.2 — Test TransformComponent double-precision accessors.
+    static void testOriginShiftTransform() {
+        TransformComponent tc;
+        tc.position = glm::vec3(100.0f, 50.0f, 200.0f);
+        glm::dvec3 origin(0.0);
+
+        // Sync to absolute
+        tc.syncToAbsolute(origin);
+        assert(std::abs(tc.absolutePosition.x - 100.0) < 0.01);
+        assert(std::abs(tc.absolutePosition.z - 200.0) < 0.01);
+
+        // Apply origin shift and sync back
+        glm::dvec3 shift(1000.0, 0.0, 2000.0);
+        tc.syncToAbsolute(shift);
+        assert(std::abs(tc.absolutePosition.x - 1100.0) < 0.01);
+        assert(std::abs(tc.absolutePosition.z - 2200.0) < 0.01);
+
+        // Sync from absolute back to float
+        tc.syncFromAbsolute(shift);
+        assert(std::abs(tc.position.x - 100.0f) < 0.01f);
+        assert(std::abs(tc.position.z - 200.0f) < 0.01f);
+
+        std::cout << "[Phase4] OriginShift TransformComponent tests passed.\n";
     }
 };
 

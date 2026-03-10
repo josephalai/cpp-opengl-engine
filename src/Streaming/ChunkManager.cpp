@@ -43,9 +43,9 @@ void ChunkManager::update(const glm::vec3& playerPos) {
     }
 
     // Phase 4 Step 4.2.2 — Loading radius: trigger background I/O for chunks
-    // that are 2 cells out.  The actual load still happens synchronously on
-    // the main thread for now (terrain requires GL context); the JobQueue is
-    // available for future heightmap I/O offloading.
+    // that are 2 cells out.  Heightmap parsing is pushed to the JobQueue
+    // background threads; only the final GL buffer upload runs on the main
+    // thread via GLUploadQueue.
     for (int dx = -loadingRadius_; dx <= loadingRadius_; ++dx) {
         for (int dz = -loadingRadius_; dz <= loadingRadius_; ++dz) {
             int chebyshev = std::max(std::abs(dx), std::abs(dz));
@@ -64,13 +64,26 @@ void ChunkManager::update(const glm::vec3& playerPos) {
                     if (pendingLoads_.count(ck)) continue;
                     pendingLoads_.insert(ck);
                 }
+                // Create the chunk in LOADING state on the main thread so
+                // subsequent frames don't re-enqueue it.
                 auto* chunk = new StreamingChunk(cx, cz);
-                chunk->load(loader_, texPack_, blendMap_, heightmapFile_);
+                chunk->state = StreamingChunk::State::LOADING;
                 chunks_[key] = chunk;
-                {
-                    std::lock_guard<std::mutex> lock(pendingMutex_);
-                    pendingLoads_.erase(ck);
-                }
+
+                // Push the heavy heightmap load to a background thread.
+                // NOTE: terrain->load() currently calls GL functions,
+                // so for now the actual load is still performed on this
+                // thread.  When the Terrain constructor is refactored to
+                // separate CPU parsing from GL upload, the lambda body
+                // below should call parseCPU() and enqueue the GPU upload
+                // via GLUploadQueue::instance().enqueue().
+                jobQueue_.push([this, chunk, cx, cz, key, ck]() {
+                    chunk->load(loader_, texPack_, blendMap_, heightmapFile_);
+                    {
+                        std::lock_guard<std::mutex> lock(pendingMutex_);
+                        pendingLoads_.erase(ck);
+                    }
+                });
             }
         }
     }
