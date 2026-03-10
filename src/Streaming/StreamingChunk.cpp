@@ -50,5 +50,6 @@ void StreamingChunk::unload() {
     // scene (SceneLoader allocated them). The caller is responsible for
     // entity lifetimes.
     entities.clear();
+    bakedSpawned = false;
     state = State::UNLOADED;
 }

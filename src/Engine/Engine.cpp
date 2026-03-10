@@ -25,6 +25,7 @@
 #include "../RenderEngine/DisplayManager.h"
 #include "../RenderEngine/ObjLoader.h"
 #include "../RenderEngine/InstancedModel.h"
+#include "../RenderEngine/InstancedModelManager.h"
 #include "../Guis/Text/FontMeshCreator/TextMeshData.h"
 #include "../Guis/Text/GUIText.h"
 #include "../Guis/GuiComponent.h"
@@ -47,6 +48,7 @@
 #include "../Toolbox/Maths.h"
 #include "../Config/ConfigManager.h"
 #include "../Config/PrefabManager.h"
+#include "../Config/EntityFactory.h"
 #include <enet/enet.h>
 #include <thread>
 #include <fstream>
@@ -92,10 +94,6 @@ void Engine::init() {
         for (auto e : viewT) { (void)e; ++countT; }
         for (auto e : viewI) { (void)e; ++countI; }
         for (auto e : viewN) { (void)e; ++countN; }
-        std::cout << "[ECS] Phase 2 Step 3 complete: "
-                  << countT << " TransformComponent, "
-                  << countI << " InputStateComponent, "
-                  << countN << " NetworkSyncData in registry.\n";
     }
 }
 
@@ -439,32 +437,12 @@ void Engine::initFramebuffersAndPickers() {
     else
         std::cout << "[Engine] No animated_character entries in scene.cfg.\n";
 
-    // Phase 2.4 — Instanced Rendering (500+ trees in one draw call)
+    // Phase 5.4 — Data-driven instanced rendering via InstancedModelManager.
+    // Scans PrefabManager for every prefab with "render_mode": "instanced"
+    // and creates an InstancedModel bucket for each.  No hardcoded model types.
     {
-        ModelData treeData = OBJLoader::loadObjModel("tree");
-        if (!treeData.getIndices().empty()) {
-            RawModel* rawTree   = loader->loadToVAO(treeData);
-            auto*     treeTex   = loader->loadTexture("tree");
-            GLuint    treeTexID = treeTex ? treeTex->getId() : 0;
-
-            instancedTreeModel = new InstancedModel(rawTree->getVaoId(),
-                                                    rawTree->getVertexCount(),
-                                                    treeTexID);
-            instancedTreeModel->setupInstanceVBO();
-
-            srand(42);
-            for (int i = 0; i < 500; ++i) {
-                float x = static_cast<float>(rand() % 800) - 400.0f;
-                float z = static_cast<float>(rand() % 800) - 400.0f;
-                float y = primaryTerrain ? primaryTerrain->getHeightOfTerrain(x, z) : 0.0f;
-                float s = 0.5f + static_cast<float>(rand() % 100) / 100.0f;
-                instancedTreeModel->addInstance(
-                    Maths::createTransformationMatrix(glm::vec3(x, y, z), glm::vec3(0.0f), s));
-            }
-            std::cout << "[Engine] Instanced tree model ready — 500 instances.\n";
-        } else {
-            std::cout << "[Engine] Could not load tree model for instancing.\n";
-        }
+        instancedModelManager = new InstancedModelManager();
+        instancedModelManager->init(loader);
     }
 }
 
@@ -488,19 +466,56 @@ void Engine::loadIPConfig() {
 Entity* Engine::onNetworkSpawn(uint32_t networkId,
                                const std::string& modelType,
                                const glm::vec3& position) {
-    // Reuse the local player's Assimp-loaded TexturedModel for remote players.
-    // OBJLoader cannot load .glb/.gltf — the player character comes from
-    // SceneLoader/Assimp, so we share the same model pointer.
+    // Phase 5.4 — Data-driven network spawning.
+    //
+    // Instead of blindly cloning the local player's model for every remote
+    // entity, we look up the prefab for the given modelType and use the
+    // prefab data to decide how to spawn the entity.
+    //
+    // The EntityFactory creates the ECS entity with TransformComponent and
+    // other data-driven components.  We still create a visual Entity* for
+    // the legacy rendering pipeline because NetworkSystem tracks Entity*
+    // pointers for transform interpolation.
+
+    // 1. Create the ECS entity from prefab data.
+    EntityFactory::spawn(registry, modelType, position, physicsSystem);
+
+    // 2. Determine whether this entity type uses an animated character model.
+    const auto& prefab = PrefabManager::get().getPrefab(modelType);
+    bool isAnimated = !prefab.is_null() && prefab.value("animated", false);
+
+    // 3. Create a visual Entity* for the legacy rendering + interpolation pipeline.
     TexturedModel* remoteModel = nullptr;
-    glm::vec3 modelMin;
-    glm::vec3 modelMax;
-    if (player && player->getModel()) {
+    glm::vec3 modelMin(-0.5f, 0.0f, -0.5f);
+    glm::vec3 modelMax( 0.5f, 2.0f,  0.5f);
+    float remoteScale = 1.0f;
+
+    if (isAnimated && player && player->getModel()) {
+        // For animated entities (remote players, NPCs), reuse the local
+        // player's TexturedModel as a proxy.  The actual visual comes from
+        // the AnimatedEntity paired below.  Match the local player's scale
+        // (usually 0) so the proxy mesh stays invisible.
         remoteModel = player->getModel();
-        // Use character-sized default bounds when reusing the player model.
-        modelMin = glm::vec3(-0.5f, 0.0f, -0.5f);
-        modelMax = glm::vec3( 0.5f, 2.0f,  0.5f);
-    } else {
-        // Last-resort OBJ fallback
+        remoteScale = player->getScale();
+    } else if (!prefab.is_null() && prefab.contains("model")) {
+        // Load model from prefab data.
+        const auto& modelBlock = prefab["model"];
+        std::string objFile = modelBlock.value("obj", "");
+        std::string texFile = modelBlock.value("texture", "");
+
+        if (!objFile.empty()) {
+            ModelData meshData = OBJLoader::loadObjModel(objFile);
+            if (!meshData.getIndices().empty()) {
+                auto* tex = new ModelTexture(texFile, PNG, Material{2.0f, 2.0f});
+                remoteModel = new TexturedModel(loader->loadToVAO(meshData), tex);
+                modelMin = meshData.getMin();
+                modelMax = meshData.getMax();
+            }
+        }
+    }
+
+    // Fallback: use a simple OBJ model.
+    if (!remoteModel) {
         ModelData fallbackData = OBJLoader::loadObjModel("Stall");
         if (fallbackData.getIndices().empty()) {
             std::cerr << "[Engine] onNetworkSpawn FAILED — no model for remote entity "
@@ -523,10 +538,6 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
     auto* bb    = new BoundingBox(rawBB, BoundingBoxIndex::genUniqueId());
     bb->setAABB(modelMin, modelMax);
 
-    // Match the local player's scale so the physics-proxy model (e.g. the
-    // invisible stall at scale=0 in scene.cfg) stays hidden on remote clients.
-    // The actual visual is provided by the AnimatedEntity created below.
-    const float remoteScale = player ? player->getScale() : 1.0f;
     auto* ent = new Entity(registry, remoteModel, bb, position, glm::vec3(0.0f), remoteScale);
 
     // Emplace the ECS NetworkSyncData so NetworkInterpolationSystem can drive it.
@@ -540,14 +551,13 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
         chunkManager->registerEntity(ent, position);
     }
 
-    // Create an AnimatedEntity so the remote player renders with the animated
-    // character mesh (same AnimatedModel as local player — safe to share since
-    // AnimatedRenderer renders entities sequentially and uploads bone matrices
-    // per-entity before each draw call).
-    if (!animatedEntities.empty() && animatedEntities[0] && animatedEntities[0]->model) {
+    // Create an AnimatedEntity for animated entity types (remote players, NPCs).
+    // Shares the local player's AnimatedModel — safe because AnimatedRenderer
+    // uploads bone matrices per-entity before each draw call.
+    if (isAnimated && !animatedEntities.empty() &&
+        animatedEntities[0] && animatedEntities[0]->model) {
         AnimatedModel* sharedModel = animatedEntities[0]->model;
 
-        // Normalize animation clip names identically to SceneLoader.
         auto normalizeClipName = [](const std::string& raw) -> std::string {
             std::string lower(raw);
             for (auto& c : lower)
@@ -566,7 +576,6 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
         for (auto& clip : sharedModel->clips) {
             remoteCtrl->addState(normalizeClipName(clip.name), &clip);
         }
-        // Start in Idle; AnimationSystem will transition via requestTransition().
         remoteCtrl->setState("Idle");
 
         auto* remoteAe         = new AnimatedEntity();
@@ -574,13 +583,9 @@ Entity* Engine::onNetworkSpawn(uint32_t networkId,
         remoteAe->controller   = remoteCtrl;
         remoteAe->position     = position;
         remoteAe->scale        = animatedEntities[0]->scale;
-        
-        // MATCH the local player's offset so they sit at the exact same height visually
-        remoteAe->modelOffset  = animatedEntities[0]->modelOffset;  
-        
+        remoteAe->modelOffset  = animatedEntities[0]->modelOffset;
         remoteAe->isLocalPlayer = false;
         remoteAe->pairedEntity  = ent;
-
         animatedEntities.push_back(remoteAe);
     }
 
@@ -669,12 +674,46 @@ void Engine::buildSystems() {
                                         primaryTerrain->getBlendMap(),
                                         terrainHeightmapFile);
 
-        // NOTE: The ChunkManager's EntitySpawnCallback is left unset on the
-        // client.  Client-side tree/entity visuals are rendered via the
-        // traditional Entity* pipeline populated by SceneLoaderJson's random
-        // entity generation.  The baked .dat system currently drives
-        // server-side physics only.  A future step will migrate the client
-        // rendering pipeline to use baked data directly.
+        // GEA Phase 5.4 — Wire the ChunkManager's spawn callback.
+        // When a chunk streams in, each baked entity is routed here:
+        //   - If the prefab has "render_mode": "instanced", push its
+        //     transform matrix into the InstancedModelManager.
+        //   - Otherwise, create a standard ECS entity via EntityFactory.
+        if (instancedModelManager) {
+            chunkManager->setEntityCallback(
+                [this](const BakedEntity& be, int cx, int cz) {
+                    // Use the well-known BakedPrefab mapping (ChunkData.h)
+                    std::string alias = BakedPrefab::toAlias(be.prefabId);
+                    if (alias.empty()) {
+                        return;
+                    }
+
+                    // Check if this alias should be instanced.
+                    if (instancedModelManager->hasAlias(alias)) {
+                        int64_t chunkKey = (static_cast<int64_t>(cx) << 32)
+                                         | static_cast<int64_t>(static_cast<uint32_t>(cz));
+
+                        glm::mat4 transform = Maths::createTransformationMatrix(
+                            glm::vec3(be.x, be.y, be.z),
+                            glm::vec3(0.0f, be.rotationY, 0.0f),
+                            be.scale);
+
+                        instancedModelManager->addInstance(alias, chunkKey, transform);
+
+                    } else {
+                        // Non-instanced baked entity — spawn as regular ECS entity
+                        glm::vec3 pos(be.x, be.y, be.z);
+                        EntityFactory::spawn(registry, alias, pos, physicsSystem);
+                    }
+                });
+
+            chunkManager->setUnloadCallback(
+                [this](int cx, int cz) {
+                    int64_t chunkKey = (static_cast<int64_t>(cx) << 32)
+                                     | static_cast<int64_t>(static_cast<uint32_t>(cz));
+                    instancedModelManager->removeChunk(chunkKey);
+                });
+        }
 
         // Register existing terrain tiles so ChunkManager tracks them.
         for (auto* t : allTerrains) {
@@ -730,7 +769,7 @@ void Engine::buildSystems() {
 
     systems.push_back(std::make_unique<RenderSystem>(
         renderer, reflectFbo, entities, allTerrains, lights,
-        registry, playerCamera, renderer->getProjectionMatrix(), instancedTreeModel));
+        registry, playerCamera, renderer->getProjectionMatrix(), instancedModelManager));
 
     systems.push_back(std::make_unique<AnimationSystem>(
         animRenderer, animatedEntities, player, lights,
@@ -775,8 +814,11 @@ void Engine::shutdown() {
     // This prevents any late event delivery from reaching freed objects.
     EventBus::instance().clear();
 
-    delete instancedTreeModel;
-    instancedTreeModel = nullptr;
+    if (instancedModelManager) {
+        instancedModelManager->cleanup();
+        delete instancedModelManager;
+        instancedModelManager = nullptr;
+    }
 
     reflectFbo->cleanUp();
     TextMaster::cleanUp();

@@ -2,6 +2,7 @@
   "id": "player",
   "model_type": "player",
   "is_npc": false,
+  "animated": true,
   "mesh": "models/player.glb",
   "physics": {
     "type": "kinematic_character",

@@ -283,62 +283,11 @@ bool SceneLoaderJson::load(
     }
 
     // -----------------------------------------------------------------------
-    // Random entities
+    // Random entities — REMOVED (GEA Phase 5.4, Step 3)
+    // Entity placement is now driven entirely by baked .dat files produced
+    // by the AssetBaker.  The client boots empty and populates the world
+    // as chunks stream in via the ChunkManager.
     // -----------------------------------------------------------------------
-    if (root.contains("random") && root["random"].is_array()) {
-        // Use an isolated Mersenne-Twister seeded from random_seed so the
-        // sequence is independent of any other rand() calls in the process.
-        // The server (ServerMain.cpp) mirrors this exactly — same seed, same
-        // mt19937 engine, same draw order — guaranteeing bit-identical placement.
-        unsigned int randomSeed = root.value("random_seed", 1u);
-        std::mt19937 rng(randomSeed);
-        std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
-        auto randF = [&]() { return dist01(rng); };
-
-        for (auto& r : root["random"]) {
-            std::string alias = r.value("alias", "");
-            StringId aliasId(alias);
-            auto it = modelMap.find(aliasId);
-            if (it == modelMap.end()) {
-                std::cerr << "[SceneLoaderJson] random references unknown alias '"
-                          << alias << "'\n";
-                continue;
-            }
-            auto& lm = it->second;
-            int   count    = r.value("count", 0);
-            float scaleMin = r.value("scaleMin", 0.75f);
-            float scaleMax = r.value("scaleMax", 1.5f);
-            bool  useAtlas = r.value("atlas", false);
-            for (int i = 0; i < count; ++i) {
-                // draw 1: x  draw 2: z  draw 3: ry  draw 4: scale  [draw 5: atlas]
-                float px  = std::floor(randF() * 1500.f - 800.f);
-                float pz  = std::floor(randF() * -800.f);
-                float pry = (randF() * 100.f - 50.f) * 180.0f;
-                float multiplier = (scaleMax > 1.0f) ? std::ceil(scaleMax) : 1.0f;
-                float sc = randF() * multiplier;
-                if (sc < scaleMin) sc = scaleMin;
-                if (sc > scaleMax) sc = scaleMax;
-
-                float py = primaryTerrain
-                    ? primaryTerrain->getHeightOfTerrain(px, pz) : 0.0f;
-                glm::vec3 pos(px, py, pz);
-                glm::vec3 rot(0.0f, pry, 0.0f);
-
-                entityAliasByIndex[aliasId].push_back(static_cast<int>(entities.size()));
-                if (useAtlas) {
-                    // draw 5: atlas index — consume one value to stay in sync
-                    int idx = static_cast<int>(randF() * 4.0f) + 1;
-                    entities.push_back(new Entity(registry, lm.model,
-                        new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
-                        idx, pos, rot, sc));
-                } else {
-                    entities.push_back(new Entity(registry, lm.model,
-                        new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
-                        pos, rot, sc));
-                }
-            }
-        }
-    }
 
     // -----------------------------------------------------------------------
     // Assimp entities

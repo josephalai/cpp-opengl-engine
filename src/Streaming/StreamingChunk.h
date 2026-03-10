@@ -24,6 +24,12 @@ public:
     Terrain*                    terrain  = nullptr;
     std::vector<Entity*>        entities;
 
+    /// GEA Step 5.4 — Tracks whether baked entity spawns have been fired
+    /// for this chunk.  Pre-registered terrain chunks (via registerTerrain)
+    /// start with this as false so that ChunkManager::update() can fire
+    /// their baked spawns on the first frame.
+    bool bakedSpawned = false;
+
     StreamingChunk() = default;
     StreamingChunk(int gx, int gz) : gridX(gx), gridZ(gz) {}
 

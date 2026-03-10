@@ -1,0 +1,6 @@
+{
+  "alias": "grass",
+  "model_type": "grass",
+  "render_mode": "instanced",
+  "model": { "obj": "grassModel", "texture": "grassTexture" }
+}

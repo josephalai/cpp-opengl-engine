@@ -46,9 +46,16 @@ void ChunkManager::update(const glm::vec3& playerPos) {
                 justLoaded = true;
             }
 
-            // GEA Step 5.1 — Spawn baked entities for newly loaded chunks.
-            if (justLoaded) {
-                fireBakedSpawns(readBakedEntities(cx, cz));
+            // GEA Step 5.1 / 5.4 — Spawn baked entities for newly loaded chunks
+            // AND for pre-registered chunks (via registerTerrain) that haven't
+            // had their baked entities spawned yet.
+            {
+                auto* chunk = chunks_[key];
+                if (chunk && chunk->state == StreamingChunk::State::LOADED
+                    && !chunk->bakedSpawned) {
+                    fireBakedSpawns(readBakedEntities(cx, cz), cx, cz);
+                    chunk->bakedSpawned = true;
+                }
             }
         }
     }
@@ -105,7 +112,8 @@ void ChunkManager::update(const glm::vec3& playerPos) {
                             // GEA Step 5.1 — Spawn baked entities on the main
                             // thread after the terrain tile is ready.
                             if (chunk->state == StreamingChunk::State::LOADED) {
-                                fireBakedSpawns(baked);
+                                fireBakedSpawns(baked, chunk->gridX, chunk->gridZ);
+                                chunk->bakedSpawned = true;
                             }
                         });
                 });
@@ -123,6 +131,10 @@ void ChunkManager::update(const glm::vec3& playerPos) {
         int distZ = std::abs(key.second - pz);
         int chebyshev = std::max(distX, distZ);
         if (chebyshev > unloadRadius_) {
+            // GEA Step 5.4 — Fire unload callback before destroying the chunk.
+            if (unloadCallback_) {
+                unloadCallback_(key.first, key.second);
+            }
             chunk->unload();
             toRemove.push_back(key);
         }
@@ -252,9 +264,13 @@ std::vector<BakedEntity> ChunkManager::readBakedEntities(int cx, int cz) {
     return entities;
 }
 
-void ChunkManager::fireBakedSpawns(const std::vector<BakedEntity>& bakedEntities) {
+void ChunkManager::fireBakedSpawns(const std::vector<BakedEntity>& bakedEntities,
+                                    int chunkX, int chunkZ) {
+    std::cout << "[ChunkManager] fireBakedSpawns chunk [" << chunkX << ", " << chunkZ
+              << "] — " << bakedEntities.size() << " entities, callback="
+              << (spawnCallback_ ? "SET" : "NULL") << "\n";
     if (!spawnCallback_) return;
     for (const auto& be : bakedEntities) {
-        spawnCallback_(be);
+        spawnCallback_(be, chunkX, chunkZ);
     }
 }

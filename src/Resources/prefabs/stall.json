@@ -1,0 +1,6 @@
+{
+  "alias": "stall",
+  "model_type": "stall",
+  "model": { "obj": "Stall", "texture": "stallTexture" },
+  "physics": { "type": "static", "shape": "box", "halfExtents": [3.0, 3.0, 3.0] }
+}
