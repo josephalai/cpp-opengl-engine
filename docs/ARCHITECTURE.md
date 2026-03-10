@@ -596,7 +596,10 @@ if (distSq > kReconcileThreshSq) {
 
 ```jsonc
 {
-  // Human-readable comment for editors
+  // NOTE: Comments shown here are for documentation only.  Standard JSON does
+  // not support comments.  The engine uses `_comment` string fields as an
+  // in-band documentation convention — the parser reads them as regular
+  // key-value pairs and ConfigManager silently ignores unrecognised keys.
   "_comment": "world_config.json — Loaded by ConfigManager on boot.
                Both client and server read this file.",
 
@@ -716,7 +719,13 @@ function WanderAI(state, dt)
         state.cameraYaw = state.cameraYaw + config.npcTurnSpeed * dt
         --                                  ^^^^^^^^^^^^^^^^^^^^^^^^
         --                                  Read from ConfigManager via the
-        --                                  global `config` table (see §3.1)
+        --                                  global `config` table (see §3.1).
+        --                                  Note: cameraYaw can grow unbounded
+        --                                  (e.g. 720°+); SharedMovement uses
+        --                                  glm::radians() which handles any
+        --                                  angle, so wrapping is not required
+        --                                  for correctness but could be added
+        --                                  for clarity in complex scripts.
         if state.timer >= 1.0 then
             state.timer = 0.0
             state.phase = 0             -- Back to walking
