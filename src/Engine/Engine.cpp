@@ -806,7 +806,8 @@ void Engine::buildSystems() {
 
     systems.push_back(std::make_unique<RenderSystem>(
         renderer, reflectFbo, entities, allTerrains, lights,
-        registry, playerCamera, renderer->getProjectionMatrix(), instancedModelManager));
+        registry, playerCamera, renderer->getProjectionMatrix(), instancedModelManager,
+        &editorState_));
 
     systems.push_back(std::make_unique<AnimationSystem>(
         animRenderer, animatedEntities, player, lights,

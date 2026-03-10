@@ -5,8 +5,11 @@
 #include "../RenderEngine/FrameBuffers.h"
 #include "../RenderEngine/InstancedModelManager.h"
 #include "../ECS/Components/AssimpModelComponent.h"
+#include "../ECS/Components/EditorPlacedComponent.h"
 #include "../ECS/Components/LODComponent.h"
+#include "../ECS/Components/TransformComponent.h"
 #include "../Entities/Camera.h"
+#include "../Toolbox/Maths.h"
 #include <cmath>
 #include <iostream>
 
@@ -18,7 +21,8 @@ RenderSystem::RenderSystem(MasterRenderer*            renderer,
                             entt::registry&            registry,
                             Camera*                    camera,
                             const glm::mat4&           projectionMatrix,
-                            InstancedModelManager*     instancedModelMgr)
+                            InstancedModelManager*     instancedModelMgr,
+                            EditorState*               editorState)
     : renderer_(renderer)
     , reflectFbo_(reflectFbo)
     , entities_(entities)
@@ -28,6 +32,7 @@ RenderSystem::RenderSystem(MasterRenderer*            renderer,
     , camera_(camera)
     , projectionMatrix_(projectionMatrix)
     , instancedModelMgr_(instancedModelMgr)
+    , editorState_(editorState)
 {}
 
 void RenderSystem::update(float /*deltaTime*/) {
@@ -101,6 +106,33 @@ void RenderSystem::update(float /*deltaTime*/) {
 
     // Instanced rendering — data-driven via InstancedModelManager (Phase 5.4)
     if (instancedModelMgr_) {
+        // Clear the temporary Editor Chunk from the previous frame so placed
+        // entities and the ghost preview don't accumulate over time.
+        instancedModelMgr_->removeChunk(-1);
+
+        // Render all Editor-Placed Entities dynamically each frame.
+        auto editorView = registry_.view<EditorPlacedComponent, TransformComponent>();
+        for (auto e : editorView) {
+            const auto& epc = editorView.get<EditorPlacedComponent>(e);
+            const auto& tc  = editorView.get<TransformComponent>(e);
+            if (instancedModelMgr_->hasAlias(epc.prefabAlias)) {
+                glm::mat4 matrix = Maths::createTransformationMatrix(
+                    tc.position, tc.rotation, tc.scale);
+                instancedModelMgr_->addInstance(epc.prefabAlias, -1, matrix);
+            }
+        }
+
+        // Render the Ghost Preview Cursor tracking the terrain intersection.
+        if (editorState_ && editorState_->isEditorMode && editorState_->hasGhostEntity) {
+            if (instancedModelMgr_->hasAlias(editorState_->selectedPrefab)) {
+                glm::mat4 ghostMatrix = Maths::createTransformationMatrix(
+                    editorState_->ghostPosition,
+                    glm::vec3(0.0f, editorState_->ghostRotationY, 0.0f),
+                    editorState_->ghostScale);
+                instancedModelMgr_->addInstance(editorState_->selectedPrefab, -1, ghostMatrix);
+            }
+        }
+
         instancedModelMgr_->submitToRenderer(renderer_);
         renderer_->renderInstanced(lights_);
     }

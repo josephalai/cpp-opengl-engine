@@ -7,6 +7,7 @@
 #define ENGINE_RENDERSYSTEM_H
 
 #include "ISystem.h"
+#include "EditorState.h"
 #include "../Culling/FrustumCuller.h"
 #include <vector>
 #include <glm/glm.hpp>
@@ -30,7 +31,8 @@ public:
                  entt::registry&           registry,
                  Camera*                   camera,
                  const glm::mat4&          projectionMatrix,
-                 InstancedModelManager*    instancedModelMgr = nullptr);
+                 InstancedModelManager*    instancedModelMgr = nullptr,
+                 EditorState*              editorState       = nullptr);
 
     void init()     override {}
     void update(float deltaTime) override;
@@ -48,6 +50,7 @@ private:
     glm::mat4              projectionMatrix_;
     FrustumCuller          culler_;
     InstancedModelManager* instancedModelMgr_;
+    EditorState*           editorState_;
 };
 
 #endif // ENGINE_RENDERSYSTEM_H
