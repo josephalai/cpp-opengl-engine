@@ -438,6 +438,34 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // --- Editor-placed entities (written by EditorSerializer::saveToJson) ---
+    if (root.contains("editor_entities") && root["editor_entities"].is_array()) {
+        int editorCount = 0;
+        for (auto& e : root["editor_entities"]) {
+            std::string alias = e.value("alias", "");
+            uint32_t prefabId = BakedPrefab::fromAlias(alias);
+
+            float x     = e.value("x",     0.0f);
+            float z     = e.value("z",     0.0f);
+            float ry    = e.value("ry",    0.0f);
+            float scale = e.value("scale", 1.0f);
+            // Y is a literal world-space value set by the terrain picker at
+            // placement time — use it directly, no terrain-sampling needed.
+            float y     = e.value("y", 0.0f);
+
+            BakedEntity be{};
+            be.prefabId  = prefabId;
+            be.x         = x;
+            be.y         = y;
+            be.z         = z;
+            be.rotationY = ry;
+            be.scale     = scale;
+            allEntities.push_back(be);
+            ++editorCount;
+        }
+        std::cout << "[Baker] Editor-placed entities: " << editorCount << "\n";
+    }
+
     // --- Baker-generated random scattering (independent of scene.json) ---
     // When the scene.json "random" block has been removed, the baker still
     // scatters entities using its own built-in configuration.  This makes the
