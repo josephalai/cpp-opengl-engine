@@ -24,7 +24,6 @@
 class Loader;
 class TerrainTexturePack;
 class TerrainTexture;
-class Entity;
 
 class ChunkManager {
 public:
@@ -54,27 +53,13 @@ public:
     /// Update which chunks are loaded based on the player's world position.
     void update(const glm::vec3& playerPosition);
 
-    /// Register an entity so it appears in the chunk that covers worldPos.
-    void registerEntity(Entity* e, const glm::vec3& worldPos);
-
-    /// Remove an entity from whichever chunk currently holds it.
-    void removeEntity(Entity* e);
-
     /// Register a pre-existing (SceneLoader-owned) terrain tile so the
     /// ChunkManager knows its grid cell and won't create a duplicate.
     /// The terrain is NOT deleted when the chunk is unloaded.
     void registerTerrain(Terrain* t);
 
-    /// Re-assign entities to the correct chunk based on their current
-    /// world-space position.  Call once per frame (from StreamingSystem)
-    /// so that entities whose positions are updated externally (e.g.
-    /// NetworkSyncComponent) remain in the correct spatial bucket.
-    void refreshEntityPositions();
-
     /// Collect all Terrain pointers from LOADED chunks.
     std::vector<Terrain*>      getActiveTerrains()      const;
-    /// Collect all Entity pointers from LOADED chunks.
-    std::vector<Entity*>       getActiveEntities()       const;
 
     /// Phase 4 Step 4.2.2 — Streaming radii accessors.
     int activeRadius()   const { return loadRadius_; }

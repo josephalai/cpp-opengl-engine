@@ -19,13 +19,14 @@ class Entity;
 class Terrain;
 class Light;
 class Camera;
+class Player;
 class InstancedModelManager;
 
 class RenderSystem : public ISystem {
 public:
     RenderSystem(MasterRenderer*           renderer,
                  FrameBuffers*             reflectFbo,
-                 std::vector<Entity*>&     entities,
+                 Player*                   player,
                  std::vector<Terrain*>&    terrains,
                  std::vector<Light*>&      lights,
                  entt::registry&           registry,
@@ -41,7 +42,7 @@ public:
 private:
     MasterRenderer*            renderer_;
     FrameBuffers*              reflectFbo_;
-    std::vector<Entity*>&      entities_;
+    Player*                    player_;
     std::vector<Terrain*>&     terrains_;
     std::vector<Light*>&       lights_;
     entt::registry&            registry_;

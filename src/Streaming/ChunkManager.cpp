@@ -2,7 +2,6 @@
 
 #include "ChunkManager.h"
 #include "../Terrain/Terrain.h"
-#include "../Entities/Entity.h"
 #include "../Engine/GLUploadQueue.h"
 #include "../Util/FileSystem.h"
 #include <cmath>
@@ -172,77 +171,11 @@ void ChunkManager::registerTerrain(Terrain* t) {
     }
 }
 
-void ChunkManager::registerEntity(Entity* e, const glm::vec3& worldPos) {
-    int cx = static_cast<int>(std::floor(worldPos.x / kTerrainSize));
-    int cz = static_cast<int>(std::floor(worldPos.z / kTerrainSize));
-    auto key = std::make_pair(cx, cz);
-
-    auto it = chunks_.find(key);
-    if (it != chunks_.end()) {
-        it->second->addEntity(e);
-    } else {
-        // Create a shell chunk (no terrain) to hold the entity.
-        auto* chunk = new StreamingChunk(cx, cz);
-        chunk->state = StreamingChunk::State::LOADED;
-        chunk->addEntity(e);
-        chunks_[key] = chunk;
-    }
-}
-
-void ChunkManager::removeEntity(Entity* e) {
-    for (auto& [key, chunk] : chunks_) {
-        if (!chunk) continue;
-        auto& ents = chunk->entities;
-        auto it = std::find(ents.begin(), ents.end(), e);
-        if (it != ents.end()) {
-            ents.erase(it);
-            return;
-        }
-    }
-}
-
-void ChunkManager::refreshEntityPositions() {
-    // Collect entities that need to move to a different chunk.
-    // We gather them first to avoid mutating chunk entity lists while
-    // iterating over them.
-    struct EntityMove { Entity* entity; int chunkX; int chunkZ; };
-    std::vector<EntityMove> toMove;
-
-    for (auto& [key, chunk] : chunks_) {
-        if (!chunk || chunk->state != StreamingChunk::State::LOADED) continue;
-        for (Entity* e : chunk->entities) {
-            if (!e) continue;
-            const glm::vec3& pos = e->getPosition();
-            int cx = static_cast<int>(std::floor(pos.x / kTerrainSize));
-            int cz = static_cast<int>(std::floor(pos.z / kTerrainSize));
-            if (cx != key.first || cz != key.second) {
-                toMove.push_back({e, cx, cz});
-            }
-        }
-    }
-
-    // Move each entity to its correct chunk.
-    for (auto& [entity, chunkX, chunkZ] : toMove) {
-        removeEntity(entity);
-        registerEntity(entity, entity->getPosition());
-    }
-}
-
 std::vector<Terrain*> ChunkManager::getActiveTerrains() const {
     std::vector<Terrain*> result;
     for (const auto& [key, chunk] : chunks_) {
         if (chunk->state == StreamingChunk::State::LOADED && chunk->terrain) {
             result.push_back(chunk->terrain);
-        }
-    }
-    return result;
-}
-
-std::vector<Entity*> ChunkManager::getActiveEntities() const {
-    std::vector<Entity*> result;
-    for (const auto& [key, chunk] : chunks_) {
-        if (chunk->state == StreamingChunk::State::LOADED) {
-            result.insert(result.end(), chunk->entities.begin(), chunk->entities.end());
         }
     }
     return result;

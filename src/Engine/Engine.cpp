@@ -47,6 +47,7 @@
 #include "../ECS/Components/InputStateComponent.h"
 #include "../ECS/Components/NetworkSyncData.h"
 #include "../ECS/Components/AnimatedModelComponent.h"
+#include "../ECS/Components/StaticModelComponent.h"
 #include "../Toolbox/Maths.h"
 #include "../Config/ConfigManager.h"
 #include "../Config/PrefabManager.h"
@@ -178,7 +179,7 @@ void Engine::loadScene() {
             probe.close();
             sceneLoaded = SceneLoaderJson::load(jsonPath, loader,
                               registry,
-                              entities, lights,
+                              lights,
                               allTerrains, guis, texts, waterTiles,
                               primaryTerrain, player, playerCamera,
                               physicsBodyCfgs, physicsGroundCfgs);
@@ -188,17 +189,32 @@ void Engine::loadScene() {
         }
     }
     if (!sceneLoaded) {
-        // Legacy .cfg fallback: SceneLoader still outputs AnimatedEntity* objects.
-        // Wrap them in a temporary vector, then convert to ECS AnimatedModelComponent
-        // after loading so the rest of the engine only uses the ECS path.
+        // Legacy .cfg fallback: SceneLoader still outputs Entity* and AnimatedEntity* objects.
+        // Promote Entity* to ECS StaticModelComponent, AnimatedEntity* to AnimatedModelComponent.
+        std::vector<Entity*>         legacyEntities;
         std::vector<AnimatedEntity*> legacyAnimated;
         sceneLoaded = SceneLoader::load(cfgPath, loader,
                           registry,
-                          entities, lights,
+                          legacyEntities, lights,
                           allTerrains, guis, texts, waterTiles,
                           primaryTerrain, player, playerCamera,
                           legacyAnimated,
                           physicsBodyCfgs, physicsGroundCfgs);
+        // Promote legacy Entity* objects to ECS StaticModelComponent entities.
+        for (auto* ent : legacyEntities) {
+            if (!ent || dynamic_cast<Player*>(ent)) continue; // Player handled separately
+            // Entity* already emplaced TransformComponent + RenderComponent + ColliderComponent.
+            // Add StaticModelComponent on the same ECS handle for the new render path.
+            entt::entity handle = ent->getHandle();
+            if (!registry.all_of<StaticModelComponent>(handle)) {
+                auto& smc       = registry.emplace<StaticModelComponent>(handle);
+                smc.model       = ent->getModel();
+                smc.boundingBox = ent->getBoundingBox();
+                smc.textureIndex = 0;
+            }
+            // Transfer ownership: delete the Entity* wrapper (the ECS entity survives)
+            delete ent;
+        }
         // Promote legacy AnimatedEntity* objects to ECS AnimatedModelComponent entities.
         for (auto* ae : legacyAnimated) {
             if (!ae) continue;
@@ -244,12 +260,13 @@ void Engine::loadScene() {
         physicsSystem->addGroundPlane(g.yHeight);
     }
 
-    // Add rigid bodies for named entities
+    // Add rigid bodies for named entities.
+    // SceneLoaderJson path: uses entityHandle (direct ECS handle).
+    // Legacy SceneLoader path: entityHandle is set when promoting Entity* to StaticModelComponent.
     for (const auto& cfg : physicsBodyCfgs) {
-        // entityIndex was resolved by SceneLoader against the entities vector
-        if (cfg.entityIndex < 0 || cfg.entityIndex >= static_cast<int>(entities.size()))
-            continue;
-        Entity* ent = entities[static_cast<size_t>(cfg.entityIndex)];
+        entt::entity handle = cfg.entityHandle;
+        if (handle == entt::null) continue;
+        if (!registry.valid(handle)) continue;
 
         PhysicsBodyDef def;
         def.type        = cfg.type;
@@ -263,15 +280,15 @@ void Engine::loadScene() {
 
         switch (def.type) {
             case BodyType::Static:
-                physicsSystem->addStaticBody(ent, def.shape, def.halfExtents,
+                physicsSystem->addStaticBody(handle, def.shape, def.halfExtents,
                                              def.friction, def.restitution);
                 break;
             case BodyType::Kinematic:
-                physicsSystem->addKinematicBody(ent, def);
+                physicsSystem->addKinematicBody(handle, def);
                 break;
             case BodyType::Dynamic:
             default:
-                physicsSystem->addDynamicBody(ent, def);
+                physicsSystem->addDynamicBody(handle, def);
                 break;
         }
     }
@@ -314,7 +331,6 @@ void Engine::loadScene() {
                     glm::vec3(100.0f, 3.0f, -50.0f),
                     glm::vec3(0.0f, 180.0f, 0.0f), 1.0f);
                 InteractiveModel::setInteractiveBox(player);
-                entities.push_back(player);
             } else {
                 std::cerr << "[Engine] Could not load Stall fallback model\n";
             }
@@ -667,12 +683,8 @@ void Engine::buildSystems() {
         for (auto* t : allTerrains) {
             if (t) chunkManager->registerTerrain(t);
         }
-        // Register entities into the chunk grid.
-        for (auto* e : entities) {
-            if (e) chunkManager->registerEntity(e, e->getPosition());
-        }
         systems.push_back(std::make_unique<StreamingSystem>(
-            chunkManager, player, allTerrains, entities));
+            chunkManager, player, allTerrains));
     }
 
     // Phase 4 Step 4.2 — OriginShiftSystem: prevents float-precision jitter
@@ -716,7 +728,7 @@ void Engine::buildSystems() {
     systems.push_back(std::make_unique<NetworkInterpolationSystem>(registry));
 
     systems.push_back(std::make_unique<RenderSystem>(
-        renderer, reflectFbo, entities, allTerrains, lights,
+        renderer, reflectFbo, player, allTerrains, lights,
         registry, playerCamera, renderer->getProjectionMatrix(), instancedModelManager,
         &editorState_));
 
@@ -725,7 +737,7 @@ void Engine::buildSystems() {
         playerCamera, renderer->getProjectionMatrix()));
 
     systems.push_back(std::make_unique<UISystem>(
-        renderer, entities, clickColorText, masterContainer,
+        renderer, registry, player, clickColorText, masterContainer,
         guiRenderer, guis));
 
     // EditorSystem must be last — it owns the ImGui frame boundary
@@ -802,6 +814,15 @@ void Engine::shutdown() {
             }
             delete amc.controller;
             amc.controller = nullptr;
+        }
+    }
+    // Release StaticModelComponent BoundingBox objects (owned per-instance).
+    {
+        auto staticView = registry.view<StaticModelComponent>();
+        for (auto e : staticView) {
+            auto& smc = staticView.get<StaticModelComponent>(e);
+            delete smc.boundingBox;
+            smc.boundingBox = nullptr;
         }
     }
     delete animRenderer;

@@ -9,11 +9,14 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <vector>
+#include <entt/entt.hpp>
 
 #include "../Entities/Entity.h"
 #include "../Entities/Light.h"
 #include "../Toolbox/Maths.h"
 #include "ShadowShader.h"
+#include "../ECS/Components/StaticModelComponent.h"
+#include "../ECS/Components/TransformComponent.h"
 
 /// A depth-only off-screen render target for directional shadow mapping.
 class ShadowMap {
@@ -38,10 +41,16 @@ public:
                                       const glm::vec3& viewCenter,
                                       float            radius = 300.0f) const;
 
-    /// Render the given entities into the shadow map using the shadow shader.
+    /// Render entities into the shadow map using the shadow shader.
     void renderShadowMap(const std::vector<Entity*>& entities,
                          const glm::mat4&            lightSpaceMatrix,
                          ShadowShader*               shader) const;
+
+    /// ECS-based shadow pass: renders Player + StaticModelComponent entities.
+    void renderShadowMapFromRegistry(entt::registry&    registry,
+                                     Entity*             player,
+                                     const glm::mat4&   lightSpaceMatrix,
+                                     ShadowShader*       shader) const;
 
     /// OpenGL texture ID of the depth texture (bind this for PCF sampling).
     GLuint getDepthTexture() const { return depthTexture_; }

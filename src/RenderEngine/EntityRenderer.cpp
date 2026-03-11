@@ -156,6 +156,27 @@ void EntityRenderer::prepareInstance(Entity *entity) {
     shader->loadOffset(entity->getTextureXOffset(), entity->getTextureYOffset());
 }
 
+void EntityRenderer::prepareInstanceData(const RenderData& data) {
+    glm::mat4 xform = Maths::createTransformationMatrix(data.position, data.rotation, data.scale);
+    shader->loadTransformationMatrix(xform);
+    shader->loadMaterial(data.material);
+    shader->loadOffset(data.texXOffset, data.texYOffset);
+}
+
+void EntityRenderer::renderStaticBatch(std::map<TexturedModel*, std::vector<RenderData>>* batches) {
+    if (!batches || batches->empty()) return;
+    shader->loadUseInstancing(false);
+    for (auto& [model, batch] : *batches) {
+        if (batch.empty() || !model) continue;
+        prepareTexturedModel(model);
+        for (const auto& data : batch) {
+            prepareInstanceData(data);
+            glDrawElements(GL_TRIANGLES, model->getRawModel()->getVertexCount(), GL_UNSIGNED_INT, 0);
+        }
+        unbindTexturedModel();
+    }
+}
+
 GLuint EntityRenderer::getOrCreateInstanceVBO() {
     if (instanceVBO_ == 0) {
         glGenBuffers(1, &instanceVBO_);

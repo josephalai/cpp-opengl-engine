@@ -7,6 +7,7 @@
 
 #include <map>
 #include <iostream>
+#include <entt/entt.hpp>
 #include "../Shaders/StaticShader.h"
 #include "../Entities/CameraInput.h"
 #include "EntityRenderer.h"
@@ -31,6 +32,8 @@
 #include "InstancedModel.h"
 #include "../Shaders/InstancedShader.h"
 #include "../Config/ConfigManager.h"
+#include "../ECS/Components/StaticModelComponent.h"
+#include "../ECS/Components/TransformComponent.h"
 
 /// Projection-plane accessors — prefer ConfigManager values at runtime.
 /// These are functions (not constants) so they reflect the current config.
@@ -57,6 +60,9 @@ private:
     std::map<TexturedModel *, std::vector<Entity *>> *entities;
     std::map<AssimpMesh *, std::vector<AssimpModelComponent>> *scenes;
     std::vector<Terrain *> *terrains;
+
+    // ECS-sourced static entity render data (no Entity* needed)
+    std::map<TexturedModel*, std::vector<EntityRenderer::RenderData>>* staticBatches;
 
     glm::mat4 projectionMatrix;
 
@@ -100,6 +106,9 @@ public:
 
     void processEntity(Entity *entity);
 
+    /// Process a static ECS entity for batched rendering (no Entity* needed).
+    void processStaticEntity(const TransformComponent& tc, const StaticModelComponent& smc);
+
     void processAssimpEntity(const AssimpModelComponent& comp);
 
     void processBoundingBox(Entity *entity);
@@ -107,7 +116,18 @@ public:
     void renderScene(std::vector<Entity *> entities, std::vector<AssimpModelComponent> aComps,
                      std::vector<Terrain *> terrains, std::vector<Light *> lights);
 
+    /// ECS-based scene render: queries registry for StaticModelComponent + RenderComponent.
+    /// Also accepts a Player* for the Player entity (still Entity*-based).
+    void renderSceneFromRegistry(entt::registry&                  registry,
+                                 Entity*                          player,
+                                 const std::vector<AssimpModelComponent>& aComps,
+                                 const std::vector<Terrain*>&     terrains,
+                                 const std::vector<Light*>&       lights);
+
     void renderBoundingBoxes(std::vector<Entity *> entities);
+
+    /// ECS-based bounding box render for picking (Player only).
+    void renderBoundingBoxesFromRegistry(entt::registry& registry, Entity* player);
 
     void prepareBoundingBoxRender();
 
@@ -124,6 +144,11 @@ public:
     /// Run the shadow-map depth pass before the main render.
     void renderShadowPass(const std::vector<Entity*>& allEntities,
                           const std::vector<Light*>&  lights);
+
+    /// ECS-based shadow pass: renders Player + StaticModelComponent entities.
+    void renderShadowPassFromRegistry(entt::registry&          registry,
+                                      Entity*                   player,
+                                      const std::vector<Light*>& lights);
 
     // --- Water ---
     void addWaterTile(const WaterTile& tile) { waterTiles.push_back(tile); }

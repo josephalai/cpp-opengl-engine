@@ -98,7 +98,8 @@ private:
 
     std::vector<Terrain*> allTerrains;
     std::vector<Light*> lights;
-    std::vector<Entity*> entities;
+    // Note: static scene entities are stored as ECS StaticModelComponent in the
+    // registry — no separate std::vector<Entity*> needed (Phase 5.4).
     std::vector<GuiTexture*> guis;
     std::vector<GuiRect*> rects;
     std::vector<GUIText*> texts;

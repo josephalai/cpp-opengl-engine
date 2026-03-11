@@ -2,13 +2,10 @@
 //
 // JSON-based scene loader (Phase 1, Step 3 — Strict Data-Driven Design).
 //
-// Reads a scene.json file and populates the same output vectors/pointers as
-// the legacy SceneLoader (which reads scene.cfg).  The Engine will try to
-// load scene.json first; if not found, it falls back to scene.cfg via the
-// original SceneLoader::load().
-//
-// JSON schema matches src/Resources/scene.json — see that file for an
-// authoritative, fully-commented example.
+// Reads a scene.json file and populates the engine scene. Static geometry
+// from the "entities" array is emitted as ECS entities with StaticModelComponent
+// (no legacy Entity* vector). Animated characters use AnimatedModelComponent.
+// The only legacy Entity* output is the Player.
 
 #ifndef ENGINE_SCENELOADERJSON_H
 #define ENGINE_SCENELOADERJSON_H
@@ -17,7 +14,6 @@
 #include <vector>
 
 #include "../RenderEngine/Loader.h"
-#include "../Entities/Entity.h"
 #include "../Entities/Player.h"
 #include "../Entities/PlayerCamera.h"
 #include "../Entities/Light.h"
@@ -39,13 +35,15 @@ public:
     /// Load a scene from a JSON file.  Returns true on success.
     /// Falls back gracefully if the file is missing; the caller should then
     /// use the legacy SceneLoader::load() with the .cfg path.
-    /// Animated characters are emitted as ECS entities with AnimatedModelComponent
-    /// and TransformComponent (no legacy AnimatedEntity* vector).
+    ///
+    /// Static mesh entities → ECS StaticModelComponent + TransformComponent
+    /// Animated characters  → ECS AnimatedModelComponent + TransformComponent
+    /// Player               → Player* (placed in `player` out-param)
+    /// No legacy std::vector<Entity*> is populated or needed.
     static bool load(
         const std::string&             jsonPath,
         Loader*                        loader,
         entt::registry&                registry,
-        std::vector<Entity*>&          entities,
         std::vector<Light*>&           lights,
         std::vector<Terrain*>&         allTerrains,
         std::vector<GuiTexture*>&      guis,
