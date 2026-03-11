@@ -143,6 +143,19 @@ You should see log output when the interaction fires:
 [Lua] sendMessage(101, "You mine some copper ore.")
 ```
 
+### Step 5: Click an Entity in the Client
+
+With both the server and client running, **right-click on any entity that has an `InteractableComponent`** (e.g., a tree). The click pipeline works as follows:
+
+1. `InputDispatcher::update()` detects the right-click rising edge.
+2. It builds a world-space pick ray via `EntityPicker::buildPickRay()` using the mouse position, camera view matrix, and projection matrix.
+3. `EntityPicker::pick()` performs Ray-AABB tests against all scene entities.
+4. If an entity with a `NetworkIdComponent` is hit, `EntityClickedEvent` is published to the `EventBus`.
+5. `NetworkSystem::init()` subscribed to `EntityClickedEvent`; it calls `sendActionRequest(networkId)`, which sends an `ActionRequestPacket` to the server over ENet.
+6. If the ray misses all entities, the click falls back to terrain walking (`TargetLocationClickedEvent`).
+
+> **Tip:** If right-click sends the player to a ground point instead of interacting, the entity either lacks a `NetworkIdComponent` (check `EntityFactory::spawn()` assigns it) or the bounding box is not set up for ray intersection.
+
 ---
 
 ## 4. The Engine API Reference
@@ -317,7 +330,7 @@ The scripts themselves have no compiled binary dependency — they are plain tex
 ```
 [Server] ActionRequest denied — target too far (cell dist 3).
 ```
-**Fix:** The player is more than one SpatialGrid cell away from the target when the click is sent. Either: (a) the player needs to be closer before clicking, or (b) increase the SpatialGrid cell size in world_config.json.
+**Fix:** The server validates proximity using a `SpatialGrid` (cell size 50 units). The player and target must be in the same or an adjacent grid cell (Chebyshev distance ≤ 1) for the `ActionRequestPacket` to be accepted. Move your character closer to the target entity before right-clicking, or increase the `SpatialGrid` cell size in `ServerMain.cpp` if you expect interaction at longer range.
 
 ### Script error at runtime
 ```

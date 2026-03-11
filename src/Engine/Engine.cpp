@@ -497,6 +497,9 @@ void Engine::initFramebuffersAndPickers() {
 
     picker = new TerrainPicker(playerCamera, renderer->getProjectionMatrix(), primaryTerrain);
 
+    // Create the entity picker for Ray-AABB picking (Part 1: Client-Side Object Picking).
+    entityPicker_ = new EntityPicker(registry);
+
     // Wire keyboard-driven animation transitions for every local-player character.
     // setupDefaultTransitions is safe to call when not all clip states exist —
     // the controller silently ignores transitions to unregistered states.
@@ -602,7 +605,9 @@ void Engine::buildSystems() {
 
     // InputDispatcher must run first so that PlayerMoveCommandEvent subscribers
     // (e.g. PlayerMovementSystem) have up-to-date speed values before any other system runs.
-    systems.push_back(std::make_unique<InputDispatcher>(picker, &editorState_));
+    systems.push_back(std::make_unique<InputDispatcher>(
+        picker, &editorState_,
+        entityPicker_, playerCamera, renderer->getProjectionMatrix(), &registry));
 
     // Subscribe the ECS InputStateComponent to the EventBus so
     // PlayerMovementSystem uses event-driven movement instead of polling.
@@ -826,6 +831,8 @@ void Engine::shutdown() {
         }
     }
     delete animRenderer;
+    delete entityPicker_;
+    entityPicker_ = nullptr;
     loader->cleanUp();
     shutdownImGui();
     DisplayManager::closeDisplay();

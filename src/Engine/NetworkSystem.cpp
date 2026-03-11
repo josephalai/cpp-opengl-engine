@@ -14,6 +14,8 @@
 #include "NetworkSystem.h"
 #include "../Entities/Player.h"
 #include "../Physics/PhysicsSystem.h"
+#include "../Events/EventBus.h"
+#include "../Events/EntityClickedEvent.h"
 #include <iostream>
 #include <cstring>
 #include <cmath>
@@ -39,6 +41,14 @@ NetworkSystem::NetworkSystem(entt::registry&  registry,
 // ---------------------------------------------------------------------------
 
 void NetworkSystem::init() {
+    // Subscribe to EntityClickedEvent published by InputDispatcher when the
+    // player right-clicks on an interactable world entity.  We translate this
+    // directly into an ActionRequestPacket sent to the server so it can start
+    // the server-side interaction state machine (InteractionSystem).
+    EventBus::instance().subscribe<EntityClickedEvent>([this](const EntityClickedEvent& e) {
+        sendActionRequest(e.networkId);
+    });
+
     client_ = enet_host_create(nullptr, 1, kChannelCount, 0, 0);
 
     if (!client_) {

@@ -235,9 +235,8 @@ sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
     engine["Health"] = health;
 
     // --- engine.Entities ---
-    // Capture the registry by reference via a pointer so the lambda is copyable.
     sol::table ents = lua_.create_table();
-    ents["destroy"] = [this](uint32_t /*tid*/) {
+    ents["destroy"] = [](uint32_t /*tid*/) {
         // In a full implementation this would look up the entity by network ID
         // and destroy it. For now, log the intent.
         std::cout << "[Lua] Entities.destroy() — entity marked for removal\n";

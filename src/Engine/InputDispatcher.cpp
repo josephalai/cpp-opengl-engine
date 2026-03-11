@@ -3,17 +3,29 @@
 #include "InputDispatcher.h"
 #include "../Events/Event.h"
 #include "../Events/EventBus.h"
+#include "../Events/EntityClickedEvent.h"
 #include "../Input/InputMaster.h"
 #include "../Toolbox/TerrainPicker.h"
 #include "../Entities/Camera.h"
 #include "../Entities/CameraInput.h"
 #include "../RenderEngine/DisplayManager.h"
+#include "../Interaction/EntityPicker.h"
+#include "../ECS/Components/NetworkIdComponent.h"
 
 #include <imgui.h>
 
-InputDispatcher::InputDispatcher(TerrainPicker* picker, EditorState* editorState)
+InputDispatcher::InputDispatcher(TerrainPicker*  picker,
+                                 EditorState*    editorState,
+                                 EntityPicker*   entityPicker,
+                                 Camera*         camera,
+                                 glm::mat4       projection,
+                                 entt::registry* registry)
     : picker_(picker)
     , editorState_(editorState)
+    , entityPicker_(entityPicker)
+    , camera_(camera)
+    , projection_(projection)
+    , registry_(registry)
 {}
 
 void InputDispatcher::update(float /*deltaTime*/) {
@@ -76,14 +88,45 @@ void InputDispatcher::update(float /*deltaTime*/) {
     }
 
     if (!imguiWantsMouse) {
-        // --- Terrain right-click (rising edge) → TargetLocationClickedEvent ---
+        // --- Right-click (rising edge) ---
+        // Priority: Entity picking → Terrain fallback.
         bool rightNow = InputMaster::isMouseDown(RightClick);
-        if (rightNow && !prevRightClick_ && picker_) {
-            glm::vec3 pt = picker_->getCurrentTerrainPoint();
-            if (pt != glm::vec3(0.0f)) {
-                TargetLocationClickedEvent evt{};
-                evt.worldPosition = pt;
-                EventBus::instance().publish(evt);
+        if (rightNow && !prevRightClick_) {
+
+            bool entityHit = false;
+
+            // 1. Try entity picking first (requires EntityPicker + Camera).
+            if (entityPicker_ && camera_ && registry_) {
+                glm::vec3 rayOrigin, rayDir;
+                EntityPicker::buildPickRay(
+                    static_cast<float>(InputMaster::mouseX),
+                    static_cast<float>(InputMaster::mouseY),
+                    DisplayManager::Width(),
+                    DisplayManager::Height(),
+                    projection_,
+                    camera_->getViewMatrix(),
+                    rayOrigin,
+                    rayDir);
+
+                entt::entity hit = entityPicker_->pick(rayOrigin, rayDir);
+                if (hit != entt::null) {
+                    if (auto* nid = registry_->try_get<NetworkIdComponent>(hit)) {
+                        EntityClickedEvent evt{};
+                        evt.networkId = nid->id;
+                        EventBus::instance().publish(evt);
+                        entityHit = true;
+                    }
+                }
+            }
+
+            // 2. Fallback to terrain walk if no entity was hit.
+            if (!entityHit && picker_) {
+                glm::vec3 pt = picker_->getCurrentTerrainPoint();
+                if (pt != glm::vec3(0.0f)) {
+                    TargetLocationClickedEvent evt{};
+                    evt.worldPosition = pt;
+                    EventBus::instance().publish(evt);
+                }
             }
         }
         prevRightClick_ = rightNow;

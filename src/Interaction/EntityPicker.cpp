@@ -15,6 +15,10 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <limits>
 
+/// Minimum ray direction component magnitude to treat as non-parallel to a slab.
+/// A direction component smaller than this is treated as zero (ray parallel to slab).
+static constexpr float RAY_DIRECTION_EPSILON = 1e-6f;
+
 // -------------------------------------------------------------------------
 // Constructor
 // -------------------------------------------------------------------------
@@ -138,7 +142,7 @@ float EntityPicker::rayAABB(const glm::vec3& origin, const glm::vec3& dir,
     float tmax = std::numeric_limits<float>::max();
 
     for (int i = 0; i < 3; ++i) {
-        if (std::abs(dir[i]) < 1e-6f) {
+        if (std::abs(dir[i]) < RAY_DIRECTION_EPSILON) {
             if (origin[i] < boxMin[i] || origin[i] > boxMax[i])
                 return -1.0f;
         } else {
