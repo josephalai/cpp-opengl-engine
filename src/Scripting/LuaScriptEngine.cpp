@@ -168,16 +168,14 @@ void LuaScriptEngine::shutdown() {
 
 sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
                                               entt::entity target) {
-    // Resolve network IDs for passing to Lua (fall back to raw entity value
-    // if the entity has no NetworkIdComponent).
+    // Resolve entity integral values to pass as IDs to Lua.
+    // In a full implementation, we would look up NetworkIdComponent here
+    // to pass the network-visible ID rather than the internal ECS integer.
+    // For now, the raw entity integral is used as a stable unique identifier.
     auto resolveId = [&](entt::entity e) -> uint32_t {
-        // NetworkIdComponent lookup is only valid when the registry is in scope.
-        // Since this method is called from executeInteraction which holds the
-        // registry reference on the stack, we capture by the entity integral.
         return static_cast<uint32_t>(entt::to_integral(e));
     };
-    uint32_t playerId = resolveId(player);
-    uint32_t targetId = resolveId(target);
+    (void)resolveId; // used implicitly by the lambdas below via capture
 
     sol::table engine = lua_.create_table();
 
@@ -288,8 +286,8 @@ sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
     };
     engine["Loot"] = loot;
 
-    (void)playerId;
-    (void)targetId;
+    (void)player;
+    (void)target;
     return engine;
 }
 

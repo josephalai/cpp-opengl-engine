@@ -138,7 +138,7 @@ float EntityPicker::rayAABB(const glm::vec3& origin, const glm::vec3& dir,
     float tmax = std::numeric_limits<float>::max();
 
     for (int i = 0; i < 3; ++i) {
-        if (std::abs(dir[i]) < 1e-8f) {
+        if (std::abs(dir[i]) < 1e-6f) {
             if (origin[i] < boxMin[i] || origin[i] > boxMax[i])
                 return -1.0f;
         } else {
