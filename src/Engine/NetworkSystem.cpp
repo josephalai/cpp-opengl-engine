@@ -143,7 +143,7 @@ void NetworkSystem::update(float deltaTime) {
 
                     // Link the local Player entity to our real network id.
                     if (localPlayer_) {
-                        networkEntities_[localPlayerId_] = localPlayer_;
+                        networkEntities_[localPlayerId_] = localPlayer_->getHandle();
                     }
                 }
 
@@ -171,7 +171,7 @@ void NetworkSystem::update(float deltaTime) {
                         // Already registered via WelcomePacket handling.
                         if (networkEntities_.find(localPlayerId_) ==
                             networkEntities_.end() && localPlayer_) {
-                            networkEntities_[localPlayerId_] = localPlayer_;
+                            networkEntities_[localPlayerId_] = localPlayer_->getHandle();
                         }
                     } else {
                         // Remote entity — create via callback.
@@ -182,10 +182,10 @@ void NetworkSystem::update(float deltaTime) {
                                          "entity " << sp.networkId
                                       << " already exists.\n";
                         } else if (spawnCallback_) {
-                            Entity* e = spawnCallback_(sp.networkId,
-                                                       sp.modelType,
-                                                       sp.position);
-                            if (e) {
+                            entt::entity e = spawnCallback_(sp.networkId,
+                                                            sp.modelType,
+                                                            sp.position);
+                            if (e != entt::null) {
                                 networkEntities_[sp.networkId] = e;
                             }
                         }
@@ -255,10 +255,9 @@ void NetworkSystem::update(float deltaTime) {
                     } else {
                         // === Remote entity — push into interp buffer ===
                         auto it = networkEntities_.find(snapshot.networkId);
-                        if (it != networkEntities_.end() && it->second) {
-                            // Push into ECS NetworkSyncData.
-                            entt::entity handle = it->second->getHandle();
-                            if (auto* nsd = registry_.try_get<NetworkSyncData>(handle)) {
+                        if (it != networkEntities_.end() && it->second != entt::null) {
+                            // Push into ECS NetworkSyncData directly via entt::entity handle.
+                            if (auto* nsd = registry_.try_get<NetworkSyncData>(it->second)) {
                                 // Discard out-of-order packets.
                                 if (nsd->buffer.empty() ||
                                     snapshot.sequenceNumber > nsd->buffer.back().sequenceNumber) {
@@ -336,8 +335,8 @@ void NetworkSystem::shutdown() {
 // addEntity / removeEntity
 // ---------------------------------------------------------------------------
 
-void NetworkSystem::addEntity(uint32_t networkId, Entity* e) {
-    if (e) {
+void NetworkSystem::addEntity(uint32_t networkId, entt::entity e) {
+    if (e != entt::null) {
         networkEntities_[networkId] = e;
     }
 }

@@ -5,7 +5,7 @@
 // ISystem that drives the client-side networking:
 //   1. On init(), creates an ENet client host and connects to the server.
 //   2. Handles Welcome / Spawn / Despawn / TransformSnapshot packets.
-//   3. Maintains a map of networkId → Entity* for remote interpolation.
+//   3. Maintains a map of networkId → entt::entity for remote interpolation.
 //   4. Reads the actual Player's physics-driven position each frame and
 //      sends it to the server — no separate prediction math needed.
 //   5. For remote entities: pushes snapshots into their NetworkSyncData
@@ -36,10 +36,11 @@ class NetworkSystem : public ISystem {
 public:
     /// Callback the Engine provides so the NetworkSystem can dynamically
     /// create/destroy entities when Spawn/Despawn packets arrive.
-    using SpawnCallback   = std::function<Entity*(uint32_t networkId,
-                                                  const std::string& modelType,
-                                                  const glm::vec3& position)>;
-    using DespawnCallback = std::function<void(uint32_t networkId, Entity* e)>;
+    /// SpawnCallback returns an entt::entity handle (or entt::null on failure).
+    using SpawnCallback   = std::function<entt::entity(uint32_t networkId,
+                                                       const std::string& modelType,
+                                                       const glm::vec3& position)>;
+    using DespawnCallback = std::function<void(uint32_t networkId, entt::entity e)>;
 
     /// Construct with the registry (for ECS component access), the server IP,
     /// a pointer to the local Player, and optional entity callbacks.
@@ -53,8 +54,8 @@ public:
     void update(float deltaTime) override;
     void shutdown() override;
 
-    /// Register an additional entity at runtime (called by SpawnCallback).
-    void addEntity(uint32_t networkId, Entity* e);
+    /// Register an entity handle at runtime (called by SpawnCallback).
+    void addEntity(uint32_t networkId, entt::entity e);
 
     /// Remove an entity by networkId (called by DespawnCallback).
     void removeEntity(uint32_t networkId);
@@ -74,8 +75,8 @@ private:
     // --- Registry (for ECS component access) ---
     entt::registry& registry_;
 
-    // --- Entity Map (Phase 7) ---
-    std::unordered_map<uint32_t, Entity*> networkEntities_;
+    // --- Entity Map: networkId → ECS entity handle ---
+    std::unordered_map<uint32_t, entt::entity> networkEntities_;
 
     // --- Local Player ---
     Player* localPlayer_ = nullptr;  ///< The actual physics-driven player entity.

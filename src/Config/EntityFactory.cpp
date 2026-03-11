@@ -13,6 +13,9 @@
 
 #ifndef HEADLESS_SERVER
 #include "../ECS/Components/AssimpModelComponent.h"
+#include "../ECS/Components/AnimatedModelComponent.h"
+#include "../Animation/AnimationLoader.h"
+#include "../Util/FileSystem.h"
 #endif
 
 #include <nlohmann/json.hpp>
@@ -89,18 +92,78 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
     }
 
 #ifndef HEADLESS_SERVER
-    // --- Client-side rendering: AssimpModelComponent ---
-    // If the prefab declares a "mesh" path, attach a visual component so the
-    // client's RenderSystem can draw it.  The mesh is stored as a path string
-    // in the component; actual GPU resource loading happens later when the
-    // render pipeline encounters the component.  For the server build this
-    // block is compiled out (no OpenGL / AssimpMesh dependency).
+    // --- Client-side rendering ---
+    // If the prefab declares a "mesh" path, attach a visual component.
+    // Animated prefabs get AnimatedModelComponent (skinned-mesh rendering via
+    // AnimatedRenderer); static prefabs get AssimpModelComponent (rigid rendering
+    // via MasterRenderer).  The server build compiles out this entire block.
     if (prefab.contains("mesh")) {
-        auto& amc = registry.emplace<AssimpModelComponent>(entity);
-        amc.position = position;
-        amc.meshPath = prefab["mesh"].get<std::string>();
-        // amc.mesh remains nullptr until the client's asset loader resolves
-        // the meshPath into a GPU-ready AssimpMesh*.
+        const std::string meshPath = prefab["mesh"].get<std::string>();
+
+        if (prefab.value("animated", false)) {
+            // --- Animated entity: load skeleton + clips, attach AnimatedModelComponent ---
+            // Resolve mesh path relative to src/Resources/ (e.g. "models/player.glb").
+            const std::string absPath = FileSystem::Scene(meshPath);
+            AnimatedModel* animModel  = AnimationLoader::load(absPath);
+            if (animModel) {
+                auto normalizeClipName = [](const std::string& raw) -> std::string {
+                    std::string lower(raw);
+                    for (auto& c : lower)
+                        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                    if (lower.find("idle") != std::string::npos) return "Idle";
+                    if (lower.find("walk") != std::string::npos) return "Walk";
+                    if (lower.find("run")  != std::string::npos) return "Run";
+                    if (lower.find("jump") != std::string::npos) return "Jump";
+                    std::string out = raw;
+                    if (!out.empty())
+                        out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+                    return out;
+                };
+
+                auto* controller = new AnimationController();
+                for (auto& clip : animModel->clips)
+                    controller->addState(normalizeClipName(clip.name), &clip);
+                // Start in Idle if available; otherwise fall back to the first clip.
+                bool idleSet = false;
+                for (auto& clip : animModel->clips) {
+                    if (normalizeClipName(clip.name) == "Idle") {
+                        controller->setState("Idle");
+                        idleSet = true;
+                        break;
+                    }
+                }
+                if (!idleSet && !animModel->clips.empty())
+                    controller->setState(normalizeClipName(animModel->clips[0].name));
+
+                auto& amc       = registry.emplace<AnimatedModelComponent>(entity);
+                amc.model       = animModel;
+                amc.controller  = controller;
+                amc.ownsModel   = true;
+                amc.isLocalPlayer = false;  // marked true by Engine after initial load
+                // Optional per-prefab visual scale / offset.
+                amc.scale = prefab.value("scale", 1.0f);
+                if (prefab.contains("components") &&
+                    prefab["components"].contains("AnimatedModelComponent")) {
+                    const auto& j = prefab["components"]["AnimatedModelComponent"];
+                    amc.scale = j.value("scale", amc.scale);
+                    if (j.contains("model_offset")) {
+                        amc.modelOffset.x = j["model_offset"].value("x", 0.0f);
+                        amc.modelOffset.y = j["model_offset"].value("y", 0.0f);
+                        amc.modelOffset.z = j["model_offset"].value("z", 0.0f);
+                    }
+                }
+            } else {
+                std::cerr << "[EntityFactory] Failed to load animated model: "
+                          << absPath << "\n";
+            }
+        } else {
+            // --- Static mesh: attach AssimpModelComponent ---
+            // The mesh pointer is filled later by the asset loader when the
+            // entity first enters the render view.
+            auto& amc    = registry.emplace<AssimpModelComponent>(entity);
+            amc.position = position;
+            amc.meshPath = meshPath;
+        }
     }
 #endif
 

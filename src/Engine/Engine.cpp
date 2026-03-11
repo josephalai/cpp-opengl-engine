@@ -46,6 +46,7 @@
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/InputStateComponent.h"
 #include "../ECS/Components/NetworkSyncData.h"
+#include "../ECS/Components/AnimatedModelComponent.h"
 #include "../Toolbox/Maths.h"
 #include "../Config/ConfigManager.h"
 #include "../Config/PrefabManager.h"
@@ -180,7 +181,6 @@ void Engine::loadScene() {
                               entities, lights,
                               allTerrains, guis, texts, waterTiles,
                               primaryTerrain, player, playerCamera,
-                              animatedEntities,
                               physicsBodyCfgs, physicsGroundCfgs);
             if (!sceneLoaded) {
                 std::cerr << "[Engine] scene.json load failed — falling back to scene.cfg\n";
@@ -188,24 +188,50 @@ void Engine::loadScene() {
         }
     }
     if (!sceneLoaded) {
+        // Legacy .cfg fallback: SceneLoader still outputs AnimatedEntity* objects.
+        // Wrap them in a temporary vector, then convert to ECS AnimatedModelComponent
+        // after loading so the rest of the engine only uses the ECS path.
+        std::vector<AnimatedEntity*> legacyAnimated;
         sceneLoaded = SceneLoader::load(cfgPath, loader,
                           registry,
                           entities, lights,
                           allTerrains, guis, texts, waterTiles,
                           primaryTerrain, player, playerCamera,
-                          animatedEntities,
+                          legacyAnimated,
                           physicsBodyCfgs, physicsGroundCfgs);
+        // Promote legacy AnimatedEntity* objects to ECS AnimatedModelComponent entities.
+        for (auto* ae : legacyAnimated) {
+            if (!ae) continue;
+            entt::entity animEnt = registry.create();
+            auto& tc    = registry.emplace<TransformComponent>(animEnt);
+            tc.position = ae->position;
+            tc.rotation = ae->rotation;
+            tc.scale    = ae->scale;
+            auto& amc       = registry.emplace<AnimatedModelComponent>(animEnt);
+            amc.model       = ae->model;       // transfer ownership
+            amc.controller  = ae->controller;
+            amc.modelOffset = ae->modelOffset;
+            amc.scale       = ae->scale;
+            amc.ownsModel   = true;
+            amc.isLocalPlayer = false;  // marked below
+            ae->model      = nullptr;   // prevent double-delete
+            ae->controller = nullptr;
+            delete ae;
+        }
     }
 
-    // All animated entities loaded by SceneLoader belong to the local player's
-    // character(s).  Mark them so AnimationSystem doesn't treat them as remote.
-    // Also mark them as model owners so Engine::shutdown() knows to delete the
-    // model for these entities (remote entities share the pointer and must not).
-    for (auto* ae : animatedEntities) {
-        if (ae) {
-            ae->isLocalPlayer = true;
-            ae->ownsModel     = true;
+    // All animated entities loaded at startup belong to the local player's
+    // character(s).  Mark them so AnimationSystem syncs their position from
+    // the physics-driven Player* rather than from NetworkInterpolationSystem.
+    {
+        auto animView = registry.view<AnimatedModelComponent>();
+        for (auto e : animView) {
+            auto& amc     = animView.get<AnimatedModelComponent>(e);
+            amc.isLocalPlayer = true;
         }
+        if (!animView.empty())
+            std::cout << "[Engine] " << animView.size()
+                      << " animated character(s) ready.\n";
     }
 
     // Set up physics world and register bodies from config
@@ -455,23 +481,23 @@ void Engine::initFramebuffersAndPickers() {
 
     picker = new TerrainPicker(playerCamera, renderer->getProjectionMatrix(), primaryTerrain);
 
-    // Wire keyboard-driven animation transitions for every animated character.
-    // SceneLoader registered no-op lambdas; replace with real input-driven ones.
+    // Wire keyboard-driven animation transitions for every local-player character.
     // setupDefaultTransitions is safe to call when not all clip states exist —
     // the controller silently ignores transitions to unregistered states.
-    for (auto* ae : animatedEntities) {
-        if (ae && ae->controller && ae->isLocalPlayer) {
-            ae->controller->setupDefaultTransitions(
-                []() { return InputMaster::isActionDown("MoveForward") && !InputMaster::isKeyDown(LeftShift); },
-                []() { return InputMaster::isActionDown("MoveForward") &&  InputMaster::isKeyDown(LeftShift); },
-                []() { return InputMaster::isActionDown("Jump"); });
+    {
+        auto animView = registry.view<AnimatedModelComponent>();
+        for (auto e : animView) {
+            auto& amc = animView.get<AnimatedModelComponent>(e);
+            if (amc.controller && amc.isLocalPlayer) {
+                amc.controller->setupDefaultTransitions(
+                    []() { return InputMaster::isActionDown("MoveForward") && !InputMaster::isKeyDown(LeftShift); },
+                    []() { return InputMaster::isActionDown("MoveForward") &&  InputMaster::isKeyDown(LeftShift); },
+                    []() { return InputMaster::isActionDown("Jump"); });
+            }
         }
+        if (animView.empty())
+            std::cout << "[Engine] No animated_character entries in scene.cfg.\n";
     }
-
-    if (!animatedEntities.empty())
-        std::cout << "[Engine] " << animatedEntities.size() << " animated character(s) ready.\n";
-    else
-        std::cout << "[Engine] No animated_character entries in scene.cfg.\n";
 
     // Phase 5.4 — Data-driven instanced rendering via InstancedModelManager.
     // Scans PrefabManager for every prefab with "render_mode": "instanced"
@@ -499,166 +525,51 @@ void Engine::loadIPConfig() {
     std::cout << "[Engine] Server IP: " << serverIP_ << "\n";
 }
 
-Entity* Engine::onNetworkSpawn(uint32_t networkId,
-                               const std::string& modelType,
-                               const glm::vec3& position) {
-    // Phase 5.4 — Data-driven network spawning.
+entt::entity Engine::onNetworkSpawn(uint32_t networkId,
+                                    const std::string& modelType,
+                                    const glm::vec3& position) {
+    // Step 5.4 — Pure ECS network spawn.
     //
-    // Instead of blindly cloning the local player's model for every remote
-    // entity, we look up the prefab for the given modelType and use the
-    // prefab data to decide how to spawn the entity.
+    // EntityFactory reads the prefab JSON for modelType and attaches the
+    // appropriate components: TransformComponent, NetworkIdComponent,
+    // InputStateComponent/InputQueueComponent, optional physics controller,
+    // and — for animated prefabs — AnimatedModelComponent (skeleton + clips).
     //
-    // The EntityFactory creates the ECS entity with TransformComponent and
-    // other data-driven components.  We still create a visual Entity* for
-    // the legacy rendering pipeline because NetworkSystem tracks Entity*
-    // pointers for transform interpolation.
+    // NetworkInterpolationSystem drives TransformComponent each frame.
+    // AnimationSystem renders AnimatedModelComponent entities via ECS view.
+    // No legacy Entity* or AnimatedEntity* objects are created here.
 
-    // 1. Create the ECS entity from prefab data.
-    EntityFactory::spawn(registry, modelType, position, physicsSystem);
-
-    // 2. Determine whether this entity type uses an animated character model.
-    const auto& prefab = PrefabManager::get().getPrefab(modelType);
-    bool isAnimated = !prefab.is_null() && prefab.value("animated", false);
-
-    // 3. Create a visual Entity* for the legacy rendering + interpolation pipeline.
-    TexturedModel* remoteModel = nullptr;
-    glm::vec3 modelMin(-0.5f, 0.0f, -0.5f);
-    glm::vec3 modelMax( 0.5f, 2.0f,  0.5f);
-    float remoteScale = 1.0f;
-
-    if (isAnimated && player && player->getModel()) {
-        // For animated entities (remote players, NPCs), reuse the local
-        // player's TexturedModel as a proxy.  The actual visual comes from
-        // the AnimatedEntity paired below.  Match the local player's scale
-        // (usually 0) so the proxy mesh stays invisible.
-        remoteModel = player->getModel();
-        remoteScale = player->getScale();
-    } else if (!prefab.is_null() && prefab.contains("model")) {
-        // Load model from prefab data.
-        const auto& modelBlock = prefab["model"];
-        std::string objFile = modelBlock.value("obj", "");
-        std::string texFile = modelBlock.value("texture", "");
-
-        if (!objFile.empty()) {
-            ModelData meshData = OBJLoader::loadObjModel(objFile);
-            if (!meshData.getIndices().empty()) {
-                auto* tex = new ModelTexture(texFile, PNG, Material{2.0f, 2.0f});
-                remoteModel = new TexturedModel(loader->loadToVAO(meshData), tex);
-                modelMin = meshData.getMin();
-                modelMax = meshData.getMax();
-            }
-        }
+    entt::entity e = EntityFactory::spawn(registry, modelType, position, physicsSystem);
+    if (e == entt::null) {
+        std::cerr << "[Engine] onNetworkSpawn: unknown prefab \"" << modelType
+                  << "\" for networkId=" << networkId << "\n";
+        return entt::null;
     }
 
-    // Fallback: use a simple OBJ model.
-    if (!remoteModel) {
-        ModelData fallbackData = OBJLoader::loadObjModel("Stall");
-        if (fallbackData.getIndices().empty()) {
-            std::cerr << "[Engine] onNetworkSpawn FAILED — no model for remote entity "
-                      << networkId << "\n";
-            return nullptr;
-        }
-        auto* tex = new ModelTexture("stallTexture", PNG, Material{2.0f, 2.0f});
-        remoteModel = new TexturedModel(loader->loadToVAO(fallbackData), tex);
-        modelMin = fallbackData.getMin();
-        modelMax = fallbackData.getMax();
-    }
-
-    // Each entity needs its own BoundingBox (unique picking colour).
-    AABB bbRegion(BoundTypes::AABB);
-    bbRegion.min = modelMin;
-    bbRegion.max = modelMax;
-    std::vector<float> boxVerts = OBJLoader::generateBox(modelMin, modelMax);
-    BoundingBoxData bbData(bbRegion, std::move(boxVerts));
-    auto* rawBB = loader->loadToVAO(bbData);
-    auto* bb    = new BoundingBox(rawBB, BoundingBoxIndex::genUniqueId());
-    bb->setAABB(modelMin, modelMax);
-
-    auto* ent = new Entity(registry, remoteModel, bb, position, glm::vec3(0.0f), remoteScale);
-
-    // Emplace the ECS NetworkSyncData so NetworkInterpolationSystem can drive it.
-    registry.emplace<NetworkSyncData>(ent->getHandle());
-
-    entities.push_back(ent);
-
-    // Register with ChunkManager so the StreamingSystem includes this entity
-    // in the active render list.
-    if (chunkManager) {
-        chunkManager->registerEntity(ent, position);
-    }
-
-    // Create an AnimatedEntity for animated entity types (remote players, NPCs).
-    // Shares the local player's AnimatedModel — safe because AnimatedRenderer
-    // uploads bone matrices per-entity before each draw call.
-    if (isAnimated && !animatedEntities.empty() &&
-        animatedEntities[0] && animatedEntities[0]->model) {
-        AnimatedModel* sharedModel = animatedEntities[0]->model;
-
-        auto normalizeClipName = [](const std::string& raw) -> std::string {
-            std::string lower(raw);
-            for (auto& c : lower)
-                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (lower.find("idle") != std::string::npos) return "Idle";
-            if (lower.find("walk") != std::string::npos) return "Walk";
-            if (lower.find("run")  != std::string::npos) return "Run";
-            if (lower.find("jump") != std::string::npos) return "Jump";
-            std::string out = raw;
-            if (!out.empty())
-                out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
-            return out;
-        };
-
-        auto* remoteCtrl = new AnimationController();
-        for (auto& clip : sharedModel->clips) {
-            remoteCtrl->addState(normalizeClipName(clip.name), &clip);
-        }
-        remoteCtrl->setState("Idle");
-
-        auto* remoteAe         = new AnimatedEntity();
-        remoteAe->model        = sharedModel;
-        remoteAe->controller   = remoteCtrl;
-        remoteAe->position     = position;
-        remoteAe->scale        = animatedEntities[0]->scale;
-        remoteAe->modelOffset  = animatedEntities[0]->modelOffset;
-        remoteAe->isLocalPlayer = false;
-        remoteAe->pairedEntity  = ent;
-        animatedEntities.push_back(remoteAe);
-    }
+    // Attach interpolation state so NetworkInterpolationSystem can drive this entity.
+    registry.emplace<NetworkSyncData>(e);
 
     std::cout << "[Engine] Remote entity " << networkId
               << " (model=\"" << modelType << "\") spawned at ("
-              << position.x << ", " << position.y << ", " << position.z
-              << ") — entities.size()=" << entities.size() << "\n";
+              << position.x << ", " << position.y << ", " << position.z << ")\n";
 
-    return ent;
+    return e;
 }
 
-void Engine::onNetworkDespawn(uint32_t /*networkId*/, Entity* e) {
-    // Remove the paired AnimatedEntity (if any) before deleting the Entity so
-    // AnimationSystem no longer renders or accesses the dangling pairedEntity ptr.
-    for (auto it = animatedEntities.begin(); it != animatedEntities.end(); ++it) {
-        if (*it && (*it)->pairedEntity == e) {
-            delete (*it)->controller;  // Controller is owned per remote entity
-            delete *it;
-            animatedEntities.erase(it);
-            break;
+void Engine::onNetworkDespawn(uint32_t /*networkId*/, entt::entity e) {
+    if (!registry.valid(e)) return;
+
+    // Release AnimatedModelComponent resources if present.
+    if (auto* amc = registry.try_get<AnimatedModelComponent>(e)) {
+        if (amc->ownsModel && amc->model) {
+            amc->model->cleanUp();
+            delete amc->model;
         }
+        delete amc->controller;
     }
 
-    // Remove from the entities list so RenderSystem stops drawing it.
-    auto it = std::find(entities.begin(), entities.end(), e);
-    if (it != entities.end()) {
-        entities.erase(it);
-    }
-
-    // Deregister from ChunkManager so the StreamingSystem no longer
-    // returns this entity in the active list.
-    if (chunkManager) {
-        chunkManager->removeEntity(e);
-    }
-
-    // Free the entity to prevent memory leaks.
-    delete e;
+    // Destroy all ECS components and the entity itself.
+    registry.destroy(e);
 }
 
 void Engine::buildSystems() {
@@ -781,13 +692,13 @@ void Engine::buildSystems() {
             registry,
             serverIP_,
             player,
-            // Spawn callback
+            // Spawn callback — pure ECS, returns entt::entity handle
             [this](uint32_t nid, const std::string& model,
-                   const glm::vec3& pos) -> Entity* {
+                   const glm::vec3& pos) -> entt::entity {
                 return onNetworkSpawn(nid, model, pos);
             },
-            // Despawn callback
-            [this](uint32_t nid, Entity* e) {
+            // Despawn callback — destroys ECS entity + resources
+            [this](uint32_t nid, entt::entity e) {
                 onNetworkDespawn(nid, e);
             }
         );
@@ -810,7 +721,7 @@ void Engine::buildSystems() {
         &editorState_));
 
     systems.push_back(std::make_unique<AnimationSystem>(
-        animRenderer, animatedEntities, player, lights,
+        animRenderer, registry, player, lights,
         playerCamera, renderer->getProjectionMatrix()));
 
     systems.push_back(std::make_unique<UISystem>(
@@ -879,20 +790,20 @@ void Engine::shutdown() {
         animShader->getBoneBuffer().cleanup();
         animShader->cleanUp();
     }
-    for (auto* ae : animatedEntities) {
-        if (ae) {
-            // Only delete the model when this entity owns it.  Remote entities
-            // share the local player's AnimatedModel pointer; deleting it more
-            // than once causes the malloc double-free crash seen on quit.
-            if (ae->ownsModel && ae->model) {
-                ae->model->cleanUp();
-                delete ae->model;
+    // Release all AnimatedModelComponent resources stored in the ECS registry.
+    {
+        auto animView = registry.view<AnimatedModelComponent>();
+        for (auto e : animView) {
+            auto& amc = animView.get<AnimatedModelComponent>(e);
+            if (amc.ownsModel && amc.model) {
+                amc.model->cleanUp();
+                delete amc.model;
+                amc.model = nullptr;
             }
-            delete ae->controller;
-            delete ae;
+            delete amc.controller;
+            amc.controller = nullptr;
         }
     }
-    animatedEntities.clear();
     delete animRenderer;
     loader->cleanUp();
     shutdownImGui();

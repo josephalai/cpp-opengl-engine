@@ -25,7 +25,6 @@
 #include "../Guis/Texture/GuiTexture.h"
 #include "../Guis/Text/GUIText.h"
 #include "../Water/WaterTile.h"
-#include "../RenderEngine/AnimatedRenderer.h"
 #include "../Physics/PhysicsComponents.h"
 #include "SceneLoader.h"   // re-use PhysicsBodyCfg / PhysicsGroundCfg types
 #include <entt/entt.hpp>
@@ -40,6 +39,8 @@ public:
     /// Load a scene from a JSON file.  Returns true on success.
     /// Falls back gracefully if the file is missing; the caller should then
     /// use the legacy SceneLoader::load() with the .cfg path.
+    /// Animated characters are emitted as ECS entities with AnimatedModelComponent
+    /// and TransformComponent (no legacy AnimatedEntity* vector).
     static bool load(
         const std::string&             jsonPath,
         Loader*                        loader,
@@ -53,7 +54,6 @@ public:
         Terrain*&                      primaryTerrain,
         Player*&                       player,
         PlayerCamera*&                 playerCamera,
-        std::vector<AnimatedEntity*>&  animatedEntities,
         std::vector<PhysicsBodyCfg>&   physicsBodyCfgs,
         std::vector<PhysicsGroundCfg>& physicsGroundCfgs
     );

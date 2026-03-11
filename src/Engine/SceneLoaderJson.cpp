@@ -11,6 +11,8 @@
 
 #include "SceneLoaderJson.h"
 #include "../ECS/Components/AssimpModelComponent.h"
+#include "../ECS/Components/AnimatedModelComponent.h"
+#include "../ECS/Components/TransformComponent.h"
 #include "../Util/FileSystem.h"
 #include "../RenderEngine/DisplayManager.h"
 #include "../Util/LightUtil.h"
@@ -97,7 +99,6 @@ bool SceneLoaderJson::load(
     Terrain*&                      primaryTerrain,
     Player*&                       player,
     PlayerCamera*&                 playerCamera,
-    std::vector<AnimatedEntity*>&  animatedEntities,
     std::vector<PhysicsBodyCfg>&   physicsBodyCfgs,
     std::vector<PhysicsGroundCfg>& physicsGroundCfgs)
 {
@@ -461,13 +462,22 @@ bool SceneLoaderJson::load(
                 animModel->coordinateCorrection = userRot * animModel->coordinateCorrection;
             }
 
-            auto* ae       = new AnimatedEntity();
-            ae->model      = animModel;
-            ae->controller = controller;
-            ae->position   = glm::vec3(ax, yVal, az);
-            ae->scale      = scale;
-            ae->modelOffset = glm::vec3(ox, oy, oz);
-            animatedEntities.push_back(ae);
+            // Create an ECS entity to carry this animated character.
+            // isLocalPlayer is false here; Engine::loadScene() will mark all
+            // entities loaded at startup as isLocalPlayer=true after this call.
+            entt::entity animEnt = registry.create();
+            auto& tc    = registry.emplace<TransformComponent>(animEnt);
+            tc.position = glm::vec3(ax, yVal, az);
+            tc.rotation = glm::vec3(rx, ry, rz);
+            tc.scale    = scale;
+
+            auto& amc       = registry.emplace<AnimatedModelComponent>(animEnt);
+            amc.model       = animModel;
+            amc.controller  = controller;
+            amc.modelOffset = glm::vec3(ox, oy, oz);
+            amc.scale       = scale;
+            amc.ownsModel   = true;
+            amc.isLocalPlayer = false;  // marked true by Engine after loading
 
             std::cout << "[SceneLoaderJson] Loaded animated_character '" << relPath
                       << "': " << animModel->clips.size() << " clip(s), "
@@ -543,6 +553,6 @@ bool SceneLoaderJson::load(
               << guis.size()             << " GUI textures, "
               << texts.size()            << " text overlays, "
               << waterTiles.size()       << " water tiles, "
-              << animatedEntities.size() << " animated characters.\n";
+              << registry.view<AnimatedModelComponent>().size() << " animated characters.\n";
     return true;
 }
