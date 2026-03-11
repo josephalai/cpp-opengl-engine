@@ -1,12 +1,15 @@
 // src/Scripting/LuaScriptEngine.cpp
 //
-// Implementation of the Lua scripting bridge for data-driven NPC AI.
+// Implementation of the Lua scripting bridge for data-driven NPC AI
+// and entity interactions.
 
 #include "LuaScriptEngine.h"
 
 #ifdef HAS_LUA
 
 #include "../Config/ConfigManager.h"
+#include "../ECS/Components/NetworkIdComponent.h"
+#include <entt/entt.hpp>
 #include <iostream>
 #include <filesystem>
 
@@ -151,7 +154,211 @@ bool LuaScriptEngine::hasScript(const std::string& scriptName) const {
 // -------------------------------------------------------------------------
 
 void LuaScriptEngine::shutdown() {
+    interactionEnvs_.clear();
     initialised_ = false;
+}
+
+// -------------------------------------------------------------------------
+// buildEngineTable — construct the `engine` API table passed to on_interact()
+//
+// Each sub-table is a collection of functional stub functions that log their
+// actions to stdout and return sensible defaults.  They define the exact API
+// contract that will be filled with real implementations in a future step.
+// -------------------------------------------------------------------------
+
+sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
+                                              entt::entity target) {
+    // Resolve network IDs for passing to Lua (fall back to raw entity value
+    // if the entity has no NetworkIdComponent).
+    auto resolveId = [&](entt::entity e) -> uint32_t {
+        // NetworkIdComponent lookup is only valid when the registry is in scope.
+        // Since this method is called from executeInteraction which holds the
+        // registry reference on the stack, we capture by the entity integral.
+        return static_cast<uint32_t>(entt::to_integral(e));
+    };
+    uint32_t playerId = resolveId(player);
+    uint32_t targetId = resolveId(target);
+
+    sol::table engine = lua_.create_table();
+
+    // --- engine.Network ---
+    sol::table net = lua_.create_table();
+    net["broadcastAnimation"] = [](uint32_t pid, const std::string& anim) {
+        std::cout << "[Lua] broadcastAnimation(" << pid << ", \"" << anim << "\")\n";
+    };
+    net["sendMessage"] = [](uint32_t pid, const std::string& msg) {
+        std::cout << "[Lua] sendMessage(" << pid << ", \"" << msg << "\")\n";
+    };
+    net["sendOpenUI"] = [](uint32_t pid, const std::string& ui) {
+        std::cout << "[Lua] sendOpenUI(" << pid << ", \"" << ui << "\")\n";
+    };
+    net["broadcastDamageSplat"] = [](uint32_t tid, int dmg) {
+        std::cout << "[Lua] broadcastDamageSplat(" << tid << ", " << dmg << ")\n";
+    };
+    engine["Network"] = net;
+
+    // --- engine.Stats ---
+    sol::table stats = lua_.create_table();
+    stats["getLevel"] = [](uint32_t /*eid*/, const std::string& skill) -> int {
+        std::cout << "[Lua] Stats.getLevel(_, \"" << skill << "\") -> 1\n";
+        return 1;
+    };
+    stats["getAll"] = [&](uint32_t /*eid*/) -> sol::table {
+        sol::table t = lua_.create_table();
+        t["Attack"]     = 1;
+        t["Defence"]    = 1;
+        t["Strength"]   = 1;
+        t["Woodcutting"] = 1;
+        t["Hitpoints"]  = 10;
+        return t;
+    };
+    engine["Stats"] = stats;
+
+    // --- engine.Inventory ---
+    sol::table inv = lua_.create_table();
+    inv["addItem"] = [](uint32_t pid, const std::string& item, int count) {
+        std::cout << "[Lua] Inventory.addItem(" << pid << ", \"" << item
+                  << "\", " << count << ")\n";
+    };
+    engine["Inventory"] = inv;
+
+    // --- engine.Health ---
+    sol::table health = lua_.create_table();
+    health["dealDamage"] = [](uint32_t tid, int amount) {
+        std::cout << "[Lua] Health.dealDamage(" << tid << ", " << amount << ")\n";
+    };
+    health["isDead"] = [](uint32_t /*tid*/) -> bool {
+        return false;
+    };
+    engine["Health"] = health;
+
+    // --- engine.Entities ---
+    // Capture the registry by reference via a pointer so the lambda is copyable.
+    sol::table ents = lua_.create_table();
+    ents["destroy"] = [this](uint32_t /*tid*/) {
+        // In a full implementation this would look up the entity by network ID
+        // and destroy it. For now, log the intent.
+        std::cout << "[Lua] Entities.destroy() — entity marked for removal\n";
+    };
+    engine["Entities"] = ents;
+
+    // --- engine.Math ---
+    sol::table math = lua_.create_table();
+    math["rollChance"] = [](float probability) -> bool {
+        // Deterministic pseudo-random roll seeded per-call.
+        static thread_local unsigned int seed = 12345;
+        seed = seed * 1664525u + 1013904223u; // LCG
+        float r = static_cast<float>(seed & 0x7FFF) / static_cast<float>(0x8000);
+        return r < probability;
+    };
+    engine["Math"] = math;
+
+    // --- engine.Transform ---
+    sol::table transform = lua_.create_table();
+    transform["lookAt"] = [](uint32_t entityA, uint32_t entityB) {
+        std::cout << "[Lua] Transform.lookAt(" << entityA << ", " << entityB << ")\n";
+    };
+    engine["Transform"] = transform;
+
+    // --- engine.CombatMath ---
+    sol::table combat = lua_.create_table();
+    combat["calculateMeleeHit"] = [&](sol::table /*attackerStats*/,
+                                      sol::table /*defenderStats*/) -> int {
+        // Placeholder: return a fixed hit value until real combat math is added.
+        static thread_local unsigned int seed = 99991;
+        seed = seed * 1664525u + 1013904223u;
+        int dmg = static_cast<int>(seed % 5) + 1; // 1-5 damage
+        std::cout << "[Lua] CombatMath.calculateMeleeHit() -> " << dmg << "\n";
+        return dmg;
+    };
+    engine["CombatMath"] = combat;
+
+    // --- engine.Equipment ---
+    sol::table equip = lua_.create_table();
+    equip["getWeaponSpeed"] = [](uint32_t /*pid*/) -> float {
+        std::cout << "[Lua] Equipment.getWeaponSpeed() -> 2.4\n";
+        return 2.4f; // Default OSRS attack speed (4-tick cycle)
+    };
+    engine["Equipment"] = equip;
+
+    // --- engine.Loot ---
+    sol::table loot = lua_.create_table();
+    loot["generateDrop"] = [](uint32_t tid, const std::string& table) {
+        std::cout << "[Lua] Loot.generateDrop(" << tid << ", \"" << table << "\")\n";
+    };
+    engine["Loot"] = loot;
+
+    (void)playerId;
+    (void)targetId;
+    return engine;
+}
+
+// -------------------------------------------------------------------------
+// executeInteraction — call on_interact() in an isolated script environment
+// -------------------------------------------------------------------------
+
+float LuaScriptEngine::executeInteraction(const std::string& scriptPath,
+                                          entt::entity player,
+                                          entt::entity target) {
+    if (!initialised_) return 0.0f;
+
+    // Resolve the full filesystem path.
+    std::string fullPath = resourceRoot_ + "/src/Resources/" + scriptPath;
+
+    // 1. Load the script into an isolated environment the first time we see it.
+    auto envIt = interactionEnvs_.find(scriptPath);
+    if (envIt == interactionEnvs_.end()) {
+        if (!fs::exists(fullPath)) {
+            std::cerr << "[LuaScriptEngine] Interaction script not found: "
+                      << fullPath << "\n";
+            return 0.0f;
+        }
+
+        // Create a fresh environment inheriting global libs (math, string, etc.)
+        sol::environment env(lua_, sol::create, lua_.globals());
+
+        auto loadResult = lua_.safe_script_file(
+            fullPath, env, sol::script_pass_on_error);
+        if (!loadResult.valid()) {
+            sol::error err = loadResult;
+            std::cerr << "[LuaScriptEngine] Error loading interaction script "
+                      << scriptPath << ": " << err.what() << "\n";
+            return 0.0f;
+        }
+
+        interactionEnvs_.emplace(scriptPath, std::move(env));
+        std::cout << "[LuaScriptEngine] Loaded interaction script: "
+                  << scriptPath << "\n";
+        envIt = interactionEnvs_.find(scriptPath);
+    }
+
+    sol::environment& env = envIt->second;
+
+    // 2. Look up the on_interact function in this script's environment.
+    sol::protected_function fn = env["on_interact"];
+    if (!fn.valid()) {
+        std::cerr << "[LuaScriptEngine] on_interact not defined in: "
+                  << scriptPath << "\n";
+        return 0.0f;
+    }
+
+    // 3. Build the engine API table and resolve entity IDs for Lua.
+    sol::table engineTable = buildEngineTable(player, target);
+
+    uint32_t playerId = static_cast<uint32_t>(entt::to_integral(player));
+    uint32_t targetId = static_cast<uint32_t>(entt::to_integral(target));
+
+    // 4. Call on_interact(player_id, target_id, engine).
+    auto callResult = fn(playerId, targetId, engineTable);
+    if (!callResult.valid()) {
+        sol::error err = callResult;
+        std::cerr << "[LuaScriptEngine] Error in on_interact ("
+                  << scriptPath << "): " << err.what() << "\n";
+        return 0.0f;
+    }
+
+    // 5. Return the cooldown float.
+    return callResult.get<float>(0);
 }
 
 #endif // HAS_LUA

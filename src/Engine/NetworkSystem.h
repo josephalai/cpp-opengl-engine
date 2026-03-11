@@ -65,6 +65,12 @@ public:
 
     void setPhysicsSystem(PhysicsSystem* physics) { physicsSystem_ = physics; }
 
+    /// Send an ActionRequestPacket to the server, asking it to start an
+    /// interaction between the local player and the target entity.
+    ///
+    /// @param targetNetworkId  The NetworkIdComponent::id of the clicked entity.
+    void sendActionRequest(uint32_t targetNetworkId);
+
 private:
     // ADD THIS STRUCT AND VECTOR:
     struct PlayerHistory {

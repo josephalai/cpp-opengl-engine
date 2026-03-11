@@ -36,6 +36,9 @@
 #include "../Engine/PathfindingSystem.h"
 #include "../Navigation/NavMeshManager.h"
 #include "../ECS/Phase4Test.h"
+#include "../Interaction/InteractionSystem.h"
+#include "../ECS/Components/ActionStateComponent.h"
+#include "../ECS/Components/InteractableComponent.h"
 
 #include <nlohmann/json.hpp>
 
@@ -846,6 +849,16 @@ int main() {
     PathfindingSystem pathfindingSystem(registry, cfg.physics.defaultRunSpeed);
 
     // -------------------------------------------------------------------------
+    // Step 6.1 — Interaction Scripting Engine + InteractionSystem
+    // A dedicated LuaScriptEngine for interaction scripts, separate from the
+    // NPC AI engine.  Each script runs in an isolated Sol2 environment so
+    // scripts cannot clobber each other's on_interact() globals.
+    // -------------------------------------------------------------------------
+    LuaScriptEngine interactionLua;
+    interactionLua.init(HOME_PATH);
+    InteractionSystem interactionSystem(registry, interactionLua);
+
+    // -------------------------------------------------------------------------
     // Network tracking maps
     //   peerToNetworkId    — peer → network ID (for input routing on receive)
     //   networkIdToEntity  — network ID → entt entity (for entity lookup)
@@ -1069,7 +1082,9 @@ int main() {
                     }
 
                     // Phase 4 Step 4.4.2 — ActionRequest: client right-clicks
-                    // a target → server runs A* and assigns PathfindingComponent.
+                    // a target → server validates InteractableComponent, assigns
+                    // ActionStateComponent for the interaction state machine, and
+                    // runs A* to auto-steer the player toward the target.
                     if (ptype == Network::PacketType::ActionRequest &&
                         plen == sizeof(Network::ActionRequestPacket)) {
 
@@ -1085,6 +1100,15 @@ int main() {
                                 targetIt != networkIdToEntity.end()) {
                                 auto playerEntity = playerIt->second;
                                 auto targetEntity = targetIt->second;
+
+                                // Step 6.1: Only accept the request if the target
+                                // has an InteractableComponent.
+                                if (!registry.all_of<InteractableComponent>(targetEntity)) {
+                                    std::cout << "[Server] ActionRequest denied — "
+                                                 "target " << req.targetNetworkId
+                                              << " has no InteractableComponent.\n";
+                                    break;
+                                }
 
                                 auto& playerTC = registry.get<TransformComponent>(playerEntity);
                                 auto& targetTC = registry.get<TransformComponent>(targetEntity);
@@ -1108,6 +1132,12 @@ int main() {
                                               << cellDist << ").\n";
                                     break;
                                 }
+
+                                // Step 6.1: Attach ActionStateComponent to the player.
+                                // This starts the interaction state machine.
+                                registry.emplace_or_replace<ActionStateComponent>(
+                                    playerEntity,
+                                    ActionStateComponent{targetEntity, 0.0f, false});
 
                                 // Run A* to find a path from player to target.
                                 auto path = navMesh.findPath(playerTC.position, targetTC.position);
@@ -1403,6 +1433,9 @@ int main() {
 
             // ----- Phase 4: Update pathfinding auto-steering -----
             pathfindingSystem.update(cfg.server.tickInterval);
+
+            // ----- Step 6.1: Update interaction state machine -----
+            interactionSystem.update(cfg.server.tickInterval);
 
             // ----- Broadcast entity snapshots with AoI filtering (Phase 4) -----
             // Instead of broadcasting every entity to every client, iterate

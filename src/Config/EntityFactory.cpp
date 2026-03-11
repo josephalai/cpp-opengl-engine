@@ -9,6 +9,7 @@
 #include "../ECS/Components/InputStateComponent.h"
 #include "../ECS/Components/InputQueueComponent.h"
 #include "../ECS/Components/AIScriptComponent.h"
+#include "../ECS/Components/InteractableComponent.h"
 #include "../Physics/PhysicsSystem.h"
 
 #ifndef HEADLESS_SERVER
@@ -128,6 +129,23 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
             prefab["components"].contains("AIComponent") &&
             prefab["components"]["AIComponent"].contains("script")) {
             ai.scriptName = prefab["components"]["AIComponent"]["script"].get<std::string>();
+        }
+    }
+
+    // --- InteractableComponent (if prefab contains an "InteractableComponent" block) ---
+    // Supports both top-level and nested-under-"components" declarations.
+    {
+        const nlohmann::json* icJson = nullptr;
+        if (prefab.contains("InteractableComponent"))
+            icJson = &prefab["InteractableComponent"];
+        else if (prefab.contains("components") &&
+                 prefab["components"].contains("InteractableComponent"))
+            icJson = &prefab["components"]["InteractableComponent"];
+
+        if (icJson) {
+            auto& ic = registry.emplace<InteractableComponent>(entity);
+            ic.scriptPath    = icJson->value("script",         "");
+            ic.interactRange = icJson->value("interact_range", 1.5f);
         }
     }
 
