@@ -10,6 +10,7 @@
 #include "InputSystem.h"
 #include "InputDispatcher.h"
 #include "AnimationSystem.h"
+#include "EditorSystem.h"
 #include "../Events/EventBus.h"
 #include "RenderSystem.h"
 #include "UISystem.h"
@@ -54,6 +55,11 @@
 #include <fstream>
 #include <algorithm>
 
+// ImGui
+#include <imgui.h>
+#include <backends/imgui_impl_glfw.h>
+#include <backends/imgui_impl_opengl3.h>
+
 // ---------------------------------------------------------------------------
 
 Engine::Engine() = default;
@@ -86,6 +92,16 @@ void Engine::init() {
     initRenderers();
     initGui();
     initFramebuffersAndPickers();
+
+    // initImGui() must be called AFTER loadScene() (which creates PlayerCamera
+    // → CameraInput → InputMaster::init() → installs glfwSetMouseButtonCallback
+    // and glfwSetKeyCallback).  With install_callbacks=true, ImGui_ImplGlfw
+    // wraps those callbacks so ImGui receives events first and chains to the
+    // engine's handlers.  Calling initImGui() before loadScene() caused
+    // InputMaster::init() to overwrite ImGui's mouse-button callback without
+    // chaining, making all ImGui widget clicks non-functional.
+    initImGui();
+
     buildSystems();
 
     // --- ECS Phase 2 Step 3 verification ---
@@ -98,6 +114,23 @@ void Engine::init() {
         for (auto e : viewI) { (void)e; ++countI; }
         for (auto e : viewN) { (void)e; ++countN; }
     }
+}
+
+void Engine::initImGui() {
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    (void)io;
+    ImGui::StyleColorsDark();
+    // Install GLFW callbacks (chaining = true preserves existing GLFW callbacks).
+    ImGui_ImplGlfw_InitForOpenGL(DisplayManager::window, true);
+    ImGui_ImplOpenGL3_Init("#version 330");
+}
+
+void Engine::shutdownImGui() {
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
 }
 
 void Engine::initFonts() {
@@ -638,10 +671,11 @@ void Engine::buildSystems() {
     //   6. RenderSystem    — FBO + main scene render (frustum-culled)
     //   7. AnimationSystem — sync positions + animated character render
     //   8. UISystem        — object picking + UiMaster render + constraints
+    //   9. EditorSystem    — Dear ImGui World Editor overlay (last, owns ImGui frame)
 
     // InputDispatcher must run first so that PlayerMoveCommandEvent subscribers
     // (e.g. PlayerMovementSystem) have up-to-date speed values before any other system runs.
-    systems.push_back(std::make_unique<InputDispatcher>(picker));
+    systems.push_back(std::make_unique<InputDispatcher>(picker, &editorState_));
 
     // Subscribe the ECS InputStateComponent to the EventBus so
     // PlayerMovementSystem uses event-driven movement instead of polling.
@@ -657,7 +691,7 @@ void Engine::buildSystems() {
     }
 
     systems.push_back(std::make_unique<InputSystem>(
-        playerCamera, primaryTerrain, picker, sampleModifiedGui, pNameText));
+        playerCamera, primaryTerrain, picker, sampleModifiedGui, pNameText, &editorState_));
 
     // PlayerMovementSystem — ECS replacement for InputComponent::update().
     // Runs after InputSystem (camera) and PhysicsSystem, reads InputStateComponent.
@@ -772,7 +806,8 @@ void Engine::buildSystems() {
 
     systems.push_back(std::make_unique<RenderSystem>(
         renderer, reflectFbo, entities, allTerrains, lights,
-        registry, playerCamera, renderer->getProjectionMatrix(), instancedModelManager));
+        registry, playerCamera, renderer->getProjectionMatrix(), instancedModelManager,
+        &editorState_));
 
     systems.push_back(std::make_unique<AnimationSystem>(
         animRenderer, animatedEntities, player, lights,
@@ -781,6 +816,16 @@ void Engine::buildSystems() {
     systems.push_back(std::make_unique<UISystem>(
         renderer, entities, clickColorText, masterContainer,
         guiRenderer, guis));
+
+    // EditorSystem must be last — it owns the ImGui frame boundary
+    // (NewFrame / Render) and its ImGui draw calls must come after all other
+    // render systems have submitted their geometry for this frame.
+    {
+        const std::string sceneJsonPath = FileSystem::Scene("scene.json");
+        systems.push_back(std::make_unique<EditorSystem>(
+            registry, picker, physicsSystem, renderer,
+            editorState_, sceneJsonPath));
+    }
 }
 
 void Engine::run() {
@@ -850,6 +895,7 @@ void Engine::shutdown() {
     animatedEntities.clear();
     delete animRenderer;
     loader->cleanUp();
+    shutdownImGui();
     DisplayManager::closeDisplay();
 
     // Tear down ENet after all systems (including NetworkSystem) are destroyed.

@@ -37,6 +37,12 @@ void PlayerCamera::calculateCameraPosition(float horizDistance, float verticDist
 
 // returns the view matrix calculated using Euler Angles and the LookAt Matrix
 glm::mat4 PlayerCamera::getViewMatrix() {
+    // In god (editor) mode, bypass the orbit camera and use a standard free-fly
+    // view so the developer can navigate independently of the player.  Camera::Front
+    // has already been updated by InputSystem::updateGodCamera() this frame.
+    if (Camera::godMode) {
+        return glm::lookAt(Camera::Position, Camera::Position + Camera::Front, Camera::Up);
+    }
     glm::vec3 front;
     front.x = cos(glm::radians(Yaw)) * cos(glm::radians(Pitch));
     front.y = sin(glm::radians(Pitch));

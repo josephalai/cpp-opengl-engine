@@ -29,6 +29,10 @@ public:
     static float Yaw;
     static float Pitch;
 
+    /// When true, getViewMatrix() returns a free-fly view instead of the
+    /// derived-class (orbit) view.  Set by EditorState toggle logic.
+    static bool godMode;
+
     // ADD THIS GETTER:
     glm::vec3 getPosition() const { return Position; }
 

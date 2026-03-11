@@ -11,6 +11,7 @@ glm::vec3 Camera::WorldUp;
 // euler Angles
 float Camera::Yaw = 90.0f;
 float Camera::Pitch;
+bool  Camera::godMode = false;
 
 /**
  * @brief A constructor with vectors... An abstract camera class
