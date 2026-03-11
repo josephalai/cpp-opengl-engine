@@ -3,6 +3,8 @@
 #include "EditorSystem.h"
 #include "EditorSerializer.h"
 #include "../ECS/Components/EditorPlacedComponent.h"
+#include "../ECS/Components/InputQueueComponent.h"
+#include "../ECS/Components/InputStateComponent.h"
 #include "../ECS/Components/TransformComponent.h"
 #include "../Config/PrefabManager.h"
 #include "../Config/EntityFactory.h"
@@ -97,10 +99,18 @@ void EditorSystem::handlePlacement() {
     if (!editorState_.hasGhostEntity) return;
 
     glm::vec3 pos = editorState_.ghostPosition;
+    // Pass nullptr for physics — editor-placed entities are pure static data
+    // containers and must not receive a physics body or character controller.
     entt::entity ent = EntityFactory::spawn(
-        registry_, editorState_.selectedPrefab, pos, physicsSystem_);
+        registry_, editorState_.selectedPrefab, pos, nullptr);
 
     if (ent == entt::null) return;
+
+    // Strip input/movement components that EntityFactory adds by default.
+    // Static world-props placed via the editor should never be driven by the
+    // input or physics systems.
+    registry_.remove<InputStateComponent>(ent);
+    registry_.remove<InputQueueComponent>(ent);
 
     // Apply ghost scale and rotation.
     if (auto* tc = registry_.try_get<TransformComponent>(ent)) {
