@@ -13,6 +13,7 @@
 #include "../ECS/Components/NetworkIdComponent.h"
 
 #include <imgui.h>
+#include <iostream>
 
 InputDispatcher::InputDispatcher(TerrainPicker*  picker,
                                  EditorState*    editorState,
@@ -114,6 +115,7 @@ void InputDispatcher::update(float /*deltaTime*/) {
                         EntityClickedEvent evt{};
                         evt.networkId = nid->id;
                         EventBus::instance().publish(evt);
+                        std::cout << "[Input] Clicked Entity Network ID: " << nid->id << "\n";
                         entityHit = true;
                     }
                 }

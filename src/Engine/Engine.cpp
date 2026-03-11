@@ -48,6 +48,9 @@
 #include "../ECS/Components/NetworkSyncData.h"
 #include "../ECS/Components/AnimatedModelComponent.h"
 #include "../ECS/Components/StaticModelComponent.h"
+#include "../ECS/Components/NetworkIdComponent.h"
+#include "../ECS/Components/ColliderComponent.h"
+#include "../BoundingBox/BoundingBox.h"
 #include "../Toolbox/Maths.h"
 #include "../Config/ConfigManager.h"
 #include "../Config/PrefabManager.h"
@@ -649,15 +652,77 @@ void Engine::buildSystems() {
         //     transform matrix into the InstancedModelManager.
         //   - Otherwise, create a standard ECS entity via EntityFactory.
         if (instancedModelManager) {
+
+            // Deterministic static ID: same algorithm as the server so both sides
+            // independently generate matching IDs for each world-space object.
+            // The high bit is set to avoid collision with dynamic (player/NPC) IDs.
+            // Offset of 2000000 accommodates coordinates in [-200000, ~128000] world units.
+            // Note: two entities at the same (X, Z) but different Y levels share an ID —
+            // not an issue for baked terrain entities which are never vertically stacked.
+            auto generateStaticId = [](float x, float z) -> uint32_t {
+                uint32_t ux = static_cast<uint32_t>(std::round(x * 10.0f) + 2000000.0f) & 0x7FFF;
+                uint32_t uz = static_cast<uint32_t>(std::round(z * 10.0f) + 2000000.0f) & 0x7FFF;
+                return 0x80000000u | (ux << 15) | uz;
+            };
+
             chunkManager->setEntityCallback(
-                [this](const BakedEntity& be, int cx, int cz) {
+                [this, generateStaticId](const BakedEntity& be, int cx, int cz) {
                     // Use the well-known BakedPrefab mapping (ChunkData.h)
                     std::string alias = BakedPrefab::toAlias(be.prefabId);
                     if (alias.empty()) {
                         return;
                     }
 
-                    // Check if this alias should be instanced.
+                    glm::vec3 pos(be.x, be.y, be.z);
+                    glm::vec3 rot(0.0f, be.rotationY, 0.0f);
+
+                    // Spawn an ECS entity (no physics on client for static objects —
+                    // the server is authoritative for static collision).
+                    // This gives us TransformComponent + NetworkIdComponent +
+                    // InteractableComponent from the prefab, which are needed for
+                    // EntityPicker to identify and publish EntityClickedEvent.
+                    entt::entity e = EntityFactory::spawn(registry, alias, pos, nullptr, rot, be.scale);
+
+                    if (e != entt::null) {
+                        // Assign the deterministic static network ID so InputDispatcher
+                        // can publish EntityClickedEvent with the correct ID.
+                        uint32_t staticNetId = generateStaticId(be.x, be.z);
+                        if (auto* nid = registry.try_get<NetworkIdComponent>(e)) {
+                            nid->id    = staticNetId;
+                            nid->isNPC = false;
+                        } else {
+                            registry.emplace<NetworkIdComponent>(e,
+                                NetworkIdComponent{staticNetId, alias, false, 0});
+                        }
+
+                        // Add a ColliderComponent with an AABB derived from the
+                        // prefab's physics halfExtents so EntityPicker::pick() can
+                        // perform Ray-AABB tests against this entity.
+                        const auto& prefab = PrefabManager::get().getPrefab(alias);
+                        if (!prefab.is_null() && prefab.contains("physics")) {
+                            const auto& phys = prefab["physics"];
+                            glm::vec3 halfExtents(0.5f);
+                            if (phys.contains("halfExtents") &&
+                                phys["halfExtents"].is_array() &&
+                                phys["halfExtents"].size() >= 3) {
+                                halfExtents = glm::vec3(
+                                    phys["halfExtents"][0].get<float>(),
+                                    phys["halfExtents"][1].get<float>(),
+                                    phys["halfExtents"][2].get<float>()) * be.scale;
+                            } else if (phys.contains("radius")) {
+                                float r = phys.value("radius", 0.5f) * be.scale;
+                                halfExtents = glm::vec3(r);
+                            }
+                            // BoundingBox with null RawBoundingBox is safe here:
+                            // EntityPicker only calls getAABB(); the GPU mesh pointer
+                            // is never dereferenced for ECS-only (non-Entity*) objects.
+                            auto* box = new BoundingBox(nullptr, glm::vec3(1.0f));
+                            box->setAABB(-halfExtents, halfExtents);
+                            registry.emplace_or_replace<ColliderComponent>(e, ColliderComponent{box});
+                        }
+                    }
+
+                    // Check if this alias should be instanced for rendering.
                     if (instancedModelManager->hasAlias(alias)) {
                         int64_t chunkKey = (static_cast<int64_t>(cx) << 32)
                                          | static_cast<int64_t>(static_cast<uint32_t>(cz));
@@ -670,9 +735,13 @@ void Engine::buildSystems() {
                         instancedModelManager->addInstance(alias, chunkKey, transform);
 
                     } else {
-                        // Non-instanced baked entity — spawn as regular ECS entity
-                        glm::vec3 pos(be.x, be.y, be.z);
-                        EntityFactory::spawn(registry, alias, pos, physicsSystem);
+                        // Non-instanced baked entity — visual rendering via AssimpModelComponent
+                        // or AnimatedModelComponent (already set up by EntityFactory::spawn above
+                        // if the prefab has a "mesh" key).  Re-spawn only if EntityFactory didn't
+                        // create an entity (e.g., prefab has no model_type).
+                        if (e == entt::null) {
+                            EntityFactory::spawn(registry, alias, pos, physicsSystem, rot, be.scale);
+                        }
                     }
                 });
 

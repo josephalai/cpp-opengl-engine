@@ -426,6 +426,20 @@ static std::vector<entt::entity> loadBakedChunkEntities(
         return spawned;
     }
 
+    // Deterministic static ID: derived from world (X, Z) coordinates so both
+    // client and server independently produce the same ID for the same tree/stall.
+    // The high bit is set to guarantee no collision with dynamic entity IDs
+    // (players start at 100, NPCs follow sequentially, all < 0x80000000).
+    //
+    // Offset of 2000000 accommodates coordinates in the range [-200000, ~128000]
+    // world units before wrapping. Note: two entities at the same (X, Z) but
+    // different Y levels would share an ID — not an issue for baked terrain entities.
+    auto generateStaticId = [](float x, float z) -> uint32_t {
+        uint32_t ux = static_cast<uint32_t>(std::round(x * 10.0f) + 2000000.0f) & 0x7FFF;
+        uint32_t uz = static_cast<uint32_t>(std::round(z * 10.0f) + 2000000.0f) & 0x7FFF;
+        return 0x80000000u | (ux << 15) | uz;
+    };
+
     spawned.reserve(entities.size());
     for (const auto& be : entities) {
         std::string alias = BakedPrefab::toAlias(be.prefabId);
@@ -435,6 +449,35 @@ static std::vector<entt::entity> loadBakedChunkEntities(
             registry, physics, physBodies,
             alias, be.x, be.y, be.z, be.rotationY, be.scale);
         if (entity != entt::null) {
+            // Assign a deterministic network ID so the ActionRequest handler can
+            // look up this entity when the client right-clicks it.
+            uint32_t staticNetId = generateStaticId(be.x, be.z);
+            if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
+                nid->id    = staticNetId;
+                nid->isNPC = false;
+            } else {
+                registry.emplace<NetworkIdComponent>(entity,
+                    NetworkIdComponent{staticNetId, alias, false, 0});
+            }
+
+            // Attach InteractableComponent from the prefab (e.g. woodcutting script
+            // on trees) so the server's ActionRequest handler can validate the target.
+            const auto& prefab = PrefabManager::get().getPrefab(alias);
+            if (!prefab.is_null()) {
+                const nlohmann::json* icJson = nullptr;
+                if (prefab.contains("InteractableComponent"))
+                    icJson = &prefab["InteractableComponent"];
+                else if (prefab.contains("components") &&
+                         prefab["components"].contains("InteractableComponent"))
+                    icJson = &prefab["components"]["InteractableComponent"];
+
+                if (icJson && !registry.all_of<InteractableComponent>(entity)) {
+                    auto& ic      = registry.emplace<InteractableComponent>(entity);
+                    ic.scriptPath    = icJson->value("script",         "");
+                    ic.interactRange = icJson->value("interact_range", 1.5f);
+                }
+            }
+
             spawned.push_back(entity);
         }
     }
@@ -926,6 +969,19 @@ int main() {
         npcManager.initLua(HOME_PATH);
     }
 
+    // Populate networkIdToEntity for all static world objects (trees, stalls, lamps)
+    // that were loaded from baked chunks before this map existed.  Static entities
+    // have the high bit set in their NetworkIdComponent::id (see generateStaticId).
+    {
+        auto staticView = registry.view<NetworkIdComponent>();
+        for (auto entity : staticView) {
+            const auto& nid = staticView.get<NetworkIdComponent>(entity);
+            if (nid.id & 0x80000000u) {
+                networkIdToEntity[nid.id] = entity;
+            }
+        }
+    }
+
     // --- Server Tick State ---
     float    serverTime  = 0.0f;
     uint32_t sequenceNum = 0;
@@ -1233,11 +1289,15 @@ int main() {
                                 registry, physicsSystem, physBodiesCfg,
                                 cell.first, cell.second);
                             if (!spawned.empty()) {
-                                // Register baked entities in the spatial grid.
+                                // Register baked entities in the spatial grid and
+                                // network ID map so ActionRequest packets can find them.
                                 for (auto entity : spawned) {
                                     if (registry.valid(entity)) {
                                         auto& tc = registry.get<TransformComponent>(entity);
                                         spatialSystem.registerEntity(entity, tc.position, /*isStatic=*/true);
+                                        if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
+                                            networkIdToEntity[nid->id] = entity;
+                                        }
                                     }
                                 }
                                 bakedChunkEntities[cell] = std::move(spawned);
@@ -1254,6 +1314,10 @@ int main() {
                         if (bit != bakedChunkEntities.end()) {
                             for (auto entity : bit->second) {
                                 if (registry.valid(entity)) {
+                                    // Remove from networkIdToEntity before destroying.
+                                    if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
+                                        networkIdToEntity.erase(nid->id);
+                                    }
                                     spatialSystem.unregisterEntity(entity);
                                     registry.destroy(entity);
                                 }
