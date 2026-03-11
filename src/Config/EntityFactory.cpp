@@ -28,18 +28,18 @@
 entt::entity EntityFactory::spawn(entt::registry& registry,
                                   const std::string& prefabId,
                                   const glm::vec3& position,
-                                  PhysicsSystem* physics) {
+                                  PhysicsSystem* physics,
+                                  const glm::vec3& rotation,
+                                  float scale) {
     const auto& prefab = PrefabManager::get().getPrefab(prefabId);
-    if (prefab.is_null()) {
-        std::cerr << "[EntityFactory] Unknown prefab: " << prefabId << "\n";
-        return entt::null;
-    }
+    if (prefab.is_null()) return entt::null;
 
     entt::entity entity = registry.create();
 
-    // --- TransformComponent (always added) ---
     auto& tc = registry.emplace<TransformComponent>(entity);
     tc.position = position;
+    tc.rotation = rotation;
+    tc.scale = scale;
 
     // --- NetworkIdComponent (if "model_type" is present) ---
     if (prefab.contains("model_type")) {
@@ -72,11 +72,51 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
     // --- Physics character controller ---
     if (physics && prefab.contains("physics")) {
         const auto& phys = prefab["physics"];
-        float radius = phys.value("radius",
-                           ConfigManager::get().physics.defaultCapsuleRadius);
-        float height = phys.value("height",
-                           ConfigManager::get().physics.defaultCapsuleHeight);
-        physics->addCharacterController(entity, radius, height);
+        
+        // Default to character_controller if it's a legacy player/npc without a type.
+        std::string physType = phys.value("type", "character_controller"); 
+
+        if (physType == "static" || physType == "dynamic" || physType == "kinematic") {
+            PhysicsBodyDef def;
+            std::string shapeStr = phys.value("shape", "box");
+            if (shapeStr == "sphere")  def.shape = ColliderShape::Sphere;
+            else if (shapeStr == "capsule") def.shape = ColliderShape::Capsule;
+            else def.shape = ColliderShape::Box;
+
+            def.mass        = phys.value("mass", 0.0f);
+            def.friction    = phys.value("friction", 0.5f);
+            def.restitution = phys.value("restitution", 0.3f);
+            
+            // Scale physics bounds to match visual scale
+            def.radius = phys.value("radius", 0.5f) * tc.scale;
+            def.height = phys.value("height", 1.8f) * tc.scale;
+
+            if (phys.contains("halfExtents") && phys["halfExtents"].is_array() && phys["halfExtents"].size() >= 3) {
+                def.halfExtents = glm::vec3(
+                    phys["halfExtents"][0].get<float>(),
+                    phys["halfExtents"][1].get<float>(),
+                    phys["halfExtents"][2].get<float>()
+                ) * tc.scale;
+            } else {
+                def.halfExtents = glm::vec3(0.5f) * tc.scale;
+            }
+
+            if (physType == "dynamic") {
+                def.type = BodyType::Dynamic;
+                physics->addDynamicBody(entity, def);
+            } else if (physType == "kinematic") {
+                def.type = BodyType::Kinematic;
+                physics->addKinematicBody(entity, def);
+            } else {
+                def.type = BodyType::Static;
+                physics->addStaticBody(entity, def.shape, def.halfExtents, def.friction, def.restitution);
+            }
+        } else {
+            // "character_controller"
+            float capRadius = phys.value("radius", ConfigManager::get().physics.defaultCapsuleRadius);
+            float capHeight = phys.value("height", ConfigManager::get().physics.defaultCapsuleHeight);
+            physics->addCharacterController(entity, capRadius, capHeight);
+        }
     }
 
     // --- AIScriptComponent (if "ai_script" is declared) ---

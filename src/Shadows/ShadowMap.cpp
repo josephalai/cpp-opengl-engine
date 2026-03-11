@@ -110,8 +110,14 @@ void ShadowMap::renderShadowMapFromRegistry(entt::registry&    registry,
 
     shader->stop();
 }
-                                 const glm::mat4&            lightSpaceMatrix,
-                                 ShadowShader*               shader) const {
+
+void ShadowMap::renderShadowMap(const std::vector<Entity*>& entities,
+                                const glm::mat4&            lightSpaceMatrix,
+                                ShadowShader* shader) const {
+    bindForWriting();
+
+    shader->start();
+    shader->loadLightSpaceMatrix(lightSpaceMatrix);
     bindForWriting();
 
     shader->start();
