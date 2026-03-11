@@ -46,3 +46,4 @@ src/Resources/baked_chunks/*.dat
 # Git
 .gitmessage
 .gitmessage*
+data.pak
