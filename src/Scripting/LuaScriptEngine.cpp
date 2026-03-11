@@ -168,14 +168,12 @@ void LuaScriptEngine::shutdown() {
 
 sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
                                               entt::entity target) {
-    // Resolve entity integral values to pass as IDs to Lua.
-    // In a full implementation, we would look up NetworkIdComponent here
-    // to pass the network-visible ID rather than the internal ECS integer.
-    // For now, the raw entity integral is used as a stable unique identifier.
-    auto resolveId = [&](entt::entity e) -> uint32_t {
-        return static_cast<uint32_t>(entt::to_integral(e));
-    };
-    (void)resolveId; // used implicitly by the lambdas below via capture
+    // player and target are reserved for future use: in a full implementation
+    // these will be used to look up NetworkIdComponent so that the engine API
+    // functions can default to the calling entities' network IDs when no
+    // explicit ID is passed from Lua.
+    (void)player;
+    (void)target;
 
     sol::table engine = lua_.create_table();
 
@@ -217,6 +215,10 @@ sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
     inv["addItem"] = [](uint32_t pid, const std::string& item, int count) {
         std::cout << "[Lua] Inventory.addItem(" << pid << ", \"" << item
                   << "\", " << count << ")\n";
+    };
+    inv["hasItem"] = [](uint32_t pid, const std::string& item) -> bool {
+        std::cout << "[Lua] Inventory.hasItem(" << pid << ", \"" << item << "\") -> false\n";
+        return false; // Stub: always returns false until inventory system is implemented
     };
     engine["Inventory"] = inv;
 
@@ -286,8 +288,6 @@ sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
     };
     engine["Loot"] = loot;
 
-    (void)player;
-    (void)target;
     return engine;
 }
 

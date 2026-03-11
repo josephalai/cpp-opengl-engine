@@ -170,6 +170,7 @@ Every `on_interact` function receives an `engine` table as its third argument. T
 | Function | Description | Returns |
 |----------|-------------|---------|
 | `engine.Inventory.addItem(playerId, itemName, count)` | Adds items to the player's inventory | void |
+| `engine.Inventory.hasItem(playerId, itemName)` | Returns true if the player has the item | boolean |
 
 ### `engine.Health`
 
@@ -242,7 +243,7 @@ Use a flag in the inventory or a custom tracking mechanism to implement multi-st
 
 ```lua
 function on_interact(player_id, target_id, engine)
-    local has_knife = true  -- engine.Inventory.hasItem(player_id, "Knife")
+    local has_knife = engine.Inventory.hasItem(player_id, "Knife")
     if not has_knife then
         engine.Network.sendMessage(player_id, "You need a knife to do that.")
         return 0.0  -- End immediately
