@@ -1,5 +1,8 @@
 // src/Streaming/StreamingChunk.h
-// Represents one terrain tile and its associated entities at a grid position.
+// Represents one terrain tile at a grid position.
+// Entity tracking has been removed (Phase 5.4): static entities are
+// stored as ECS StaticModelComponent entities in the registry, and
+// network/animated entities are tracked via AnimatedModelComponent.
 
 #ifndef ENGINE_STREAMINGCHUNK_H
 #define ENGINE_STREAMINGCHUNK_H
@@ -8,7 +11,6 @@
 #include <string>
 #include "../Terrain/Terrain.h"
 
-class Entity;
 class Loader;
 class TerrainTexturePack;
 class TerrainTexture;
@@ -21,13 +23,10 @@ public:
     int   gridZ = 0;
     State state = State::UNLOADED;
 
-    Terrain*                    terrain  = nullptr;
-    std::vector<Entity*>        entities;
+    Terrain* terrain  = nullptr;
 
     /// GEA Step 5.4 — Tracks whether baked entity spawns have been fired
-    /// for this chunk.  Pre-registered terrain chunks (via registerTerrain)
-    /// start with this as false so that ChunkManager::update() can fire
-    /// their baked spawns on the first frame.
+    /// for this chunk.
     bool bakedSpawned = false;
 
     StreamingChunk() = default;
@@ -45,16 +44,13 @@ public:
                        TerrainTexturePack* texPack, TerrainTexture* blendMap);
 
     /// Register an externally created Terrain (not owned by this chunk).
-    /// The terrain will NOT be deleted when the chunk is unloaded.
     void setExternalTerrain(Terrain* t);
 
-    void addEntity(Entity* e);
-
-    /// Release all terrain and entity resources.
+    /// Release all terrain resources.
     void unload();
 
 private:
-    bool terrainOwned_ = true; ///< false → terrain was externally created
+    bool terrainOwned_ = true;
 };
 
 #endif // ENGINE_STREAMINGCHUNK_H

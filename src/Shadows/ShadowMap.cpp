@@ -70,9 +70,54 @@ glm::mat4 ShadowMap::computeLightSpaceMatrix(const glm::vec3& lightDir,
     return lightProj * lightView;
 }
 
+void ShadowMap::renderShadowMapFromRegistry(entt::registry&    registry,
+                                             Entity*             player,
+                                             const glm::mat4&   lightSpaceMatrix,
+                                             ShadowShader*       shader) const {
+    bindForWriting();
+
+    shader->start();
+    shader->loadLightSpaceMatrix(lightSpaceMatrix);
+
+    // Render Player shadow
+    if (player && player->getModel()) {
+        glm::mat4 t = Maths::createTransformationMatrix(
+            player->getPosition(), player->getRotation(), player->getScale());
+        shader->loadTransformationMatrix(t);
+        RawModel* raw = player->getModel()->getRawModel();
+        glBindVertexArray(raw->getVaoId());
+        glEnableVertexAttribArray(0);
+        glDrawElements(GL_TRIANGLES, raw->getVertexCount(), GL_UNSIGNED_INT, 0);
+        glDisableVertexAttribArray(0);
+        glBindVertexArray(0);
+    }
+
+    // Render StaticModelComponent entity shadows
+    auto staticView = registry.view<StaticModelComponent, TransformComponent>();
+    for (auto e : staticView) {
+        const auto& smc = staticView.get<StaticModelComponent>(e);
+        const auto& tc  = staticView.get<TransformComponent>(e);
+        if (!smc.model) continue;
+        glm::mat4 t = Maths::createTransformationMatrix(tc.position, tc.rotation, tc.scale);
+        shader->loadTransformationMatrix(t);
+        RawModel* raw = smc.model->getRawModel();
+        glBindVertexArray(raw->getVaoId());
+        glEnableVertexAttribArray(0);
+        glDrawElements(GL_TRIANGLES, raw->getVertexCount(), GL_UNSIGNED_INT, 0);
+        glDisableVertexAttribArray(0);
+        glBindVertexArray(0);
+    }
+
+    shader->stop();
+}
+
 void ShadowMap::renderShadowMap(const std::vector<Entity*>& entities,
-                                 const glm::mat4&            lightSpaceMatrix,
-                                 ShadowShader*               shader) const {
+                                const glm::mat4&            lightSpaceMatrix,
+                                ShadowShader* shader) const {
+    bindForWriting();
+
+    shader->start();
+    shader->loadLightSpaceMatrix(lightSpaceMatrix);
     bindForWriting();
 
     shader->start();

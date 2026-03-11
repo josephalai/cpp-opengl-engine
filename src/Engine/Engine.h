@@ -98,7 +98,8 @@ private:
 
     std::vector<Terrain*> allTerrains;
     std::vector<Light*> lights;
-    std::vector<Entity*> entities;
+    // Note: static scene entities are stored as ECS StaticModelComponent in the
+    // registry — no separate std::vector<Entity*> needed (Phase 5.4).
     std::vector<GuiTexture*> guis;
     std::vector<GuiRect*> rects;
     std::vector<GUIText*> texts;
@@ -117,7 +118,8 @@ private:
     // --- Animation ---
     AnimatedShader*   animShader   = nullptr;
     AnimatedRenderer* animRenderer = nullptr;
-    std::vector<AnimatedEntity*> animatedEntities;
+    // Note: animated entities are managed via AnimatedModelComponent in the ECS
+    // registry — no separate std::vector<AnimatedEntity*> needed.
 
     // --- Physics ---
     PhysicsSystem* physicsSystem = nullptr;
@@ -142,12 +144,13 @@ private:
     /// Read ip.cfg (if present) to set serverIP_.
     void loadIPConfig();
 
-    /// Spawn callback for NetworkSystem — creates a lamp entity.
-    Entity* onNetworkSpawn(uint32_t networkId, const std::string& modelType,
-                           const glm::vec3& position);
+    /// Spawn callback for NetworkSystem — pure ECS entity spawn.
+    /// Returns the entt::entity handle of the newly created entity.
+    entt::entity onNetworkSpawn(uint32_t networkId, const std::string& modelType,
+                                const glm::vec3& position);
 
-    /// Despawn callback — removes an entity from the world.
-    void onNetworkDespawn(uint32_t networkId, Entity* e);
+    /// Despawn callback — destroys the ECS entity and releases its resources.
+    void onNetworkDespawn(uint32_t networkId, entt::entity e);
 
     // --- ISystem ordered pipeline (owned) ---
     std::vector<std::unique_ptr<ISystem>> systems;

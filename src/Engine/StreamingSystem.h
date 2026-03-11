@@ -1,10 +1,13 @@
 // src/Engine/StreamingSystem.h
 // ISystem that drives dynamic chunk streaming each frame.
-// Replaces the engine's allTerrains/entities vectors with the active
+// Replaces the engine's allTerrains vector with the active
 // subset from ChunkManager so that RenderSystem sees only loaded chunks.
 //
 // Phase 4 Step 4.2.3 — ECS time-slicing: limits entity instantiation to a
 // maximum budget per frame (default 5 ms) to avoid frame drops.
+//
+// Phase 5.4 — Entity* tracking removed; static entities are ECS-only
+// (StaticModelComponent) and are always visible via registry view.
 
 #ifndef ENGINE_STREAMINGSYSTEM_H
 #define ENGINE_STREAMINGSYSTEM_H
@@ -17,19 +20,17 @@
 #include <functional>
 #include <glm/glm.hpp>
 
-class Entity;
 class Terrain;
 class Player;
 
 class StreamingSystem : public ISystem {
 public:
     /// Takes ownership of the ChunkManager.
-    /// The two vectors are the Engine's scene lists; this system replaces
-    /// their contents each frame with the active chunks' data.
+    /// allTerrains is the Engine's terrain list; this system replaces
+    /// its contents each frame with the active chunks' terrain tiles.
     StreamingSystem(ChunkManager*               chunkManager,
                     Player*                     player,
-                    std::vector<Terrain*>&      allTerrains,
-                    std::vector<Entity*>&       entities);
+                    std::vector<Terrain*>&      allTerrains);
 
     void init()     override {}
     void update(float deltaTime) override;
@@ -47,7 +48,6 @@ private:
     ChunkManager*               chunkManager_;
     Player*                     player_;
     std::vector<Terrain*>&      allTerrains_;
-    std::vector<Entity*>&       entities_;
 
     /// Phase 4 Step 4.2.3 — Deferred entity creation queue.
     std::queue<std::function<void()>> deferredJobs_;

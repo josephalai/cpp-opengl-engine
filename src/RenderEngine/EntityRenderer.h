@@ -10,10 +10,12 @@
 #define GL_SILENCE_DEPRECATION
 #define GLFW_INCLUDE_GLCOREARB
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 
 #include "../Models/TexturedModel.h"
 #include "../Shaders/StaticShader.h"
 #include "../Entities/Entity.h"
+#include "../Textures/ModelTexture.h"  // for Material
 
 class EntityRenderer {
 private:
@@ -22,6 +24,17 @@ private:
     GLsizeiptr instanceVBOCap_  = 0; ///< Current allocated capacity of instanceVBO_ in bytes.
 
 public:
+
+    /// Lightweight render data for ECS-sourced static entities.
+    /// Replaces Entity* for the batched render path.
+    struct RenderData {
+        glm::vec3 position;
+        glm::vec3 rotation;
+        float     scale      = 1.0f;
+        float     texXOffset = 0.0f;
+        float     texYOffset = 0.0f;
+        Material  material   = {0.1f, 0.9f};
+    };
 
     EntityRenderer(StaticShader *shader);
     ~EntityRenderer();
@@ -32,41 +45,21 @@ public:
      */
     void render(std::map<TexturedModel *, std::vector<Entity *>> *entities);
 
+    /// ECS path: render static entities from component data (no Entity* needed).
+    void renderStaticBatch(std::map<TexturedModel*, std::vector<RenderData>>* batches);
+
     /**
      * @brief Instanced rendering: uploads per-instance model matrices as vertex
      *        attributes and issues a single glDrawElementsInstanced call for all
      *        entities in the batch. All entities must share the same TexturedModel.
-     *
-     * Instance matrices are supplied as attributes at locations 4–7 (4 vec4 = mat4)
-     * with an attribute divisor of 1, leaving locations 0–3 for per-vertex data.
-     * The shader must be started and per-frame uniforms loaded before this call.
-     *
-     * @param model  The shared model (VAO/texture).
-     * @param batch  Entities to render — all should use @p model.
      */
     void renderInstanced(TexturedModel* model, const std::vector<Entity*>& batch);
 
 private:
-    /**
-     * @brief binds the attribute arrays of the model. disables
-     *        or enables culling based on the transparency of the texture,
-     *        loads the shine variables, and binds the texture.
-     * @param model
-     */
     void prepareTexturedModel(TexturedModel *model);
-
-    /**
-     * @brief unbinds the texture model after it's use.
-     */
     void unbindTexturedModel();
-
-    /**
-     * @brief sets the initial transformation (view) matrix.
-     * @param entity
-     */
     void prepareInstance(Entity *entity);
-
-    /// Ensure the instance VBO exists and return it.
+    void prepareInstanceData(const RenderData& data);
     GLuint getOrCreateInstanceVBO();
 };
 

@@ -13,6 +13,9 @@
 
 #ifndef HEADLESS_SERVER
 #include "../ECS/Components/AssimpModelComponent.h"
+#include "../ECS/Components/AnimatedModelComponent.h"
+#include "../Animation/AnimationLoader.h"
+#include "../Util/FileSystem.h"
 #endif
 
 #include <nlohmann/json.hpp>
@@ -25,18 +28,18 @@
 entt::entity EntityFactory::spawn(entt::registry& registry,
                                   const std::string& prefabId,
                                   const glm::vec3& position,
-                                  PhysicsSystem* physics) {
+                                  PhysicsSystem* physics,
+                                  const glm::vec3& rotation,
+                                  float scale) {
     const auto& prefab = PrefabManager::get().getPrefab(prefabId);
-    if (prefab.is_null()) {
-        std::cerr << "[EntityFactory] Unknown prefab: " << prefabId << "\n";
-        return entt::null;
-    }
+    if (prefab.is_null()) return entt::null;
 
     entt::entity entity = registry.create();
 
-    // --- TransformComponent (always added) ---
     auto& tc = registry.emplace<TransformComponent>(entity);
     tc.position = position;
+    tc.rotation = rotation;
+    tc.scale = scale;
 
     // --- NetworkIdComponent (if "model_type" is present) ---
     if (prefab.contains("model_type")) {
@@ -69,11 +72,51 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
     // --- Physics character controller ---
     if (physics && prefab.contains("physics")) {
         const auto& phys = prefab["physics"];
-        float radius = phys.value("radius",
-                           ConfigManager::get().physics.defaultCapsuleRadius);
-        float height = phys.value("height",
-                           ConfigManager::get().physics.defaultCapsuleHeight);
-        physics->addCharacterController(entity, radius, height);
+        
+        // Default to character_controller if it's a legacy player/npc without a type.
+        std::string physType = phys.value("type", "character_controller"); 
+
+        if (physType == "static" || physType == "dynamic" || physType == "kinematic") {
+            PhysicsBodyDef def;
+            std::string shapeStr = phys.value("shape", "box");
+            if (shapeStr == "sphere")  def.shape = ColliderShape::Sphere;
+            else if (shapeStr == "capsule") def.shape = ColliderShape::Capsule;
+            else def.shape = ColliderShape::Box;
+
+            def.mass        = phys.value("mass", 0.0f);
+            def.friction    = phys.value("friction", 0.5f);
+            def.restitution = phys.value("restitution", 0.3f);
+            
+            // Scale physics bounds to match visual scale
+            def.radius = phys.value("radius", 0.5f) * tc.scale;
+            def.height = phys.value("height", 1.8f) * tc.scale;
+
+            if (phys.contains("halfExtents") && phys["halfExtents"].is_array() && phys["halfExtents"].size() >= 3) {
+                def.halfExtents = glm::vec3(
+                    phys["halfExtents"][0].get<float>(),
+                    phys["halfExtents"][1].get<float>(),
+                    phys["halfExtents"][2].get<float>()
+                ) * tc.scale;
+            } else {
+                def.halfExtents = glm::vec3(0.5f) * tc.scale;
+            }
+
+            if (physType == "dynamic") {
+                def.type = BodyType::Dynamic;
+                physics->addDynamicBody(entity, def);
+            } else if (physType == "kinematic") {
+                def.type = BodyType::Kinematic;
+                physics->addKinematicBody(entity, def);
+            } else {
+                def.type = BodyType::Static;
+                physics->addStaticBody(entity, def.shape, def.halfExtents, def.friction, def.restitution);
+            }
+        } else {
+            // "character_controller"
+            float capRadius = phys.value("radius", ConfigManager::get().physics.defaultCapsuleRadius);
+            float capHeight = phys.value("height", ConfigManager::get().physics.defaultCapsuleHeight);
+            physics->addCharacterController(entity, capRadius, capHeight);
+        }
     }
 
     // --- AIScriptComponent (if "ai_script" is declared) ---
@@ -89,18 +132,79 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
     }
 
 #ifndef HEADLESS_SERVER
-    // --- Client-side rendering: AssimpModelComponent ---
-    // If the prefab declares a "mesh" path, attach a visual component so the
-    // client's RenderSystem can draw it.  The mesh is stored as a path string
-    // in the component; actual GPU resource loading happens later when the
-    // render pipeline encounters the component.  For the server build this
-    // block is compiled out (no OpenGL / AssimpMesh dependency).
+    // --- Client-side rendering ---
+    // If the prefab declares a "mesh" path, attach a visual component.
+    // Animated prefabs get AnimatedModelComponent (skinned-mesh rendering via
+    // AnimatedRenderer); static prefabs get AssimpModelComponent (rigid rendering
+    // via MasterRenderer).  The server build compiles out this entire block.
     if (prefab.contains("mesh")) {
-        auto& amc = registry.emplace<AssimpModelComponent>(entity);
-        amc.position = position;
-        amc.meshPath = prefab["mesh"].get<std::string>();
-        // amc.mesh remains nullptr until the client's asset loader resolves
-        // the meshPath into a GPU-ready AssimpMesh*.
+        const std::string meshPath = prefab["mesh"].get<std::string>();
+
+        if (prefab.value("animated", false)) {
+            // --- Animated entity: load skeleton + clips, attach AnimatedModelComponent ---
+            // Resolve mesh path relative to src/Resources/ (e.g. "models/player.glb").
+            const std::string absPath = FileSystem::Scene(meshPath);
+            AnimatedModel* animModel  = AnimationLoader::load(absPath);
+            if (animModel) {
+                auto normalizeClipName = [](const std::string& raw) -> std::string {
+                    std::string lower(raw);
+                    for (auto& c : lower)
+                        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                    if (lower.find("idle") != std::string::npos) return "Idle";
+                    if (lower.find("walk") != std::string::npos) return "Walk";
+                    if (lower.find("run")  != std::string::npos) return "Run";
+                    if (lower.find("jump") != std::string::npos) return "Jump";
+                    std::string out = raw;
+                    if (!out.empty())
+                        out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+                    return out;
+                };
+
+                auto* controller = new AnimationController();
+                std::string firstNormName;
+                bool idleFound = false;
+                for (auto& clip : animModel->clips) {
+                    const std::string normName = normalizeClipName(clip.name);
+                    controller->addState(normName, &clip);
+                    if (firstNormName.empty()) firstNormName = normName;
+                    if (!idleFound && normName == "Idle") {
+                        controller->setState("Idle");
+                        idleFound = true;
+                    }
+                }
+                // Fall back to first clip if no Idle clip was found.
+                if (!idleFound && !firstNormName.empty())
+                    controller->setState(firstNormName);
+
+                auto& amc       = registry.emplace<AnimatedModelComponent>(entity);
+                amc.model       = animModel;
+                amc.controller  = controller;
+                amc.ownsModel   = true;
+                amc.isLocalPlayer = false;  // marked true by Engine after initial load
+                // Optional per-prefab visual scale / offset.
+                amc.scale = prefab.value("scale", 1.0f);
+                if (prefab.contains("components") &&
+                    prefab["components"].contains("AnimatedModelComponent")) {
+                    const auto& j = prefab["components"]["AnimatedModelComponent"];
+                    amc.scale = j.value("scale", amc.scale);
+                    if (j.contains("model_offset")) {
+                        amc.modelOffset.x = j["model_offset"].value("x", 0.0f);
+                        amc.modelOffset.y = j["model_offset"].value("y", 0.0f);
+                        amc.modelOffset.z = j["model_offset"].value("z", 0.0f);
+                    }
+                }
+            } else {
+                std::cerr << "[EntityFactory] Failed to load animated model: "
+                          << absPath << "\n";
+            }
+        } else {
+            // --- Static mesh: attach AssimpModelComponent ---
+            // The mesh pointer is filled later by the asset loader when the
+            // entity first enters the render view.
+            auto& amc    = registry.emplace<AssimpModelComponent>(entity);
+            amc.position = position;
+            amc.meshPath = meshPath;
+        }
     }
 #endif
 

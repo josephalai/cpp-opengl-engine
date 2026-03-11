@@ -22,6 +22,7 @@ MasterRenderer::MasterRenderer(PlayerCamera *cameraInput, Loader *loader) : shad
     scenes = new std::map<AssimpMesh *, std::vector<AssimpModelComponent>>;
     terrains = new std::vector<Terrain *>;
     boxes = new std::map<RawBoundingBox *, std::vector<Entity *>>;
+    staticBatches = new std::map<TexturedModel*, std::vector<EntityRenderer::RenderData>>;
     terrainRenderer = new TerrainRenderer(terrainShader, this->projectionMatrix);
     sceneRenderer = new AssimpEntityRenderer(sceneShader);
     skyboxRenderer = new SkyboxRenderer(loader, this->projectionMatrix, &skyColor);
@@ -80,8 +81,11 @@ void MasterRenderer::render(const std::vector<Light *>&suns) {
     shader->loadProjectionMatrix(MasterRenderer::createProjectionMatrix());
     shader->loadFogDensity(fogSettings.density);
     renderer->render(entities);
+    // Also render ECS static entities batched without Entity*
+    renderer->renderStaticBatch(staticBatches);
 
     entities->clear();
+    staticBatches->clear();
     shader->stop();
 
     sceneShader->start();
@@ -137,6 +141,23 @@ void MasterRenderer::processEntity(Entity *entity) {
         newBatch.push_back(entity);
         (*entities)[entityModel] = newBatch;
     }
+}
+
+void MasterRenderer::processStaticEntity(const TransformComponent& tc,
+                                          const StaticModelComponent& smc) {
+    if (!smc.model) return;
+    // Compute texture atlas offsets from textureIndex
+    int rows = smc.model->getModelTexture()->getNumberOfRows();
+    float xOff = (rows > 0) ? static_cast<float>(smc.textureIndex % rows) / static_cast<float>(rows) : 0.0f;
+    float yOff = (rows > 0) ? static_cast<float>(smc.textureIndex / rows) / static_cast<float>(rows) : 0.0f;
+    EntityRenderer::RenderData data;
+    data.position  = tc.position;
+    data.rotation  = tc.rotation;
+    data.scale     = tc.scale;
+    data.texXOffset = xOff;
+    data.texYOffset = yOff;
+    data.material   = smc.model->getModelTexture()->getMaterial();
+    (*staticBatches)[smc.model].push_back(data);
 }
 
 void MasterRenderer::processAssimpEntity(const AssimpModelComponent& comp) {
@@ -247,6 +268,58 @@ void MasterRenderer::renderShadowPass(const std::vector<Entity*>& allEntities,
     glm::mat4 lsm = shadowMap->computeLightSpaceMatrix(lightDir, viewCenter, 300.0f);
     shadowMap->renderShadowMap(allEntities, lsm, shadowShader);
     shadowMap->unbind(DisplayManager::Width(), DisplayManager::Height());
+}
+
+void MasterRenderer::renderShadowPassFromRegistry(entt::registry&           registry,
+                                                   Entity*                    player,
+                                                   const std::vector<Light*>& lights) {
+    if (!shadowMap || !shadowShader) return;
+
+    glm::vec3 lightDir(0.0f, -1.0f, 0.0f);
+    for (auto* l : lights) {
+        if (l->getLighting().constant < 0.0f) {
+            lightDir = glm::normalize(l->getPosition());
+            break;
+        }
+    }
+
+    glm::vec3 viewCenter = camera->Position;
+    glm::mat4 lsm = shadowMap->computeLightSpaceMatrix(lightDir, viewCenter, 300.0f);
+    shadowMap->renderShadowMapFromRegistry(registry, player, lsm, shadowShader);
+    shadowMap->unbind(DisplayManager::Width(), DisplayManager::Height());
+}
+
+void MasterRenderer::renderSceneFromRegistry(entt::registry&                  registry,
+                                              Entity*                          player,
+                                              const std::vector<AssimpModelComponent>& aComps,
+                                              const std::vector<Terrain*>&     terrains,
+                                              const std::vector<Light*>&       lights) {
+    // Terrains
+    for (Terrain* ter : terrains) processTerrain(ter);
+
+    // Player (still Entity*-based)
+    if (player) processEntity(player);
+
+    // Static ECS entities
+    auto staticView = registry.view<StaticModelComponent, TransformComponent>();
+    for (auto e : staticView) {
+        const auto& smc = staticView.get<StaticModelComponent>(e);
+        const auto& tc  = staticView.get<TransformComponent>(e);
+        processStaticEntity(tc, smc);
+    }
+
+    // Assimp entities
+    for (const auto& comp : aComps) processAssimpEntity(comp);
+
+    render(lights);
+}
+
+void MasterRenderer::renderBoundingBoxesFromRegistry(entt::registry& /*registry*/, Entity* player) {
+    // Only the Player participates in object picking; render its bounding box only.
+    if (player && player->getBoundingBox()) {
+        processBoundingBox(player);
+    }
+    render();
 }
 
 // ---------------------------------------------------------------------------

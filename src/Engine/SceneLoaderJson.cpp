@@ -11,6 +11,10 @@
 
 #include "SceneLoaderJson.h"
 #include "../ECS/Components/AssimpModelComponent.h"
+#include "../ECS/Components/AnimatedModelComponent.h"
+#include "../ECS/Components/StaticModelComponent.h"
+#include "../ECS/Components/TransformComponent.h"
+#include "../Entities/Entity.h"
 #include "../Util/FileSystem.h"
 #include "../RenderEngine/DisplayManager.h"
 #include "../Util/LightUtil.h"
@@ -88,7 +92,6 @@ bool SceneLoaderJson::load(
     const std::string&             jsonPath,
     Loader*                        loader,
     entt::registry&                registry,
-    std::vector<Entity*>&          entities,
     std::vector<Light*>&           lights,
     std::vector<Terrain*>&         allTerrains,
     std::vector<GuiTexture*>&      guis,
@@ -97,7 +100,6 @@ bool SceneLoaderJson::load(
     Terrain*&                      primaryTerrain,
     Player*&                       player,
     PlayerCamera*&                 playerCamera,
-    std::vector<AnimatedEntity*>&  animatedEntities,
     std::vector<PhysicsBodyCfg>&   physicsBodyCfgs,
     std::vector<PhysicsGroundCfg>& physicsGroundCfgs)
 {
@@ -251,9 +253,10 @@ bool SceneLoaderJson::load(
     }
 
     // -----------------------------------------------------------------------
-    // Fixed entities
+    // Fixed entities  →  ECS StaticModelComponent + TransformComponent
+    // No Entity* objects are created; physics body setup uses entt::entity handles.
     // -----------------------------------------------------------------------
-    std::unordered_map<StringId, std::vector<int>> entityAliasByIndex;
+    std::unordered_map<StringId, std::vector<entt::entity>> entityAliasByHandle;
 
     if (root.contains("entities") && root["entities"].is_array()) {
         for (auto& e : root["entities"]) {
@@ -273,12 +276,19 @@ bool SceneLoaderJson::load(
                 ? primaryTerrain->getHeightOfTerrain(x, z) : y;
             float rx = e.value("rx", 0.0f), ry = e.value("ry", 0.0f), rz = e.value("rz", 0.0f);
             float sc = e.value("scale", 1.0f);
-            entityAliasByIndex[aliasId].push_back(static_cast<int>(entities.size()));
-            entities.push_back(new Entity(
-                registry,
-                lm.model,
-                new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
-                glm::vec3(x, yVal, z), glm::vec3(rx, ry, rz), sc));
+
+            entt::entity ent = registry.create();
+            auto& tc = registry.emplace<TransformComponent>(ent);
+            tc.position = glm::vec3(x, yVal, z);
+            tc.rotation = glm::vec3(rx, ry, rz);
+            tc.scale    = sc;
+
+            auto& smc       = registry.emplace<StaticModelComponent>(ent);
+            smc.model       = lm.model;
+            smc.boundingBox = new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId());
+            smc.textureIndex = e.value("textureIndex", 0);
+
+            entityAliasByHandle[aliasId].push_back(ent);
         }
     }
 
@@ -331,7 +341,6 @@ bool SceneLoaderJson::load(
                 glm::vec3(p.value("rx", 0.0f), p.value("ry", 0.0f), p.value("rz", 0.0f)),
                 p.value("scale", 1.0f));
             InteractiveModel::setInteractiveBox(player);
-            entities.push_back(player);
             playerCamera = new PlayerCamera(player);
         } else {
             std::cerr << "[SceneLoaderJson] player references unknown alias '" << alias << "'\n";
@@ -461,13 +470,22 @@ bool SceneLoaderJson::load(
                 animModel->coordinateCorrection = userRot * animModel->coordinateCorrection;
             }
 
-            auto* ae       = new AnimatedEntity();
-            ae->model      = animModel;
-            ae->controller = controller;
-            ae->position   = glm::vec3(ax, yVal, az);
-            ae->scale      = scale;
-            ae->modelOffset = glm::vec3(ox, oy, oz);
-            animatedEntities.push_back(ae);
+            // Create an ECS entity to carry this animated character.
+            // isLocalPlayer is false here; Engine::loadScene() will mark all
+            // entities loaded at startup as isLocalPlayer=true after this call.
+            entt::entity animEnt = registry.create();
+            auto& tc    = registry.emplace<TransformComponent>(animEnt);
+            tc.position = glm::vec3(ax, yVal, az);
+            tc.rotation = glm::vec3(rx, ry, rz);
+            tc.scale    = scale;
+
+            auto& amc       = registry.emplace<AnimatedModelComponent>(animEnt);
+            amc.model       = animModel;
+            amc.controller  = controller;
+            amc.modelOffset = glm::vec3(ox, oy, oz);
+            amc.scale       = scale;
+            amc.ownsModel   = true;
+            amc.isLocalPlayer = false;  // marked true by Engine after loading
 
             std::cout << "[SceneLoaderJson] Loaded animated_character '" << relPath
                       << "': " << animModel->clips.size() << " clip(s), "
@@ -482,8 +500,8 @@ bool SceneLoaderJson::load(
         for (auto& pb : root["physics_bodies"]) {
             std::string alias = pb.value("alias", "");
             StringId aliasId(alias);
-            auto it = entityAliasByIndex.find(aliasId);
-            if (it == entityAliasByIndex.end()) {
+            auto it = entityAliasByHandle.find(aliasId);
+            if (it == entityAliasByHandle.end()) {
                 std::cerr << "[SceneLoaderJson] physics_body references unknown alias '"
                           << alias << "'\n";
                 continue;
@@ -508,9 +526,9 @@ bool SceneLoaderJson::load(
                 halfExt.y = pb["halfExtents"][1].get<float>();
                 halfExt.z = pb["halfExtents"][2].get<float>();
             }
-            for (int idx : it->second) {
+            for (entt::entity handle : it->second) {
                 PhysicsBodyCfg cfg;
-                cfg.entityIndex = idx;
+                cfg.entityHandle = handle;  // direct ECS handle (no entityIndex)
                 cfg.type        = bType;
                 cfg.shape       = bShape;
                 cfg.mass        = mass;
@@ -536,13 +554,13 @@ bool SceneLoaderJson::load(
     // Final status log
     // -----------------------------------------------------------------------
     std::cout << "[SceneLoaderJson] Scene loaded: "
-              << entities.size()         << " entities, "
+              << registry.view<StaticModelComponent>().size() << " static entities, "
               << registry.view<AssimpModelComponent>().size() << " assimp scenes, "
               << lights.size()           << " lights, "
               << allTerrains.size()      << " terrain tiles, "
               << guis.size()             << " GUI textures, "
               << texts.size()            << " text overlays, "
               << waterTiles.size()       << " water tiles, "
-              << animatedEntities.size() << " animated characters.\n";
+              << registry.view<AnimatedModelComponent>().size() << " animated characters.\n";
     return true;
 }

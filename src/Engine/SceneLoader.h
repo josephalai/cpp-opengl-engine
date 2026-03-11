@@ -37,7 +37,8 @@ class SceneLoader {
 public:
     /// Physics body configuration parsed from a `physics_body` line.
     struct PhysicsBodyCfg {
-        int           entityIndex = -1;   ///< index into the entities vector
+        int           entityIndex  = -1;          ///< legacy: index into entities vector (SceneLoader cfg path)
+        entt::entity  entityHandle = entt::null;  ///< new: direct ECS handle (SceneLoaderJson path)
         BodyType      type        = BodyType::Dynamic;
         ColliderShape shape       = ColliderShape::Box;
         float         mass        = 1.0f;

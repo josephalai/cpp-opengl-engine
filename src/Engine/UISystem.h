@@ -8,9 +8,11 @@
 #include "ISystem.h"
 #include <vector>
 #include <glm/glm.hpp>
+#include <entt/entt.hpp>
 
 class MasterRenderer;
 class Entity;
+class Player;
 class GUIText;
 class GuiComponent;
 class GuiRenderer;
@@ -19,7 +21,8 @@ class GuiTexture;
 class UISystem : public ISystem {
 public:
     UISystem(MasterRenderer*            renderer,
-             std::vector<Entity*>&      entities,
+             entt::registry&            registry,
+             Player*                    player,
              GUIText*                   clickColorText,
              GuiComponent*              masterContainer,
              GuiRenderer*               guiRenderer,
@@ -31,7 +34,8 @@ public:
 
 private:
     MasterRenderer*            renderer_;
-    std::vector<Entity*>&      entities_;
+    entt::registry&            registry_;
+    Player*                    player_;
     GUIText*                   clickColorText_;
     GuiComponent*              masterContainer_;
     GuiRenderer*               guiRenderer_;

@@ -17,13 +17,15 @@
 #include "../RenderEngine/DisplayManager.h"
 
 UISystem::UISystem(MasterRenderer*            renderer,
-                   std::vector<Entity*>&      entities,
+                   entt::registry&            registry,
+                   Player*                    player,
                    GUIText*                   clickColorText,
                    GuiComponent*              masterContainer,
                    GuiRenderer*               guiRenderer,
                    std::vector<GuiTexture*>&  guis)
     : renderer_(renderer)
-    , entities_(entities)
+    , registry_(registry)
+    , player_(player)
     , clickColorText_(clickColorText)
     , masterContainer_(masterContainer)
     , guiRenderer_(guiRenderer)
@@ -33,7 +35,8 @@ UISystem::UISystem(MasterRenderer*            renderer,
 void UISystem::update(float /*deltaTime*/) {
     // Handle object picking on left-click
     if (InputMaster::hasPendingClick() && InputMaster::mouseClicked(LeftClick)) {
-        renderer_->renderBoundingBoxes(entities_);
+        // Render Player's bounding box only (Player is the only pickable object)
+        renderer_->renderBoundingBoxesFromRegistry(registry_, player_);
         Color clickColor = Picker::getColor();
         int element      = BoundingBoxIndex::getIndexByColor(clickColor);
 
