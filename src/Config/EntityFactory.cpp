@@ -121,19 +121,20 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                 };
 
                 auto* controller = new AnimationController();
-                for (auto& clip : animModel->clips)
-                    controller->addState(normalizeClipName(clip.name), &clip);
-                // Start in Idle if available; otherwise fall back to the first clip.
-                bool idleSet = false;
+                std::string firstNormName;
+                bool idleFound = false;
                 for (auto& clip : animModel->clips) {
-                    if (normalizeClipName(clip.name) == "Idle") {
+                    const std::string normName = normalizeClipName(clip.name);
+                    controller->addState(normName, &clip);
+                    if (firstNormName.empty()) firstNormName = normName;
+                    if (!idleFound && normName == "Idle") {
                         controller->setState("Idle");
-                        idleSet = true;
-                        break;
+                        idleFound = true;
                     }
                 }
-                if (!idleSet && !animModel->clips.empty())
-                    controller->setState(normalizeClipName(animModel->clips[0].name));
+                // Fall back to first clip if no Idle clip was found.
+                if (!idleFound && !firstNormName.empty())
+                    controller->setState(firstNormName);
 
                 auto& amc       = registry.emplace<AnimatedModelComponent>(entity);
                 amc.model       = animModel;
