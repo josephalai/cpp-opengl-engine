@@ -134,6 +134,8 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
 
     // --- InteractableComponent (if prefab contains an "InteractableComponent" block) ---
     // Supports both top-level and nested-under-"components" declarations.
+    // Precedence: top-level takes priority over "components" block.
+    // New prefabs should use top-level placement (e.g., tree.json).
     {
         const nlohmann::json* icJson = nullptr;
         if (prefab.contains("InteractableComponent"))

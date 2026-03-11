@@ -12,6 +12,8 @@
 #include <entt/entt.hpp>
 #include <iostream>
 #include <filesystem>
+#include <random>
+#include <ctime>
 
 namespace fs = std::filesystem;
 
@@ -245,9 +247,13 @@ sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
     // --- engine.Math ---
     sol::table math = lua_.create_table();
     math["rollChance"] = [](float probability) -> bool {
-        // Deterministic pseudo-random roll seeded per-call.
-        static thread_local unsigned int seed = 12345;
-        seed = seed * 1664525u + 1013904223u; // LCG
+        // LCG seeded once per thread from a non-deterministic source so
+        // that gameplay varies across server restarts.
+        static thread_local unsigned int seed = [] {
+            std::random_device rd;
+            return rd();
+        }();
+        seed = seed * 1664525u + 1013904223u; // LCG advance
         float r = static_cast<float>(seed & 0x7FFF) / static_cast<float>(0x8000);
         return r < probability;
     };
@@ -262,10 +268,13 @@ sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
 
     // --- engine.CombatMath ---
     sol::table combat = lua_.create_table();
-    combat["calculateMeleeHit"] = [&](sol::table /*attackerStats*/,
-                                      sol::table /*defenderStats*/) -> int {
-        // Placeholder: return a fixed hit value until real combat math is added.
-        static thread_local unsigned int seed = 99991;
+    combat["calculateMeleeHit"] = [](sol::table /*attackerStats*/,
+                                     sol::table /*defenderStats*/) -> int {
+        // Placeholder: returns 1-5 damage until real combat math is added.
+        static thread_local unsigned int seed = [] {
+            std::random_device rd;
+            return rd();
+        }();
         seed = seed * 1664525u + 1013904223u;
         int dmg = static_cast<int>(seed % 5) + 1; // 1-5 damage
         std::cout << "[Lua] CombatMath.calculateMeleeHit() -> " << dmg << "\n";
