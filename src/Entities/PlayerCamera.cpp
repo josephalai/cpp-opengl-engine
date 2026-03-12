@@ -3,6 +3,8 @@
 //
 #include "PlayerCamera.h"
 #include "../Config/ConfigManager.h"
+#include "../RenderEngine/DisplayManager.h"
+#include <cmath>
 
 /**
  * @brief move (MAIN LOOP), modifies the actual camera vectors based on the
@@ -17,6 +19,21 @@ void PlayerCamera::move(Terrain *terrain) {
     calculateZoom();
     calculateAngleAroundPlayer();
     player->move(terrain);
+
+    // Smoothly advance the orbit pivot toward the player's actual position.
+    // This prevents the camera from rigidly snapping with the player during
+    // server-authoritative auto-walk (reconcile LERP) while remaining
+    // imperceptibly tight during normal keyboard-driven movement.
+    const float dt        = DisplayManager::getFrameTimeSeconds();
+    const glm::vec3 pPos  = player->getPosition();
+    if (!pivotInitialized_) {
+        pivotPosition_    = pPos;
+        pivotInitialized_ = true;
+    } else {
+        const float alpha = 1.0f - std::exp(-kPivotSmoothing * dt);
+        pivotPosition_    = glm::mix(pivotPosition_, pPos, alpha);
+    }
+
     float horizontalDistance = calculateHorizontalDistance();
     float verticalDistance = calculateVerticalDistance();
     calculateCameraPosition(horizontalDistance, verticalDistance);
@@ -26,9 +43,11 @@ void PlayerCamera::calculateCameraPosition(float horizDistance, float verticDist
     float theta = player->getRotation().y + angleAroundPlayer;
     float offsetX = horizDistance * sin(glm::radians(theta));
     float offsetZ = horizDistance * cos(glm::radians(theta));
-    Position.x = player->getPosition().x - offsetX;
-    Position.z = player->getPosition().z - offsetZ;
-    Position.y = player->getPosition().y - verticDistance + kOrbitPivotY;
+    // Orbit around the smoothed pivot, not the raw player position, so the
+    // camera glides rather than snapping rigidly during auto-walk LERP steps.
+    Position.x = pivotPosition_.x - offsetX;
+    Position.z = pivotPosition_.z - offsetZ;
+    Position.y = pivotPosition_.y - verticDistance + kOrbitPivotY;
 
     if (glfwGetMouseButton(DisplayManager::window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS || cursorInvisible) {
         Yaw = static_cast<int>(180 - player->getRotation().y + angleAroundPlayer - 90) % 360;
@@ -47,7 +66,7 @@ glm::mat4 PlayerCamera::getViewMatrix() {
     front.x = cos(glm::radians(Yaw)) * cos(glm::radians(Pitch));
     front.y = sin(glm::radians(Pitch));
     front.z = sin(glm::radians(Yaw)) * cos(glm::radians(Pitch));
-    return glm::lookAt(PlayerCamera::Position, player->getPosition() + glm::vec3(0, kOrbitPivotY, 0), PlayerCamera::Up);
+    return glm::lookAt(PlayerCamera::Position, pivotPosition_ + glm::vec3(0, kOrbitPivotY, 0), PlayerCamera::Up);
 }
 
 void PlayerCamera::calculateAngleAroundPlayer() {
