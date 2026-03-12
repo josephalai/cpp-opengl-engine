@@ -3,7 +3,7 @@
   "description": "A stationary guard NPC that stands still and occasionally looks around.",
   "model_type": "npc_guard",
   "animated": true,
-  "mesh": "models/guard.glb",
+  "mesh": "models/walkrun_and_idle.glb",
   "physics": {
     "type": "kinematic_character",
     "radius": 0.5,
@@ -17,6 +17,11 @@
     "NetworkSyncComponent": {
       "interpolation_delay": 0.20,
       "max_buffer_size": 20
+    },
+    "AnimatedModelComponent": {
+      "scale": 3.5,
+      "model_rotation": { "x": -90.0, "y": 0.0, "z": 0.0 },
+      "model_offset": { "x": 0.0, "y": 0.0, "z": 0.0 }
     },
     "AIComponent": {
       "script": "GuardAI"

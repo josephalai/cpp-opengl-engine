@@ -8,6 +8,7 @@
 
 #include "../BoundingBox/BoundingBox.h"
 #include "../ECS/Components/TransformComponent.h"
+#include "../ECS/Components/AnimatedModelComponent.h"
 #include "../ECS/Components/StaticModelComponent.h"
 #include "../ECS/Components/AssimpModelComponent.h"
 #include "../ECS/Components/ColliderComponent.h"
@@ -97,6 +98,36 @@ entt::entity EntityPicker::pick(const glm::vec3& rayOrigin,
             float dist = rayAABB(rayOrigin, rayDir, bmin, bmax);
             if (dist >= 0.0f && dist < minDist) {
                 minDist = dist;
+                closest = entity;
+            }
+        }
+    }
+
+    // 4. Test entities with AnimatedModelComponent (approximate as a vertical cylinder)
+    {
+        auto view = registry_.view<TransformComponent, AnimatedModelComponent>();
+        for (auto entity : view) {
+            const auto& tc  = view.get<TransformComponent>(entity);
+            const auto& amc = view.get<AnimatedModelComponent>(entity);
+
+            // Approximate the center-mass of the character (e.g., 1.0 meter off the ground)
+            glm::vec3 centerOfMass = tc.position + amc.modelOffset;
+            centerOfMass.y += (1.0f * tc.scale); 
+            
+            glm::vec3 v = centerOfMass - rayOrigin;
+            float distanceAlongRay = glm::dot(v, rayDir);
+            
+            // If object is behind the camera, skip
+            if (distanceAlongRay < 0.0f) continue; 
+
+            // Find the closest point on the ray to the character's center
+            glm::vec3 pointOnRay = rayOrigin + rayDir * distanceAlongRay;
+            float distanceToObject = glm::length(centerOfMass - pointOnRay);
+
+            // If the ray passes within ~0.8 meters of the character, it's a hit!
+            float hitRadius = 0.8f * tc.scale;
+            if (distanceToObject <= hitRadius && distanceAlongRay < minDist) {
+                minDist = distanceAlongRay;
                 closest = entity;
             }
         }

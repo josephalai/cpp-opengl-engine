@@ -3,7 +3,7 @@
   "model_type": "player",
   "is_npc": false,
   "animated": true,
-  "mesh": "models/player.glb",
+  "mesh": "models/walkrun_and_idle.glb",
   "physics": {
     "type": "kinematic_character",
     "radius": 0.5,
