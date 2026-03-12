@@ -120,6 +120,7 @@ file(GLOB_RECURSE COMMON_SOURCES
     "${CMAKE_SOURCE_DIR}/src/Collision/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Config/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Scripting/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/Interaction/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Terrain/HeightMap.cpp"
     "${CMAKE_SOURCE_DIR}/src/Engine/GLUploadQueue.cpp"
 )
@@ -132,6 +133,9 @@ list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/Picker\\.cpp$")
 list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/MousePicker\\.cpp$")
 list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/TerrainPicker\\.cpp$")
 list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/MockServer\\.cpp$")
+# Interaction: EntityPicker and InteractiveModel depend on BoundingBox (rendering)
+list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/EntityPicker\\.cpp$")
+list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/InteractiveModel\\.cpp$")
 
 # --- SERVER: headless entry point and NPC support ---
 file(GLOB_RECURSE SERVER_SOURCES

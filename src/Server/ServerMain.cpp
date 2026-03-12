@@ -21,6 +21,8 @@
 #include "../ECS/Components/SpatialComponent.h"
 #include "../ECS/Components/PathfindingComponent.h"
 #include "../ECS/Components/OriginShiftComponent.h"
+#include "../ECS/Components/InteractableComponent.h"
+#include "../ECS/Components/ActionStateComponent.h"
 #include "../Network/NetworkPackets.h"
 #include "../Network/SharedMovement.h"
 #include "ServerNPCManager.h"
@@ -36,6 +38,8 @@
 #include "../Engine/PathfindingSystem.h"
 #include "../Navigation/NavMeshManager.h"
 #include "../ECS/Phase4Test.h"
+#include "../Interaction/InteractionSystem.h"
+#include "../Scripting/LuaScriptEngine.h"
 
 #include <nlohmann/json.hpp>
 
@@ -913,6 +917,13 @@ int main() {
         npcManager.initLua(HOME_PATH);
     }
 
+    // -------------------------------------------------------------------------
+    // Interaction System — script-driven interaction state machine
+    // -------------------------------------------------------------------------
+    LuaScriptEngine luaEngine;
+    luaEngine.init(HOME_PATH);
+    InteractionSystem interactionSystem(registry, luaEngine);
+
     // --- Server Tick State ---
     float    serverTime  = 0.0f;
     uint32_t sequenceNum = 0;
@@ -1116,6 +1127,20 @@ int main() {
                                     registry.emplace_or_replace<PathfindingComponent>(
                                         playerEntity,
                                         PathfindingComponent{path, 0, 1.5f, true});
+                                }
+
+                                // Step 6.1 — Attach ActionStateComponent if target
+                                // is interactable (has an InteractableComponent).
+                                if (registry.all_of<InteractableComponent>(targetEntity)) {
+                                    ActionStateComponent asc;
+                                    asc.targetEntity = targetEntity;
+                                    asc.actionTimer  = 0.0f;
+                                    asc.isArrived    = false;
+                                    registry.emplace_or_replace<ActionStateComponent>(
+                                        playerEntity, asc);
+                                    std::cout << "[Server] ActionState assigned to player "
+                                              << nid << " → target "
+                                              << req.targetNetworkId << "\n";
                                 }
                             }
                         }
@@ -1403,6 +1428,9 @@ int main() {
 
             // ----- Phase 4: Update pathfinding auto-steering -----
             pathfindingSystem.update(cfg.server.tickInterval);
+
+            // ----- Step 6.1: Update interaction state machine -----
+            interactionSystem.update(cfg.server.tickInterval);
 
             // ----- Broadcast entity snapshots with AoI filtering (Phase 4) -----
             // Instead of broadcasting every entity to every client, iterate

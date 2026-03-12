@@ -1,0 +1,14 @@
+{
+  "alias": "npc_banker",
+  "model_type": "npc_banker",
+  "is_npc": true,
+  "physics": {
+    "type": "character_controller",
+    "radius": 0.4,
+    "height": 1.8
+  },
+  "InteractableComponent": {
+    "script": "scripts/interactions/banker_dialogue.lua",
+    "interact_range": 2.0
+  }
+}

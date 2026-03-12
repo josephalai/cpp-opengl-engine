@@ -1,14 +1,16 @@
 // src/Scripting/LuaScriptEngine.h
 //
-// Lua scripting bridge for data-driven NPC AI.
+// Lua scripting bridge for data-driven NPC AI and interaction scripts.
 // Wraps Sol2/Lua state and exposes a minimal C++ API so that AI behaviour
-// can be defined in .lua files instead of hardcoded C++ switch statements.
+// and interaction logic can be defined in .lua files instead of hardcoded
+// C++ switch statements.
 //
 // Usage:
 //   LuaScriptEngine lua;
 //   lua.init(resourceRoot);
 //   lua.loadScript("scripts/ai/wander.lua");
 //   auto result = lua.tickAI("WanderAI", entityId, dt, aiState);
+//   float cooldown = lua.executeInteraction("scripts/skills/woodcutting.lua", player, target, &registry);
 
 #ifndef ENGINE_LUA_SCRIPT_ENGINE_H
 #define ENGINE_LUA_SCRIPT_ENGINE_H
@@ -21,6 +23,7 @@
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
 
+#include <entt/entt.hpp>
 #include "../Network/NetworkPackets.h"
 
 /// Per-NPC AI state exposed to Lua as a mutable table.
@@ -70,6 +73,17 @@ public:
     /// Check whether a named AI function is available.
     bool hasScript(const std::string& scriptName) const;
 
+    /// Execute an interaction script's on_interact() function.
+    /// @param scriptPath  Path to the .lua file (relative to resourceRoot/src/Resources/).
+    /// @param player      The player entity performing the action.
+    /// @param target      The target entity being interacted with.
+    /// @param registry    The ECS registry (used to look up NetworkIdComponent).
+    /// @return            Cooldown time in seconds. 0.0 means action is complete.
+    float executeInteraction(const std::string& scriptPath,
+                             entt::entity player,
+                             entt::entity target,
+                             entt::registry* registry = nullptr);
+
     /// Shut down the Lua state.
     void shutdown();
 
@@ -77,11 +91,15 @@ private:
     sol::state lua_;
     std::string resourceRoot_;
     bool initialised_ = false;
+
+    /// Per-script isolated Lua environments, keyed by scriptPath.
+    std::unordered_map<std::string, sol::environment> interactionEnvs_;
 };
 
 #else // !HAS_LUA — stub so code compiles without Lua installed
 
 #include <string>
+#include <entt/entt.hpp>
 #include "../Network/NetworkPackets.h"
 
 struct LuaAIState {
@@ -97,6 +115,8 @@ public:
     Network::PlayerInputPacket tickAI(const std::string&, uint32_t, float,
                                       LuaAIState&) { return {}; }
     bool hasScript(const std::string&) const { return false; }
+    float executeInteraction(const std::string&, entt::entity, entt::entity,
+                             entt::registry* = nullptr) { return 0.0f; }
     void shutdown() {}
 };
 

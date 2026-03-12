@@ -62,4 +62,15 @@ struct WindowResizeEvent : Event {
     int height;
 };
 
+// ---------------------------------------------------------------------------
+// Entity interaction events
+// ---------------------------------------------------------------------------
+
+/// Published (client-side) when the user right-clicks on a world entity whose
+/// NetworkIdComponent is resolvable.  NetworkSystem subscribes to this event
+/// and sends an ActionRequestPacket to the server.
+struct EntityClickedEvent : Event {
+    uint32_t networkId = 0; ///< Network ID of the clicked entity.
+};
+
 #endif // ENGINE_EVENT_H

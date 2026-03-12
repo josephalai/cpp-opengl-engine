@@ -344,3 +344,24 @@ void NetworkSystem::addEntity(uint32_t networkId, entt::entity e) {
 void NetworkSystem::removeEntity(uint32_t networkId) {
     networkEntities_.erase(networkId);
 }
+
+// ---------------------------------------------------------------------------
+// sendActionRequest — send an ActionRequestPacket to the server
+// ---------------------------------------------------------------------------
+
+void NetworkSystem::sendActionRequest(uint32_t targetNetworkId) {
+    if (!serverPeer_) return;
+
+    Network::ActionRequestPacket req;
+    req.targetNetworkId = targetNetworkId;
+
+    auto buf = Network::serialise(Network::PacketType::ActionRequest, req);
+    ENetPacket* packet = enet_packet_create(buf.data(),
+                                            buf.size(),
+                                            ENET_PACKET_FLAG_RELIABLE);
+    if (packet) {
+        enet_peer_send(serverPeer_, 0, packet);
+        std::cout << "[NetworkSystem] Sent ActionRequest for target "
+                  << targetNetworkId << "\n";
+    }
+}

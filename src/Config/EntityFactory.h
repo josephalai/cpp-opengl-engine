@@ -31,12 +31,16 @@ public:
     /// @param physics     Optional pointer to PhysicsSystem; if provided and
     ///                    the prefab declares a "physics" block, a character
     ///                    controller or rigid body will be registered.
+    /// @param rotation    Optional initial Euler rotation in degrees.
+    /// @param scale       Optional uniform scale factor (default 1.0).
     /// @return            The newly created entt::entity, or entt::null if
     ///                    the prefab ID was not found.
     static entt::entity spawn(entt::registry& registry,
                               const std::string& prefabId,
                               const glm::vec3& position,
-                              PhysicsSystem* physics = nullptr);
+                              PhysicsSystem* physics = nullptr,
+                              const glm::vec3& rotation = glm::vec3(0.0f),
+                              float scale = 1.0f);
 };
 
 #endif // ENGINE_ENTITY_FACTORY_H

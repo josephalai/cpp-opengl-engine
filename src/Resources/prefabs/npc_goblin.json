@@ -1,0 +1,14 @@
+{
+  "alias": "npc_goblin",
+  "model_type": "npc_goblin",
+  "is_npc": true,
+  "physics": {
+    "type": "character_controller",
+    "radius": 0.4,
+    "height": 1.6
+  },
+  "InteractableComponent": {
+    "script": "scripts/combat/melee_combat.lua",
+    "interact_range": 2.0
+  }
+}
