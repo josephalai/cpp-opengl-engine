@@ -589,7 +589,7 @@ entt::entity Engine::onNetworkSpawn(uint32_t networkId,
             // covers what the player actually sees on screen.
             float s = 1.0f;
             if (auto* amc = registry.try_get<AnimatedModelComponent>(e)) {
-                s = amc.scale;
+                s = amc->scale;
             }
 
             // Bottom of the AABB sits at the entity origin (ground level);
