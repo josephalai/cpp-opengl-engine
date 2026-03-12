@@ -25,6 +25,10 @@
     },
     "AIComponent": {
       "script": "GuardAI"
+    },
+    "InteractableComponent": {
+      "script": "scripts/interactions/talk.lua",
+      "interact_range": 2.0
     }
   }
 }

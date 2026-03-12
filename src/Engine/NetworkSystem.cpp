@@ -16,6 +16,7 @@
 #include "../Physics/PhysicsSystem.h"
 #include "../Events/EventBus.h"
 #include "../Events/EntityClickedEvent.h"
+#include "../ECS/Components/NetworkIdComponent.h"
 #include <iostream>
 #include <cstring>
 #include <cmath>
@@ -197,6 +198,12 @@ void NetworkSystem::update(float deltaTime) {
                                                             sp.position);
                             if (e != entt::null) {
                                 networkEntities_[sp.networkId] = e;
+                                // Stamp the server-assigned network ID back onto
+                                // the ECS component so EntityPicker→InputDispatcher
+                                // can include it in EntityClickedEvent correctly.
+                                if (auto* nid = registry_.try_get<NetworkIdComponent>(e)) {
+                                    nid->id = sp.networkId;
+                                }
                             }
                         }
                     }

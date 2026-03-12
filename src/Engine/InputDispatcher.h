@@ -53,13 +53,20 @@ public:
     void shutdown() override {}
 
 private:
+    /// Shared entity-pick logic used by both left-click and right-click.
+    /// Casts a ray from the current cursor position (or screen centre in FPS
+    /// mode) and fires EntityClickedEvent if a NetworkIdComponent entity is hit.
+    /// @return true if an entity was found and the event published.
+    bool tryPickEntity();
+
     TerrainPicker*  picker_;
     EditorState*    editorState_;
     EntityPicker*   entityPicker_;
     Camera*         camera_;
     glm::mat4       projection_;
     entt::registry* registry_;
-    bool            prevRightClick_ = false; ///< edge-detect: fire event only once per press
+    bool            prevRightClick_ = false; ///< edge-detect: fire once per right-click press
+    bool            prevLeftClick_  = false; ///< edge-detect: fire once per left-click press
 };
 
 #endif // ENGINE_INPUTDISPATCHER_H

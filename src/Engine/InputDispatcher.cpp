@@ -29,6 +29,58 @@ InputDispatcher::InputDispatcher(TerrainPicker*  picker,
     , registry_(registry)
 {}
 
+// ---------------------------------------------------------------------------
+// tryPickEntity — shared helper for both left-click and right-click.
+// Casts a pick ray, finds the closest entity, and fires EntityClickedEvent.
+// Returns true when an entity with a NetworkIdComponent was hit.
+// ---------------------------------------------------------------------------
+bool InputDispatcher::tryPickEntity() {
+    if (!entityPicker_ || !camera_ || !registry_) return false;
+
+    // When the cursor is locked (FPS / invisible cursor mode), mouseX/mouseY
+    // accumulate as virtual coordinates that can be far outside the screen
+    // bounds.  Use the screen centre instead so the player "clicks" where
+    // they are looking (crosshair).  In point-and-click mode the real cursor
+    // position is used as expected.
+    float pickX, pickY;
+    if (CameraInput::cursorInvisible) {
+        pickX = static_cast<float>(DisplayManager::Width())  * 0.5f;
+        pickY = static_cast<float>(DisplayManager::Height()) * 0.5f;
+    } else {
+        pickX = static_cast<float>(InputMaster::mouseX);
+        pickY = static_cast<float>(InputMaster::mouseY);
+    }
+
+    glm::vec3 rayOrigin, rayDir;
+    EntityPicker::buildPickRay(
+        pickX, pickY,
+        DisplayManager::Width(),
+        DisplayManager::Height(),
+        projection_,
+        camera_->getViewMatrix(),
+        rayOrigin,
+        rayDir);
+
+    entt::entity hit = entityPicker_->pick(rayOrigin, rayDir);
+    if (hit == entt::null) {
+        std::cout << "[Input] Pick ray — no entity hit.\n";
+        return false;
+    }
+
+    auto* nid = registry_->try_get<NetworkIdComponent>(hit);
+    if (!nid) {
+        std::cout << "[Input] Pick ray hit entity but it has no NetworkIdComponent.\n";
+        return false;
+    }
+
+    EntityClickedEvent evt{};
+    evt.networkId = nid->id;
+    EventBus::instance().publish(evt);
+    std::cout << "[Input] Entity clicked — Network ID: " << nid->id
+              << "  model=" << nid->modelType << "\n";
+    return true;
+}
+
 void InputDispatcher::update(float /*deltaTime*/) {
     // --- ImGui input multiplexing ---
     // When ImGui has captured the keyboard, skip all gameplay key dispatch.
@@ -70,6 +122,7 @@ void InputDispatcher::update(float /*deltaTime*/) {
     // While in editor mode, skip all gameplay input dispatch.
     if (editorState_ && editorState_->isEditorMode) {
         prevRightClick_ = InputMaster::isMouseDown(RightClick);
+        prevLeftClick_  = InputMaster::isMouseDown(LeftClick);
         return;
     }
 
@@ -89,39 +142,14 @@ void InputDispatcher::update(float /*deltaTime*/) {
     }
 
     if (!imguiWantsMouse) {
-        // --- Right-click (rising edge) ---
-        // Priority: Entity picking → Terrain fallback.
+        // -------------------------------------------------------------------
+        // Right-click (rising edge): entity interaction → terrain walk fallback
+        // -------------------------------------------------------------------
         bool rightNow = InputMaster::isMouseDown(RightClick);
         if (rightNow && !prevRightClick_) {
+            bool entityHit = tryPickEntity();
 
-            bool entityHit = false;
-
-            // 1. Try entity picking first (requires EntityPicker + Camera).
-            if (entityPicker_ && camera_ && registry_) {
-                glm::vec3 rayOrigin, rayDir;
-                EntityPicker::buildPickRay(
-                    static_cast<float>(InputMaster::mouseX),
-                    static_cast<float>(InputMaster::mouseY),
-                    DisplayManager::Width(),
-                    DisplayManager::Height(),
-                    projection_,
-                    camera_->getViewMatrix(),
-                    rayOrigin,
-                    rayDir);
-
-                entt::entity hit = entityPicker_->pick(rayOrigin, rayDir);
-                if (hit != entt::null) {
-                    if (auto* nid = registry_->try_get<NetworkIdComponent>(hit)) {
-                        EntityClickedEvent evt{};
-                        evt.networkId = nid->id;
-                        EventBus::instance().publish(evt);
-                        std::cout << "[Input] Clicked Entity Network ID: " << nid->id << "\n";
-                        entityHit = true;
-                    }
-                }
-            }
-
-            // 2. Fallback to terrain walk if no entity was hit.
+            // Fallback to terrain walk if no entity was hit.
             if (!entityHit && picker_) {
                 glm::vec3 pt = picker_->getCurrentTerrainPoint();
                 if (pt != glm::vec3(0.0f)) {
@@ -132,7 +160,17 @@ void InputDispatcher::update(float /*deltaTime*/) {
             }
         }
         prevRightClick_ = rightNow;
+
+        // -------------------------------------------------------------------
+        // Left-click (rising edge): entity interaction only (no terrain fallback)
+        // -------------------------------------------------------------------
+        bool leftNow = InputMaster::isMouseDown(LeftClick);
+        if (leftNow && !prevLeftClick_) {
+            tryPickEntity();
+        }
+        prevLeftClick_ = leftNow;
     } else {
         prevRightClick_ = InputMaster::isMouseDown(RightClick);
+        prevLeftClick_  = InputMaster::isMouseDown(LeftClick);
     }
 }

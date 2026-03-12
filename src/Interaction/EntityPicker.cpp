@@ -103,30 +103,51 @@ entt::entity EntityPicker::pick(const glm::vec3& rayOrigin,
         }
     }
 
-    // 4. Test entities with AnimatedModelComponent (approximate as a vertical cylinder)
+    // 4. Test entities with AnimatedModelComponent (sphere-cast against character body).
+    //    This is a fallback for characters that don't yet have a ColliderComponent,
+    //    and also acts as a second chance for characters whose AABB might be mis-sized.
+    //    Uses a sphere centred at the character's visual torso rather than an AABB slab.
     {
+        // Half the standard physics capsule height (1.8 m) used by all
+        // character_controller prefabs.  This centres the sphere at the
+        // mid-torso for a correctly-scaled character.  If individual prefabs
+        // use a different capsule height this would need to be read from the
+        // component; for now a single shared constant is sufficient.
+        static constexpr float kHalfCapsuleHeight = 0.9f;
+
+        // Fraction of the visual character radius used as the sphere hit radius.
+        // 0.7 * scale approximates the shoulder width for humanoid characters
+        // (the capsule physics radius is 0.5 m; 0.7 provides a small generosity
+        // margin for point-and-click ease of use).
+        static constexpr float kHitRadiusFactor = 0.7f;
+
         auto view = registry_.view<TransformComponent, AnimatedModelComponent>();
         for (auto entity : view) {
             const auto& tc  = view.get<TransformComponent>(entity);
             const auto& amc = view.get<AnimatedModelComponent>(entity);
 
-            // Approximate the center-mass of the character (e.g., 1.0 meter off the ground)
+            // Never pick the local player — the camera is behind them so they
+            // would always be the closest "hit", masking all NPCs.
+            if (amc.isLocalPlayer) continue;
+
+            // Use the visual scale so the sphere matches what is actually visible.
+            // Previously used tc.scale (always 1.0) which gave a far-too-small
+            // hitbox for NPCs rendered at amc.scale=3.5.
+            float s = amc.scale;
+
+            // Torso center: entity origin + half the physics height * visual scale.
             glm::vec3 centerOfMass = tc.position + amc.modelOffset;
-            centerOfMass.y += (1.0f * tc.scale); 
-            
+            centerOfMass.y += kHalfCapsuleHeight * s;
+
             glm::vec3 v = centerOfMass - rayOrigin;
             float distanceAlongRay = glm::dot(v, rayDir);
-            
-            // If object is behind the camera, skip
-            if (distanceAlongRay < 0.0f) continue; 
+            if (distanceAlongRay < 0.0f) continue;
 
-            // Find the closest point on the ray to the character's center
             glm::vec3 pointOnRay = rayOrigin + rayDir * distanceAlongRay;
-            float distanceToObject = glm::length(centerOfMass - pointOnRay);
+            float distanceToCenter = glm::length(centerOfMass - pointOnRay);
 
-            // If the ray passes within ~0.8 meters of the character, it's a hit!
-            float hitRadius = 0.8f * tc.scale;
-            if (distanceToObject <= hitRadius && distanceAlongRay < minDist) {
+            float hitRadius = kHitRadiusFactor * s;
+            if (distanceToCenter <= hitRadius && distanceAlongRay < minDist) {
                 minDist = distanceAlongRay;
                 closest = entity;
             }

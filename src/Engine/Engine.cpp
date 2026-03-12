@@ -575,17 +575,30 @@ entt::entity Engine::onNetworkSpawn(uint32_t networkId,
     registry.emplace<NetworkSyncData>(e);
 
     // Add a ColliderComponent so EntityPicker::pick() can find this entity
-    // via Ray-AABB when the player right-clicks on it.
-    // The AABB is derived from the prefab's physics radius/height.
+    // via Ray-AABB when the player clicks on it.  The AABB is derived from the
+    // prefab's physics capsule dimensions and scaled to match the visual size
+    // (amc.scale) so that clicking anywhere on the visible character is a hit.
     {
         const auto& prefab = PrefabManager::get().getPrefab(modelType);
         if (!prefab.is_null() && prefab.contains("physics")) {
             const auto& phys = prefab["physics"];
             float r = phys.value("radius", 0.5f);
             float h = phys.value("height", 1.8f);
-            glm::vec3 halfExtents(r, h * 0.5f, r);
+
+            // Use the visual (AnimatedModelComponent) scale so the AABB
+            // covers what the player actually sees on screen.
+            float s = 1.0f;
+            if (auto* amc = registry.try_get<AnimatedModelComponent>(e)) {
+                s = amc.scale;
+            }
+
+            // Bottom of the AABB sits at the entity origin (ground level);
+            // top at h*s — the full visual character height.
+            // Previously used symmetric halfExtents which put half the box
+            // underground, making the upper body impossible to click.
             auto* box = new BoundingBox(nullptr, glm::vec3(1.0f));
-            box->setAABB(-halfExtents, halfExtents);
+            box->setAABB(glm::vec3(-r * s, 0.0f,  -r * s),
+                         glm::vec3( r * s, h * s,   r * s));
             registry.emplace_or_replace<ColliderComponent>(e, ColliderComponent{box});
         }
     }
