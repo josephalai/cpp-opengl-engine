@@ -9,7 +9,9 @@
 
 #include "../Config/ConfigManager.h"
 #include "../ECS/Components/NetworkIdComponent.h"
+#include "../ECS/Components/TransformComponent.h"
 #include <entt/entt.hpp>
+#include <glm/glm.hpp>
 #include <iostream>
 #include <filesystem>
 #include <random>
@@ -169,7 +171,8 @@ void LuaScriptEngine::shutdown() {
 // -------------------------------------------------------------------------
 
 sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
-                                              entt::entity target) {
+                                              entt::entity target,
+                                              entt::registry* registry) {
     // player and target are reserved for future use: in a full implementation
     // these will be used to look up NetworkIdComponent so that the engine API
     // functions can default to the calling entities' network IDs when no
@@ -264,8 +267,42 @@ sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
 
     // --- engine.Transform ---
     sol::table transform = lua_.create_table();
-    transform["lookAt"] = [](uint32_t entityA, uint32_t entityB) {
-        std::cout << "[Lua] Transform.lookAt(" << entityA << ", " << entityB << ")\n";
+    transform["lookAt"] = [registry](uint32_t lookerId, uint32_t targetId) {
+        if (!registry) {
+            std::cout << "[Lua] Transform.lookAt(" << lookerId << ", "
+                      << targetId << ") — no registry\n";
+            return;
+        }
+
+        entt::entity lookerEnt = entt::null;
+        entt::entity targetEnt = entt::null;
+
+        // Find the two entities by their NetworkIdComponent id.
+        auto view = registry->view<NetworkIdComponent>();
+        for (auto e : view) {
+            uint32_t id = view.get<NetworkIdComponent>(e).id;
+            if (id == lookerId) lookerEnt = e;
+            if (id == targetId) targetEnt = e;
+            if (lookerEnt != entt::null && targetEnt != entt::null) break;
+        }
+
+        if (lookerEnt == entt::null || targetEnt == entt::null) {
+            std::cout << "[Lua] Transform.lookAt: entity not found ("
+                      << lookerId << " → " << targetId << ")\n";
+            return;
+        }
+
+        auto* lookerTc = registry->try_get<TransformComponent>(lookerEnt);
+        auto* targetTc = registry->try_get<TransformComponent>(targetEnt);
+        if (!lookerTc || !targetTc) return;
+
+        glm::vec3 dir = targetTc->position - lookerTc->position;
+        dir.y = 0.0f;  // ignore height difference — rotate on Y axis only
+        if (glm::length(dir) > 0.001f) {
+            dir = glm::normalize(dir);
+            // rotation.y is in degrees (SharedMovement uses glm::radians to convert)
+            lookerTc->rotation.y = glm::degrees(std::atan2(dir.x, dir.z));
+        }
     };
     engine["Transform"] = transform;
 
@@ -366,7 +403,7 @@ float LuaScriptEngine::executeInteraction(const std::string& scriptPath,
     }
 
     // 3. Build the engine API table and resolve entity IDs for Lua.
-    sol::table engineTable = buildEngineTable(player, target);
+    sol::table engineTable = buildEngineTable(player, target, registry);
 
     // Prefer NetworkIdComponent::id so that engine.Network.sendMessage()
     // can match peerToNetworkId correctly on the server side.  Fall back to

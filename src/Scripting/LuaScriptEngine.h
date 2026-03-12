@@ -119,7 +119,8 @@ private:
     /// Build the `engine` table passed to every on_interact() call.
     /// Contains sub-tables: Network, Stats, Inventory, Health, Entities,
     /// Math, Transform, CombatMath, Equipment, Loot.
-    sol::table buildEngineTable(entt::entity player, entt::entity target);
+    sol::table buildEngineTable(entt::entity player, entt::entity target,
+                                entt::registry* registry = nullptr);
 
     sol::state lua_;
     std::string resourceRoot_;

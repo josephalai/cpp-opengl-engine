@@ -873,7 +873,7 @@ int main() {
     // -------------------------------------------------------------------------
     // Phase 4 — Pathfinding System (auto-steering via A* waypoints)
     // -------------------------------------------------------------------------
-    PathfindingSystem pathfindingSystem(registry, cfg.physics.defaultRunSpeed);
+    PathfindingSystem pathfindingSystem(registry, cfg.physics.defaultRunSpeed, &physicsSystem);
 
     // -------------------------------------------------------------------------
     // Step 6.1 — Interaction Scripting Engine + InteractionSystem

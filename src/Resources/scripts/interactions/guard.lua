@@ -25,6 +25,9 @@ local lines = {
 }
 
 function on_interact(player_id, target_id, engine)
+    -- Face the player before speaking so the NPC makes eye contact.
+    engine.Transform.lookAt(target_id, player_id)
+
     -- Look up this player's current position in the dialogue sequence.
     -- Defaults to line 1 on the first interaction.
     local idx = dialogue_index[player_id] or 1

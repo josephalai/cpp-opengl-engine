@@ -35,6 +35,9 @@ function on_interact(player_id, target_id, engine)
     -- face the player instead of walking away mid-dialogue.
     engine.AI.pause(target_id, NPC_PAUSE_DURATION)
 
+    -- Pivot to face the player once the NPC has halted.
+    engine.Transform.lookAt(target_id, player_id)
+
     local now = os.time()
 
     -- ---- Penalty check -------------------------------------------------------

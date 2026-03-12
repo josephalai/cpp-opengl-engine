@@ -12,6 +12,7 @@
 #include "../ECS/Components/PathfindingComponent.h"
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/InputQueueComponent.h"
+#include "../Physics/PhysicsSystem.h"
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
 #include <vector>
@@ -20,10 +21,16 @@
 
 class PathfindingSystem : public ISystem {
 public:
-    /// @param registry  The ECS registry.
-    /// @param moveSpeed Movement speed for auto-steered entities (m/s).
-    PathfindingSystem(entt::registry& registry, float moveSpeed = 5.0f)
-        : registry_(registry), moveSpeed_(moveSpeed) {}
+    /// @param registry     The ECS registry.
+    /// @param moveSpeed    Movement speed for auto-steered entities (m/s).
+    /// @param physicsSystem Optional PhysicsSystem used to keep Bullet ghost
+    ///                      positions in sync with the ECS TransformComponent so
+    ///                      that the physics engine doesn't snap entities back to
+    ///                      their pre-pathfinding positions each tick.
+    PathfindingSystem(entt::registry& registry,
+                      float           moveSpeed    = 5.0f,
+                      PhysicsSystem*  physicsSystem = nullptr)
+        : registry_(registry), moveSpeed_(moveSpeed), physicsSystem_(physicsSystem) {}
 
     void init() override {}
 
@@ -83,6 +90,14 @@ public:
                 if (step > dist) step = dist;
                 tc.position += dir * step;
 
+                // Sync the Bullet CharacterController ghost to the new position so
+                // that PhysicsSystem::update() (which runs before PathfindingSystem
+                // on the next tick) reads the correct ghost origin and does not snap
+                // tc.position back to the pre-pathfinding location.
+                if (physicsSystem_ && physicsSystem_->hasCharacterController(entity)) {
+                    physicsSystem_->warpCharacterController(entity, tc.position);
+                }
+
                 // Face the direction of travel (yaw only).
                 tc.rotation.y = glm::degrees(std::atan2(dir.x, dir.z));
             }
@@ -99,6 +114,7 @@ public:
 private:
     entt::registry& registry_;
     float           moveSpeed_;
+    PhysicsSystem*  physicsSystem_ = nullptr;
 };
 
 #endif // ENGINE_PATHFINDINGSYSTEM_H
