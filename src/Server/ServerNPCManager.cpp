@@ -226,8 +226,12 @@ void ServerNPCManager::tick(float dt,
             pit->second -= dt;
             if (pit->second < 0.0f) pit->second = 0.0f;
             // Emit a zero-movement packet so the NPC stands still on the server.
+            // Preserve the NPC's current heading so SharedMovement::applyInput does
+            // NOT reset rotation.y to 0 (north) — which would immediately undo any
+            // lookAt rotation applied by an interaction script.
             Network::PlayerInputPacket idle{};
-            idle.deltaTime = dt;
+            idle.deltaTime  = dt;
+            idle.cameraYaw  = ai.cameraYaw;
             outInputs[id] = idle;
             continue;
         }
