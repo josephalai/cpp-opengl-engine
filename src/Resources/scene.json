@@ -60,7 +60,7 @@
   "random_seed": 1,
   "player": {
     "alias": "stall",
-    "x": 100.0, "y": 3.0, "z": -50.0,
+    "x": 100.0, "y": 3.0, "z": -80.0,
     "rx": 0.0, "ry": 180.0, "rz": 0.0,
     "scale": 0.0
   },
@@ -70,7 +70,7 @@
   "animated_characters": [
     {
       "path": "Characters/characters.glb",
-      "x": 100.0, "y": "terrain", "z": -50.0,
+      "x": 100.0, "y": "terrain", "z": -80.0,
       "scale": 2.5,
       "rot": { "rx": -90.0, "ry": 0.0, "rz": 0.0 },
       "offset": { "ox": 0.0, "oy": 0.0, "oz": 0.0 }

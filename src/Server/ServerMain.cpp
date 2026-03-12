@@ -1496,9 +1496,23 @@ int main() {
                                 glm::vec3 disp = tc.position - prevPos;
                                 tc.position = prevPos; // revert; ghost sync writes authoritative pos
 
-                                // Only XZ displacement passed; Bullet owns vertical.
-                                physicsSystem.setEntityWalkDirection(entity,
-                                    glm::vec3(disp.x, 0.0f, disp.z));
+                                // If auto-steered by PathfindingSystem and this input
+                                // carries no directional movement, skip overriding the
+                                // walk direction.  PathfindingSystem::update() (which runs
+                                // after physicsSystem.update() each tick) owns the direction
+                                // for these entities; a zero-displacement idle input must
+                                // not cancel the direction it sets each tick.
+                                const bool isPathfinding =
+                                    registry.all_of<PathfindingComponent>(entity);
+                                const bool hasMovement =
+                                    inp.moveForward || inp.moveBackward ||
+                                    inp.moveLeft    || inp.moveRight;
+
+                                if (!isPathfinding || hasMovement) {
+                                    // Only XZ displacement passed; Bullet owns vertical.
+                                    physicsSystem.setEntityWalkDirection(entity,
+                                        glm::vec3(disp.x, 0.0f, disp.z));
+                                }
 
                                 // Trigger a jump impulse when requested and grounded.
                                 if (inp.jump && !lastJumpState[nidComp.id]) {

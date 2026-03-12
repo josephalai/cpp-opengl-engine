@@ -118,8 +118,10 @@ void NetworkInterpolationSystem::update(float deltaTime) {
                 const float     rawSpeed = (deltaTime > 0.0f) ? dist / deltaTime : 0.0f;
                 // Exponential moving average: smooths frame-to-frame noise so that
                 // brief starvation frames (zero movement) don't immediately flip the
-                // animation state to Idle.
-                constexpr float kSpeedSmoothingAlpha = 0.15f;
+                // animation state to Idle.  Alpha=0.4 balances noise rejection
+                // (prevents single-frame flicker) with fast response to NPC stops
+                // (Walk→Idle transition completes within ~150 ms rather than 400 ms+).
+                constexpr float kSpeedSmoothingAlpha = 0.4f;
                 nsd.currentSpeed = glm::mix(nsd.currentSpeed, rawSpeed, kSpeedSmoothingAlpha);
             }
             nsd.previousPosition = cur;
