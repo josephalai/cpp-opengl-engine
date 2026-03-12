@@ -88,6 +88,18 @@ void NetworkSystem::update(float deltaTime) {
     //    of hard-snapping.  Move toward the target at exactly run speed
     //    so the animation is indistinguishable from normal WASD walking
     //    and the player never stops mid-path waiting for the next tick.
+    //
+    //    IMPORTANT: Do NOT clear hasReconcileTarget_ when the client
+    //    reaches the current snapshot position.  The server moves the
+    //    player tick-by-tick (10 Hz) and the client must wait for the
+    //    next snapshot to know whether to keep going.  Clearing early
+    //    creates a 0-33 ms stop gap between snapshots — exactly the
+    //    "inching" stop-start pattern reported by the user.
+    //
+    //    hasReconcileTarget_ is cleared in the snapshot receipt path
+    //    when the server stops moving the player (consecutive snapshots
+    //    at the same position), or when the server removes
+    //    PathfindingComponent (WASD interrupt → same stop signal).
     // -----------------------------------------------------------------
     if (hasReconcileTarget_ && localPlayer_) {
         glm::vec3 curr   = localPlayer_->getPosition();
@@ -98,32 +110,37 @@ void NetworkSystem::update(float deltaTime) {
         diff.y = 0.0f;
         float distSq = glm::dot(diff, diff);
 
-        if (distSq < 0.0025f) {   // within 0.05 m — snap and clear
+        const float runSpd  = SharedMovement::runSpeed();
+        const float maxStep = runSpd * deltaTime;
+
+        if (distSq < maxStep * maxStep) {
+            // Within one frame's reach — snap exactly to target.
+            // Do NOT clear hasReconcileTarget_ here: the server may push a new
+            // position on its very next tick.  We stay "ready to move" so that
+            // when the next snapshot arrives (via the receipt branch below) and
+            // updates reconcileTarget_ to a farther position, the very next frame
+            // immediately resumes movement with no idle gap.
             localPlayer_->setPosition(target);
             if (physicsSystem_) physicsSystem_->warpPlayer(target);
-            hasReconcileTarget_ = false;
 
-            // Stop animation — tell AnimationSystem we are no longer moving.
+            // Speed 0 while we sit at the current snapshot position.
+            // It will be corrected to runSpd on the next frame after a new
+            // snapshot pushes reconcileTarget_ forward.
             if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
                 is->currentSpeed = 0.0f;
             }
         } else {
             // Move at the same constant run speed used by WASD input so the
             // auto-walk animation and pace exactly match normal player movement.
-            // This replaces the previous exponential LERP (kReconcileLerp = 0.3)
-            // which slowed to a crawl near the target and caused a visible
-            // stop-wait-restart cycle each time a new server tick arrived.
-            const float runSpd  = SharedMovement::runSpeed();
-            const float maxStep = runSpd * deltaTime;
-            const float dist    = std::sqrt(distSq);
-            const float stepFrac = (maxStep >= dist) ? 1.0f : maxStep / dist;
+            const float dist     = std::sqrt(distSq);
+            const float stepFrac = maxStep / dist;
 
             glm::vec3 newPos = glm::mix(curr, target, stepFrac);
             newPos.y = curr.y;
             localPlayer_->setPosition(newPos);
             if (physicsSystem_) physicsSystem_->warpPlayer(newPos);
 
-            // Report the actual per-frame speed so AnimationSystem plays Run.
+            // Report the actual per-frame speed so AnimationSystem plays Walk.
             if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
                 float moved = glm::length(newPos - curr);
                 is->currentSpeed = (deltaTime > 0.0001f) ? moved / deltaTime : runSpd;
@@ -306,12 +323,29 @@ void NetworkSystem::update(float deltaTime) {
                                                              snapshot.position.z);
 
                             // ---- Already in server-authoritative LERP mode ----
-                            // While lerping (e.g. mid-pathfinding), skip history-based
-                            // reconciliation entirely.  Just advance the target to the
-                            // latest server position and let the per-frame lerp catch up.
+                            // While mid-pathfinding, skip history-based reconciliation.
+                            // Update the target to the latest server position so the
+                            // per-frame constant-velocity loop chases it continuously.
+                            //
+                            // STOPPING DETECTION: if the server sent the same XZ position
+                            // as the previous reconcile target (within 5 cm), PathfindingSystem
+                            // has finished — the player has arrived.  Clear the flag so normal
+                            // WASD reconciliation resumes and the animation snaps back to Idle.
                             if (hasReconcileTarget_) {
+                                glm::vec3 prevTarget = reconcileTarget_;
                                 reconcileTarget_ = serverPos;
                                 localHistory_.clear();
+
+                                glm::vec3 serverMovement = reconcileTarget_ - prevTarget;
+                                serverMovement.y = 0.0f;
+                                if (glm::dot(serverMovement, serverMovement) < 0.0025f) {
+                                    // Server position hasn't changed → pathfinding complete.
+                                    hasReconcileTarget_ = false;
+                                    if (auto* is = registry_.try_get<InputStateComponent>(
+                                            localPlayer_->getHandle())) {
+                                        is->currentSpeed = 0.0f;
+                                    }
+                                }
                             } else {
                                 // ---- Normal history-based reconciliation ----
                                 glm::vec3 historicalPos = currentClientPos;

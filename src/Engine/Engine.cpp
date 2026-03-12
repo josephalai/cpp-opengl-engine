@@ -514,9 +514,18 @@ void Engine::initFramebuffersAndPickers() {
         for (auto e : animView) {
             auto& amc = animView.get<AnimatedModelComponent>(e);
             if (amc.controller && amc.isLocalPlayer) {
+                // Walk condition: WASD forward-walk OR server-driven auto-walk.
+                // During auto-walk NetworkSystem sets InputStateComponent::currentSpeed
+                // to SharedMovement::runSpeed() each frame.  The WASD-only condition
+                // previously kept the animation frozen in Idle during auto-walk.
                 amc.controller->setupDefaultTransitions(
-                    []() { return InputMaster::isActionDown("MoveForward") && !InputMaster::isKeyDown(LeftShift); },
-                    []() { return InputMaster::isActionDown("MoveForward") &&  InputMaster::isKeyDown(LeftShift); },
+                    [&registry, e]() {
+                        if (InputMaster::isActionDown("MoveForward") && !InputMaster::isKeyDown(LeftShift))
+                            return true;
+                        const auto* is = registry.try_get<InputStateComponent>(e);
+                        return is && std::abs(is->currentSpeed) > 0.1f;
+                    },
+                    []() { return InputMaster::isActionDown("MoveForward") && InputMaster::isKeyDown(LeftShift); },
                     []() { return InputMaster::isActionDown("Jump"); });
             }
         }

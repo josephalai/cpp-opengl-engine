@@ -1,10 +1,10 @@
 //
 // Created by Joseph Alai on 7/18/21.
 //
+#include <cmath>
 #include "PlayerCamera.h"
 #include "../Config/ConfigManager.h"
 #include "../RenderEngine/DisplayManager.h"
-#include <cmath>
 
 /**
  * @brief move (MAIN LOOP), modifies the actual camera vectors based on the
