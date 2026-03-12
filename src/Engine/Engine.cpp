@@ -571,6 +571,15 @@ entt::entity Engine::onNetworkSpawn(uint32_t networkId,
         return entt::null;
     }
 
+    // Remote entities are driven entirely by the server's TransformSnapshots via
+    // NetworkInterpolationSystem.  Bullet's CharacterController would fight that
+    // system every frame, snapping the entity back to the ghost's position and
+    // causing severe twitching.  Remove it so the interpolation system has sole
+    // authority over the entity's position on the client.
+    if (physicsSystem && physicsSystem->hasCharacterController(e)) {
+        physicsSystem->removeCharacterController(e);
+    }
+
     // Attach interpolation state so NetworkInterpolationSystem can drive this entity.
     registry.emplace<NetworkSyncData>(e);
 
