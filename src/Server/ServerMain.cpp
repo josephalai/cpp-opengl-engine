@@ -36,6 +36,9 @@
 #include "../Engine/PathfindingSystem.h"
 #include "../Navigation/NavMeshManager.h"
 #include "../ECS/Phase4Test.h"
+#include "../Interaction/InteractionSystem.h"
+#include "../ECS/Components/ActionStateComponent.h"
+#include "../ECS/Components/InteractableComponent.h"
 
 #include <nlohmann/json.hpp>
 
@@ -423,6 +426,20 @@ static std::vector<entt::entity> loadBakedChunkEntities(
         return spawned;
     }
 
+    // Deterministic static ID: derived from world (X, Z) coordinates so both
+    // client and server independently produce the same ID for the same tree/stall.
+    // The high bit is set to guarantee no collision with dynamic entity IDs
+    // (players start at 100, NPCs follow sequentially, all < 0x80000000).
+    //
+    // Offset of 2000000 accommodates coordinates in the range [-200000, ~128000]
+    // world units before wrapping. Note: two entities at the same (X, Z) but
+    // different Y levels would share an ID — not an issue for baked terrain entities.
+    auto generateStaticId = [](float x, float z) -> uint32_t {
+        uint32_t ux = static_cast<uint32_t>(std::round(x * 10.0f) + 2000000.0f) & 0x7FFF;
+        uint32_t uz = static_cast<uint32_t>(std::round(z * 10.0f) + 2000000.0f) & 0x7FFF;
+        return 0x80000000u | (ux << 15) | uz;
+    };
+
     spawned.reserve(entities.size());
     for (const auto& be : entities) {
         std::string alias = BakedPrefab::toAlias(be.prefabId);
@@ -432,6 +449,35 @@ static std::vector<entt::entity> loadBakedChunkEntities(
             registry, physics, physBodies,
             alias, be.x, be.y, be.z, be.rotationY, be.scale);
         if (entity != entt::null) {
+            // Assign a deterministic network ID so the ActionRequest handler can
+            // look up this entity when the client right-clicks it.
+            uint32_t staticNetId = generateStaticId(be.x, be.z);
+            if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
+                nid->id    = staticNetId;
+                nid->isNPC = false;
+            } else {
+                registry.emplace<NetworkIdComponent>(entity,
+                    NetworkIdComponent{staticNetId, alias, false, 0});
+            }
+
+            // Attach InteractableComponent from the prefab (e.g. woodcutting script
+            // on trees) so the server's ActionRequest handler can validate the target.
+            const auto& prefab = PrefabManager::get().getPrefab(alias);
+            if (!prefab.is_null()) {
+                const nlohmann::json* icJson = nullptr;
+                if (prefab.contains("InteractableComponent"))
+                    icJson = &prefab["InteractableComponent"];
+                else if (prefab.contains("components") &&
+                         prefab["components"].contains("InteractableComponent"))
+                    icJson = &prefab["components"]["InteractableComponent"];
+
+                if (icJson && !registry.all_of<InteractableComponent>(entity)) {
+                    auto& ic      = registry.emplace<InteractableComponent>(entity);
+                    ic.scriptPath    = icJson->value("script",         "");
+                    ic.interactRange = icJson->value("interact_range", 1.5f);
+                }
+            }
+
             spawned.push_back(entity);
         }
     }
@@ -640,25 +686,9 @@ static void loadHeadlessScene(entt::registry& registry,
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helper: create a registry entity with TransformComponent + NetworkIdComponent
-// ---------------------------------------------------------------------------
-
-static entt::entity spawnEntity(entt::registry& registry,
-                                 uint32_t networkId,
-                                 glm::vec3 position,
-                                 const std::string& modelType,
-                                 bool isNPC = false) {
-    auto entity = registry.create();
-    registry.emplace<TransformComponent>(entity,
-        TransformComponent{position, glm::vec3(0.0f), 1.0f});
-    registry.emplace<NetworkIdComponent>(entity,
-        NetworkIdComponent{networkId, modelType, isNPC, 0});
-    // [Phase 3.3] Every entity gets an input queue so the tick loop can
-    // drain it through SharedMovement::applyInput() each server tick.
-    registry.emplace<InputQueueComponent>(entity);
-    return entity;
-}
+// spawnEntity() was removed. NPC entities are now spawned via EntityFactory::spawn()
+// which reads the full prefab JSON and attaches InteractableComponent, AIScriptComponent,
+// physics capsule, and all other components defined in the prefab file.
 
 // ---------------------------------------------------------------------------
 // main
@@ -843,7 +873,17 @@ int main() {
     // -------------------------------------------------------------------------
     // Phase 4 — Pathfinding System (auto-steering via A* waypoints)
     // -------------------------------------------------------------------------
-    PathfindingSystem pathfindingSystem(registry, cfg.physics.defaultRunSpeed);
+    PathfindingSystem pathfindingSystem(registry, cfg.physics.defaultRunSpeed, &physicsSystem);
+
+    // -------------------------------------------------------------------------
+    // Step 6.1 — Interaction Scripting Engine + InteractionSystem
+    // A dedicated LuaScriptEngine for interaction scripts, separate from the
+    // NPC AI engine.  Each script runs in an isolated Sol2 environment so
+    // scripts cannot clobber each other's on_interact() globals.
+    // -------------------------------------------------------------------------
+    LuaScriptEngine interactionLua;
+    interactionLua.init(HOME_PATH);
+    InteractionSystem interactionSystem(registry, interactionLua);
 
     // -------------------------------------------------------------------------
     // Network tracking maps
@@ -855,6 +895,28 @@ int main() {
     std::unordered_map<uint32_t, entt::entity>    networkIdToEntity;
     std::unordered_map<ENetPeer*, entt::entity>   peerToEntity;
     uint32_t nextNetworkId = 100;
+
+    // -------------------------------------------------------------------------
+    // Bridge the Lua Script Engine to the ENet Network for ServerMessage packets.
+    // When a Lua interaction script calls engine.Network.sendMessage(pid, text),
+    // this closure finds the ENetPeer that owns that network ID and delivers a
+    // reliable ServerMessagePacket directly to that client.
+    // -------------------------------------------------------------------------
+    interactionLua.setSendMessageCallback(
+        [&peerToNetworkId, server](uint32_t targetId, const std::string& msg) {
+            Network::ServerMessagePacket pkt{};  // zero-initialized
+            std::strncpy(pkt.message, msg.c_str(), Network::kMaxMessageLen - 1);
+            pkt.message[Network::kMaxMessageLen - 1] = '\0';  // guarantee termination
+            for (auto& [peer, nid] : peerToNetworkId) {
+                if (nid == targetId) {
+                    sendTo(peer, Network::PacketType::ServerMessage,
+                           &pkt, sizeof(pkt), true);
+                    std::cout << "[Server] ServerMessage → peer (id=" << targetId
+                              << "): \"" << msg << "\"\n";
+                    break;
+                }
+            }
+        });
 
     // --- NPC Loading ---
     // Prefer npcs.json (JSON format); fall back to server_npcs.cfg (legacy).
@@ -883,21 +945,30 @@ int main() {
             if (terrainMgr.isAnyValid())
                 pos.y = terrainMgr.getHeight(pos.x, pos.z);
 
-            auto entity = spawnEntity(registry, nid, pos, d.modelType, /*isNPC=*/true);
+            // Use EntityFactory to spawn via the prefab JSON.  This loads ALL
+            // components from the data file: InteractableComponent, AIScriptComponent,
+            // physics capsule dimensions, AnimatedModelComponent scale, etc.
+            // Falling back to d.modelType ensures compatibility with legacy cfg-only entries.
+            const std::string prefabId = d.prefab.empty() ? d.modelType : d.prefab;
+            auto entity = EntityFactory::spawn(registry, prefabId, pos, &physicsSystem);
+            if (entity == entt::null) {
+                std::cerr << "[Server] EntityFactory failed to spawn NPC with prefab '"
+                          << prefabId << "' — skipping.\n";
+                continue;
+            }
+
+            // EntityFactory sets NetworkIdComponent::id = 0. Stamp the real ID now.
+            if (auto* netIdComp = registry.try_get<NetworkIdComponent>(entity)) {
+                netIdComp->id = nid;
+            } else {
+                registry.emplace<NetworkIdComponent>(entity,
+                    NetworkIdComponent{nid, d.modelType, /*isNPC=*/true, 0});
+            }
             networkIdToEntity[nid] = entity;
 
-            // Read capsule dimensions from the prefab if available; fall back to
-            // ConfigManager defaults.  This eliminates the hardcoded 0.5f / 1.8f.
-            float capsuleRadius = ConfigManager::get().physics.defaultCapsuleRadius;
-            float capsuleHeight = ConfigManager::get().physics.defaultCapsuleHeight;
-            if (!d.prefab.empty() && PrefabManager::get().hasPrefab(d.prefab)) {
-                const auto& prefab = PrefabManager::get().getPrefab(d.prefab);
-                if (prefab.contains("physics")) {
-                    capsuleRadius = prefab["physics"].value("radius", capsuleRadius);
-                    capsuleHeight = prefab["physics"].value("height", capsuleHeight);
-                }
-            }
-            physicsSystem.addCharacterController(entity, capsuleRadius, capsuleHeight);
+            // EntityFactory::spawn() already called physicsSystem.addCharacterController()
+            // via the prefab's "physics" block.  Do NOT call it a second time here.
+
             npcManager.registerNPC(nid, d.scriptType);
 
             // Phase 4: Register NPC in spatial grid (dynamic entity).
@@ -911,6 +982,38 @@ int main() {
         // Initialise Lua scripting engine and load AI scripts from prefab
         // definitions.  Falls back to C++ AI if Lua is not available.
         npcManager.initLua(HOME_PATH);
+    }
+
+    // -------------------------------------------------------------------------
+    // Wire engine.AI.pause() in interaction scripts to ServerNPCManager so
+    // Lua can freeze an NPC's wandering behaviour during dialogue.
+    // -------------------------------------------------------------------------
+    interactionLua.setNpcPauseCallback(
+        [&npcManager](uint32_t npcId, float duration) {
+            npcManager.setPauseTimer(npcId, duration);
+        });
+
+    // -------------------------------------------------------------------------
+    // Wire engine.Transform.lookAt() in interaction scripts to ServerNPCManager
+    // so that the new facing direction is propagated into the NPC's AI state.
+    // Without this, the AI tick overwrites the rotation on the very next frame.
+    // -------------------------------------------------------------------------
+    interactionLua.setNpcYawCallback(
+        [&npcManager](uint32_t npcId, float yaw) {
+            npcManager.setNpcCameraYaw(npcId, yaw);
+        });
+
+    // Populate networkIdToEntity for all static world objects (trees, stalls, lamps)
+    // that were loaded from baked chunks before this map existed.  Static entities
+    // have the high bit set in their NetworkIdComponent::id (see generateStaticId).
+    {
+        auto staticView = registry.view<NetworkIdComponent>();
+        for (auto entity : staticView) {
+            const auto& nid = staticView.get<NetworkIdComponent>(entity);
+            if (nid.id & 0x80000000u) {
+                networkIdToEntity[nid.id] = entity;
+            }
+        }
     }
 
     // --- Server Tick State ---
@@ -1056,6 +1159,22 @@ int main() {
                             auto eit = networkIdToEntity.find(nid);
                             if (eit != networkIdToEntity.end()) {
                                 auto entity = eit->second;
+
+                                // --- ACTION INTERRUPTION ---
+                                // If the player deliberately moves (WASD), cancel
+                                // any ongoing pathfinding or interaction so they
+                                // can walk away cleanly (e.g. break a chop loop).
+                                if (input.moveForward || input.moveBackward ||
+                                    input.moveLeft   || input.moveRight) {
+                                    if (registry.all_of<ActionStateComponent>(entity)) {
+                                        registry.remove<ActionStateComponent>(entity);
+                                    }
+                                    if (registry.all_of<PathfindingComponent>(entity)) {
+                                        registry.remove<PathfindingComponent>(entity);
+                                    }
+                                }
+                                // ----------------------------
+
                                 // Append to the entity's input queue; the
                                 // tick loop drains it with SharedMovement.
                                 auto& queue = registry.get<InputQueueComponent>(entity);
@@ -1069,7 +1188,9 @@ int main() {
                     }
 
                     // Phase 4 Step 4.4.2 — ActionRequest: client right-clicks
-                    // a target → server runs A* and assigns PathfindingComponent.
+                    // a target → server validates InteractableComponent, assigns
+                    // ActionStateComponent for the interaction state machine, and
+                    // runs A* to auto-steer the player toward the target.
                     if (ptype == Network::PacketType::ActionRequest &&
                         plen == sizeof(Network::ActionRequestPacket)) {
 
@@ -1085,6 +1206,15 @@ int main() {
                                 targetIt != networkIdToEntity.end()) {
                                 auto playerEntity = playerIt->second;
                                 auto targetEntity = targetIt->second;
+
+                                // Step 6.1: Only accept the request if the target
+                                // has an InteractableComponent.
+                                if (!registry.all_of<InteractableComponent>(targetEntity)) {
+                                    std::cout << "[Server] ActionRequest denied — "
+                                                 "target " << req.targetNetworkId
+                                              << " has no InteractableComponent.\n";
+                                    break;
+                                }
 
                                 auto& playerTC = registry.get<TransformComponent>(playerEntity);
                                 auto& targetTC = registry.get<TransformComponent>(targetEntity);
@@ -1108,6 +1238,12 @@ int main() {
                                               << cellDist << ").\n";
                                     break;
                                 }
+
+                                // Step 6.1: Attach ActionStateComponent to the player.
+                                // This starts the interaction state machine.
+                                registry.emplace_or_replace<ActionStateComponent>(
+                                    playerEntity,
+                                    ActionStateComponent{targetEntity, 0.0f, false});
 
                                 // Run A* to find a path from player to target.
                                 auto path = navMesh.findPath(playerTC.position, targetTC.position);
@@ -1148,10 +1284,6 @@ int main() {
                 for (auto entity : view) {
                     auto& tc = view.get<TransformComponent>(entity);
                     auto& nid = view.get<NetworkIdComponent>(entity);
-                    if (!nid.isNPC) {
-                        std::cout << "Client " << nid.id << " at position ("
-                                  << tc.position.x << ", " << tc.position.y << ", " << tc.position.z << ")\n";
-                    }
                 }
                 std::cout << "-------------------------------------------\n";
             }
@@ -1203,11 +1335,15 @@ int main() {
                                 registry, physicsSystem, physBodiesCfg,
                                 cell.first, cell.second);
                             if (!spawned.empty()) {
-                                // Register baked entities in the spatial grid.
+                                // Register baked entities in the spatial grid and
+                                // network ID map so ActionRequest packets can find them.
                                 for (auto entity : spawned) {
                                     if (registry.valid(entity)) {
                                         auto& tc = registry.get<TransformComponent>(entity);
                                         spatialSystem.registerEntity(entity, tc.position, /*isStatic=*/true);
+                                        if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
+                                            networkIdToEntity[nid->id] = entity;
+                                        }
                                     }
                                 }
                                 bakedChunkEntities[cell] = std::move(spawned);
@@ -1224,6 +1360,10 @@ int main() {
                         if (bit != bakedChunkEntities.end()) {
                             for (auto entity : bit->second) {
                                 if (registry.valid(entity)) {
+                                    // Remove from networkIdToEntity before destroying.
+                                    if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
+                                        networkIdToEntity.erase(nid->id);
+                                    }
                                     spatialSystem.unregisterEntity(entity);
                                     registry.destroy(entity);
                                 }
@@ -1403,6 +1543,9 @@ int main() {
 
             // ----- Phase 4: Update pathfinding auto-steering -----
             pathfindingSystem.update(cfg.server.tickInterval);
+
+            // ----- Step 6.1: Update interaction state machine -----
+            interactionSystem.update(cfg.server.tickInterval);
 
             // ----- Broadcast entity snapshots with AoI filtering (Phase 4) -----
             // Instead of broadcasting every entity to every client, iterate

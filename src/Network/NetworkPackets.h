@@ -29,6 +29,7 @@ enum class PacketType : uint8_t {
     Spawn             = 4,
     Despawn           = 5,
     ActionRequest     = 6,  ///< Phase 4 — Client requests a pathfound action on a target.
+    ServerMessage     = 7,  ///< Phase 6 — Server sends a text message to a specific client (e.g. NPC dialogue).
 };
 
 // -------------------------------------------------------------------------
@@ -95,6 +96,13 @@ enum class ActionType : uint8_t {
 struct ActionRequestPacket {
     uint32_t   targetNetworkId = 0;     ///< Target entity to interact with.
     ActionType action          = ActionType::None;
+};
+
+/// Phase 6 — Server-to-client text message (NPC dialogue, notifications, etc.).
+/// Sent reliably so the player always sees the message.
+static constexpr size_t kMaxMessageLen = 128;
+struct ServerMessagePacket {
+    char message[kMaxMessageLen] = {};
 };
 
 // -------------------------------------------------------------------------

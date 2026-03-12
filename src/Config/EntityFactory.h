@@ -36,7 +36,9 @@ public:
     static entt::entity spawn(entt::registry& registry,
                               const std::string& prefabId,
                               const glm::vec3& position,
-                              PhysicsSystem* physics = nullptr);
+                              PhysicsSystem* physics = nullptr,
+                              const glm::vec3& rotation = glm::vec3(0.0f),
+                              float scale = 1.0f);
 };
 
 #endif // ENGINE_ENTITY_FACTORY_H

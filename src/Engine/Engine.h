@@ -13,6 +13,7 @@
 #include "../Entities/PlayerCamera.h"
 #include "../RenderEngine/FrameBuffers.h"
 #include "../Toolbox/TerrainPicker.h"
+#include "../Interaction/EntityPicker.h"
 #include "../Water/WaterRenderer.h"
 #include "../Water/WaterShader.h"
 #include "../Water/WaterTile.h"
@@ -86,6 +87,7 @@ private:
     FontRenderer* fontRenderer = nullptr;
     FrameBuffers* reflectFbo = nullptr;
     TerrainPicker* picker = nullptr;
+    EntityPicker*  entityPicker_ = nullptr; ///< Ray-AABB entity picker (client-only).
     WaterRenderer* waterRenderer = nullptr;
     WaterShader* waterShader = nullptr;
 

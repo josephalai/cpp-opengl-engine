@@ -9,6 +9,7 @@
 #include "../ECS/Components/InputStateComponent.h"
 #include "../ECS/Components/InputQueueComponent.h"
 #include "../ECS/Components/AIScriptComponent.h"
+#include "../ECS/Components/InteractableComponent.h"
 #include "../Physics/PhysicsSystem.h"
 
 #ifndef HEADLESS_SERVER
@@ -16,6 +17,7 @@
 #include "../ECS/Components/AnimatedModelComponent.h"
 #include "../Animation/AnimationLoader.h"
 #include "../Util/FileSystem.h"
+#include <glm/gtc/matrix_transform.hpp>
 #endif
 
 #include <nlohmann/json.hpp>
@@ -131,6 +133,25 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
         }
     }
 
+    // --- InteractableComponent (if prefab contains an "InteractableComponent" block) ---
+    // Supports both top-level and nested-under-"components" declarations.
+    // Precedence: top-level takes priority over "components" block.
+    // New prefabs should use top-level placement (e.g., tree.json).
+    {
+        const nlohmann::json* icJson = nullptr;
+        if (prefab.contains("InteractableComponent"))
+            icJson = &prefab["InteractableComponent"];
+        else if (prefab.contains("components") &&
+                 prefab["components"].contains("InteractableComponent"))
+            icJson = &prefab["components"]["InteractableComponent"];
+
+        if (icJson) {
+            auto& ic = registry.emplace<InteractableComponent>(entity);
+            ic.scriptPath    = icJson->value("script",         "");
+            ic.interactRange = icJson->value("interact_range", 1.5f);
+        }
+    }
+
 #ifndef HEADLESS_SERVER
     // --- Client-side rendering ---
     // If the prefab declares a "mesh" path, attach a visual component.
@@ -181,6 +202,9 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                 amc.controller  = controller;
                 amc.ownsModel   = true;
                 amc.isLocalPlayer = false;  // marked true by Engine after initial load
+                // Default the model-space correction to the loader's auto-detected
+                // coordinateCorrection.  The prefab can override it with model_rotation.
+                amc.modelRotationMat = animModel->coordinateCorrection;
                 // Optional per-prefab visual scale / offset.
                 amc.scale = prefab.value("scale", 1.0f);
                 if (prefab.contains("components") &&
@@ -191,6 +215,21 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                         amc.modelOffset.x = j["model_offset"].value("x", 0.0f);
                         amc.modelOffset.y = j["model_offset"].value("y", 0.0f);
                         amc.modelOffset.z = j["model_offset"].value("z", 0.0f);
+                    }
+                    if (j.contains("model_rotation")) {
+                        const float rx = j["model_rotation"].value("x", 0.0f);
+                        const float ry = j["model_rotation"].value("y", 0.0f);
+                        const float rz = j["model_rotation"].value("z", 0.0f);
+                        // Build a model-space rotation matrix from per-axis degree values.
+                        // Each glm::rotate post-multiplies, so rotations are applied in
+                        // extrinsic (fixed-axis) X-Y-Z order: X is applied first to the
+                        // vertices, then Y around the world Y axis, then Z around world Z.
+                        // This matches the convention of Maths::createTransformationMatrix.
+                        glm::mat4 rotMat(1.0f);
+                        rotMat = glm::rotate(rotMat, glm::radians(rx), glm::vec3(1.0f, 0.0f, 0.0f));
+                        rotMat = glm::rotate(rotMat, glm::radians(ry), glm::vec3(0.0f, 1.0f, 0.0f));
+                        rotMat = glm::rotate(rotMat, glm::radians(rz), glm::vec3(0.0f, 0.0f, 1.0f));
+                        amc.modelRotationMat = rotMat;
                     }
                 }
             } else {

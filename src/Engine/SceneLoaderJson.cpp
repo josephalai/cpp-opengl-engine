@@ -486,6 +486,9 @@ bool SceneLoaderJson::load(
             amc.scale       = scale;
             amc.ownsModel   = true;
             amc.isLocalPlayer = false;  // marked true by Engine after loading
+            // coordinateCorrection was potentially adjusted above (userRot) — use
+            // it as the default so AnimatedRenderer no longer needs to multiply it.
+            amc.modelRotationMat = animModel->coordinateCorrection;
 
             std::cout << "[SceneLoaderJson] Loaded animated_character '" << relPath
                       << "': " << animModel->clips.size() << " clip(s), "

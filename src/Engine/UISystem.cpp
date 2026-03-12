@@ -33,36 +33,12 @@ UISystem::UISystem(MasterRenderer*            renderer,
 {}
 
 void UISystem::update(float /*deltaTime*/) {
-    // Handle object picking on left-click
-    if (InputMaster::hasPendingClick() && InputMaster::mouseClicked(LeftClick)) {
-        // Render Player's bounding box only (Player is the only pickable object)
-        renderer_->renderBoundingBoxesFromRegistry(registry_, player_);
-        Color clickColor = Picker::getColor();
-        int element      = BoundingBoxIndex::getIndexByColor(clickColor);
-
-        if (clickColorText_) {
-            clickColorText_->updateText(
-                ColorName::toString(clickColor) + ", Element: " + std::to_string(element),
-                clickColor);
-        }
-
-        Entity* pClickedModel = InteractiveModel::getInteractiveBox(element);
-        if (pClickedModel) {
-            if (auto* p = dynamic_cast<Player*>(pClickedModel)) {
-                if (!p->hasMaterial()) {
-                    p->setMaterial({500.0f, 500.0f});
-                    p->activateMaterial();
-                } else {
-                    p->disableMaterial();
-                }
-            }
-            printf("position: x, y, z: (%f, %f, %f)\n",
-                   pClickedModel->getPosition().x,
-                   pClickedModel->getPosition().y,
-                   pClickedModel->getPosition().z);
-        }
-        InputMaster::resetClick();
-    }
+    // Note: Left-click entity picking is now handled by EntityPicker (ray-cast)
+    // via InputDispatcher → EntityClickedEvent.  The old colour-picking path
+    // (renderBoundingBoxesFromRegistry → Picker::getColor) has been removed
+    // because calling render() outside of an FBO caused a full-screen flash on
+    // every click.  The reflection-FBO bounding box render in RenderSystem is
+    // intentionally kept for the minimap / water-reflection pass.
 
     // Render GUI texture overlays (lifebar, icons, FBO debug, etc.)
     if (guiRenderer_) guiRenderer_->render(guis_);

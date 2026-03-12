@@ -1,26 +1,33 @@
 // src/Scripting/LuaScriptEngine.h
 //
-// Lua scripting bridge for data-driven NPC AI.
+// Lua scripting bridge for data-driven NPC AI and entity interactions.
 // Wraps Sol2/Lua state and exposes a minimal C++ API so that AI behaviour
-// can be defined in .lua files instead of hardcoded C++ switch statements.
+// and gameplay interactions can be defined in .lua files instead of hardcoded
+// C++ switch statements.
 //
-// Usage:
+// Usage (NPC AI):
 //   LuaScriptEngine lua;
 //   lua.init(resourceRoot);
 //   lua.loadScript("scripts/ai/wander.lua");
 //   auto result = lua.tickAI("WanderAI", entityId, dt, aiState);
+//
+// Usage (Interactions):
+//   float cooldown = lua.executeInteraction("scripts/skills/woodcutting.lua",
+//                                           playerEntity, targetEntity);
 
 #ifndef ENGINE_LUA_SCRIPT_ENGINE_H
 #define ENGINE_LUA_SCRIPT_ENGINE_H
 
 #ifdef HAS_LUA
 
+#include <functional>
 #include <string>
 #include <unordered_map>
 
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
 
+#include <entt/entt.hpp>
 #include "../Network/NetworkPackets.h"
 
 /// Per-NPC AI state exposed to Lua as a mutable table.
@@ -67,21 +74,91 @@ public:
                                       float dt,
                                       LuaAIState& state);
 
+    /// Execute an interaction script's on_interact() function.
+    ///
+    /// Each script runs in an isolated Lua environment so multiple scripts
+    /// can all define on_interact() without clobbering each other.
+    ///
+    /// @param scriptPath  Relative path to the .lua file (e.g. "scripts/skills/woodcutting.lua").
+    /// @param player      The player entity performing the action.
+    /// @param target      The target entity being interacted with.
+    /// @param registry    Optional ECS registry used to resolve NetworkIdComponent::id
+    ///                    for the player and target so Lua receives real network IDs
+    ///                    (matching peerToNetworkId) rather than raw entt handles.
+    /// @return            Cooldown time in seconds; 0.0 means the action is complete.
+    float executeInteraction(const std::string& scriptPath,
+                             entt::entity player,
+                             entt::entity target,
+                             entt::registry* registry = nullptr);
+
     /// Check whether a named AI function is available.
     bool hasScript(const std::string& scriptName) const;
 
     /// Shut down the Lua state.
     void shutdown();
 
+    /// Inject the server-side ENet send closure.
+    /// When set, engine.Network.sendMessage() in Lua will call this instead of
+    /// only printing to the server console.  Called from ServerMain after both
+    /// the LuaScriptEngine and the ENet server/peer maps are initialised.
+    /// @param cb  Callable(targetNetworkId, messageText) — must be safe to call
+    ///            from the game thread that ticks InteractionSystem.
+    void setSendMessageCallback(std::function<void(uint32_t, const std::string&)> cb) {
+        onSendMessage_ = std::move(cb);
+    }
+
+    /// Inject the NPC pause closure.
+    /// When set, engine.AI.pause(npc_id, seconds) in Lua will freeze the NPC's
+    /// AI input generation for the given duration via ServerNPCManager.
+    /// @param cb  Callable(npcNetworkId, durationSeconds)
+    void setNpcPauseCallback(std::function<void(uint32_t, float)> cb) {
+        onPauseNpc_ = std::move(cb);
+    }
+
+    /// Inject the NPC yaw-sync closure.
+    /// When set, engine.Transform.lookAt() in Lua will call this after updating
+    /// TransformComponent.rotation.y so that the NPC's AI cameraYaw state is
+    /// kept in sync.  Without this, the AI tick overwrites the new facing
+    /// direction on the very next frame.
+    /// @param cb  Callable(npcNetworkId, newYawDegrees)
+    void setNpcYawCallback(std::function<void(uint32_t, float)> cb) {
+        onSetNpcYaw_ = std::move(cb);
+    }
+
 private:
+    /// Build the `engine` table passed to every on_interact() call.
+    /// Contains sub-tables: Network, Stats, Inventory, Health, Entities,
+    /// Math, Transform, CombatMath, Equipment, Loot.
+    sol::table buildEngineTable(entt::entity player, entt::entity target,
+                                entt::registry* registry = nullptr);
+
     sol::state lua_;
     std::string resourceRoot_;
     bool initialised_ = false;
+
+    /// Cache of loaded interaction script environments, keyed by script path.
+    std::unordered_map<std::string, sol::environment> interactionEnvs_;
+
+    /// Optional server-side callback wired up by ServerMain to forward
+    /// engine.Network.sendMessage() calls to ENet packets.
+    std::function<void(uint32_t, const std::string&)> onSendMessage_;
+
+    /// Optional callback wired up by ServerMain to pause an NPC's AI via
+    /// ServerNPCManager::setPauseTimer() when Lua calls engine.AI.pause().
+    std::function<void(uint32_t, float)> onPauseNpc_;
+
+    /// Optional callback wired up by ServerMain to sync the NPC AI heading when
+    /// Lua calls engine.Transform.lookAt().  Keeps NPCAIState::cameraYaw and
+    /// LuaAIState::cameraYaw aligned with the new facing direction so the AI
+    /// does not overwrite the rotation on the next tick.
+    std::function<void(uint32_t, float)> onSetNpcYaw_;
 };
 
 #else // !HAS_LUA — stub so code compiles without Lua installed
 
+#include <functional>
 #include <string>
+#include <entt/entt.hpp>
 #include "../Network/NetworkPackets.h"
 
 struct LuaAIState {
@@ -96,8 +173,12 @@ public:
     bool loadScript(const std::string&) { return false; }
     Network::PlayerInputPacket tickAI(const std::string&, uint32_t, float,
                                       LuaAIState&) { return {}; }
+    float executeInteraction(const std::string&, entt::entity, entt::entity,
+                             entt::registry* = nullptr) { return 0.0f; }
     bool hasScript(const std::string&) const { return false; }
     void shutdown() {}
+    void setSendMessageCallback(std::function<void(uint32_t, const std::string&)>) {}
+    void setNpcPauseCallback(std::function<void(uint32_t, float)>) {}
 };
 
 #endif // HAS_LUA
