@@ -74,8 +74,10 @@ void InteractionSystem::update(float dt) {
         }
 
         // 6. CALL THE LUA SCRIPT — C++ has no knowledge of what happens here.
+        // Pass the registry so executeInteraction can resolve NetworkIdComponent::id
+        // and give Lua the real network IDs rather than raw entt handles.
         float cooldown = luaEngine_.executeInteraction(
-            targetInteract.scriptPath, player, action.targetEntity);
+            targetInteract.scriptPath, player, action.targetEntity, &registry_);
 
         // 7. State machine routing based on the returned cooldown.
         if (cooldown > 0.0f) {

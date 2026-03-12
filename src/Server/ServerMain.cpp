@@ -912,6 +912,28 @@ int main() {
     std::unordered_map<ENetPeer*, entt::entity>   peerToEntity;
     uint32_t nextNetworkId = 100;
 
+    // -------------------------------------------------------------------------
+    // Bridge the Lua Script Engine to the ENet Network for ServerMessage packets.
+    // When a Lua interaction script calls engine.Network.sendMessage(pid, text),
+    // this closure finds the ENetPeer that owns that network ID and delivers a
+    // reliable ServerMessagePacket directly to that client.
+    // -------------------------------------------------------------------------
+    interactionLua.setSendMessageCallback(
+        [&peerToNetworkId, server](uint32_t targetId, const std::string& msg) {
+            Network::ServerMessagePacket pkt{};  // zero-initialized
+            std::strncpy(pkt.message, msg.c_str(), Network::kMaxMessageLen - 1);
+            pkt.message[Network::kMaxMessageLen - 1] = '\0';  // guarantee termination
+            for (auto& [peer, nid] : peerToNetworkId) {
+                if (nid == targetId) {
+                    sendTo(peer, Network::PacketType::ServerMessage,
+                           &pkt, sizeof(pkt), true);
+                    std::cout << "[Server] ServerMessage → peer (id=" << targetId
+                              << "): \"" << msg << "\"\n";
+                    break;
+                }
+            }
+        });
+
     // --- NPC Loading ---
     // Prefer npcs.json (JSON format); fall back to server_npcs.cfg (legacy).
     ServerNPCManager npcManager;

@@ -226,6 +226,21 @@ void NetworkSystem::update(float deltaTime) {
                     }
                 }
 
+                // ----- ServerMessagePacket -----
+                // Reliable dialogue / notification text from a server Lua script.
+                // In Phase 9 this feeds into the ImGui chat box.  For now we
+                // print it clearly to the client terminal as proof-of-life.
+                else if (ptype == Network::PacketType::ServerMessage &&
+                         plen == sizeof(Network::ServerMessagePacket)) {
+                    Network::ServerMessagePacket msgPkt;
+                    std::memcpy(&msgPkt, payload, sizeof(msgPkt));
+                    // Guarantee null termination even if the server forgot.
+                    msgPkt.message[Network::kMaxMessageLen - 1] = '\0';
+                    std::cout << "\n===================================================\n";
+                    std::cout << "[NPC DIALOGUE]: " << msgPkt.message << "\n";
+                    std::cout << "===================================================\n\n";
+                }
+
                 // ----- TransformSnapshot -----
                 // ----- TransformSnapshot -----
                 else if (ptype == Network::PacketType::TransformSnapshot &&

@@ -20,6 +20,7 @@
 
 #ifdef HAS_LUA
 
+#include <functional>
 #include <string>
 #include <unordered_map>
 
@@ -81,16 +82,30 @@ public:
     /// @param scriptPath  Relative path to the .lua file (e.g. "scripts/skills/woodcutting.lua").
     /// @param player      The player entity performing the action.
     /// @param target      The target entity being interacted with.
+    /// @param registry    Optional ECS registry used to resolve NetworkIdComponent::id
+    ///                    for the player and target so Lua receives real network IDs
+    ///                    (matching peerToNetworkId) rather than raw entt handles.
     /// @return            Cooldown time in seconds; 0.0 means the action is complete.
     float executeInteraction(const std::string& scriptPath,
                              entt::entity player,
-                             entt::entity target);
+                             entt::entity target,
+                             entt::registry* registry = nullptr);
 
     /// Check whether a named AI function is available.
     bool hasScript(const std::string& scriptName) const;
 
     /// Shut down the Lua state.
     void shutdown();
+
+    /// Inject the server-side ENet send closure.
+    /// When set, engine.Network.sendMessage() in Lua will call this instead of
+    /// only printing to the server console.  Called from ServerMain after both
+    /// the LuaScriptEngine and the ENet server/peer maps are initialised.
+    /// @param cb  Callable(targetNetworkId, messageText) — must be safe to call
+    ///            from the game thread that ticks InteractionSystem.
+    void setSendMessageCallback(std::function<void(uint32_t, const std::string&)> cb) {
+        onSendMessage_ = std::move(cb);
+    }
 
 private:
     /// Build the `engine` table passed to every on_interact() call.
@@ -104,10 +119,15 @@ private:
 
     /// Cache of loaded interaction script environments, keyed by script path.
     std::unordered_map<std::string, sol::environment> interactionEnvs_;
+
+    /// Optional server-side callback wired up by ServerMain to forward
+    /// engine.Network.sendMessage() calls to ENet packets.
+    std::function<void(uint32_t, const std::string&)> onSendMessage_;
 };
 
 #else // !HAS_LUA — stub so code compiles without Lua installed
 
+#include <functional>
 #include <string>
 #include <entt/entt.hpp>
 #include "../Network/NetworkPackets.h"
@@ -124,9 +144,11 @@ public:
     bool loadScript(const std::string&) { return false; }
     Network::PlayerInputPacket tickAI(const std::string&, uint32_t, float,
                                       LuaAIState&) { return {}; }
-    float executeInteraction(const std::string&, entt::entity, entt::entity) { return 0.0f; }
+    float executeInteraction(const std::string&, entt::entity, entt::entity,
+                             entt::registry* = nullptr) { return 0.0f; }
     bool hasScript(const std::string&) const { return false; }
     void shutdown() {}
+    void setSendMessageCallback(std::function<void(uint32_t, const std::string&)>) {}
 };
 
 #endif // HAS_LUA

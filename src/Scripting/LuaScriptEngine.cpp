@@ -184,8 +184,12 @@ sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
     net["broadcastAnimation"] = [](uint32_t pid, const std::string& anim) {
         std::cout << "[Lua] broadcastAnimation(" << pid << ", \"" << anim << "\")\n";
     };
-    net["sendMessage"] = [](uint32_t pid, const std::string& msg) {
+    net["sendMessage"] = [this](uint32_t pid, const std::string& msg) {
         std::cout << "[Lua] sendMessage(" << pid << ", \"" << msg << "\")\n";
+        // Forward to the C++ server closure so an actual ENet packet is sent.
+        if (onSendMessage_) {
+            onSendMessage_(pid, msg);
+        }
     };
     net["sendOpenUI"] = [](uint32_t pid, const std::string& ui) {
         std::cout << "[Lua] sendOpenUI(" << pid << ", \"" << ui << "\")\n";
@@ -305,7 +309,8 @@ sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
 
 float LuaScriptEngine::executeInteraction(const std::string& scriptPath,
                                           entt::entity player,
-                                          entt::entity target) {
+                                          entt::entity target,
+                                          entt::registry* registry) {
     if (!initialised_) return 0.0f;
 
     // Resolve the full filesystem path.
@@ -351,8 +356,19 @@ float LuaScriptEngine::executeInteraction(const std::string& scriptPath,
     // 3. Build the engine API table and resolve entity IDs for Lua.
     sol::table engineTable = buildEngineTable(player, target);
 
+    // Prefer NetworkIdComponent::id so that engine.Network.sendMessage()
+    // can match peerToNetworkId correctly on the server side.  Fall back to
+    // the raw entt integral only when no registry / component is available.
     uint32_t playerId = static_cast<uint32_t>(entt::to_integral(player));
     uint32_t targetId = static_cast<uint32_t>(entt::to_integral(target));
+    if (registry) {
+        if (auto* nid = registry->try_get<NetworkIdComponent>(player)) {
+            playerId = nid->id;
+        }
+        if (auto* nid = registry->try_get<NetworkIdComponent>(target)) {
+            targetId = nid->id;
+        }
+    }
 
     // 4. Call on_interact(player_id, target_id, engine).
     auto callResult = fn(playerId, targetId, engineTable);
