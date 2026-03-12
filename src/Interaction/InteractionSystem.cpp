@@ -49,11 +49,13 @@ void InteractionSystem::update(float dt) {
         auto& targetInteract = registry_.get<InteractableComponent>(action.targetEntity);
 
         // 3. Check distance (flat XZ plane — ignore Y for slope traversal).
-        float dist = glm::distance(
-            glm::vec3(tc.position.x, 0.0f, tc.position.z),
-            glm::vec3(targetTc.position.x, 0.0f, targetTc.position.z));
+        //    Use squared distance to avoid a sqrt() on every tick.
+        float dx = tc.position.x - targetTc.position.x;
+        float dz = tc.position.z - targetTc.position.z;
+        float distSq = dx * dx + dz * dz;
+        float rangeSq = targetInteract.interactRange * targetInteract.interactRange;
 
-        if (dist > targetInteract.interactRange) {
+        if (distSq > rangeSq) {
             // Still walking — let PathfindingSystem steer the player.
             continue;
         }

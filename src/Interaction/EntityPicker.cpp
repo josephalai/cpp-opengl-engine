@@ -19,6 +19,8 @@
 // Constructor
 // -------------------------------------------------------------------------
 
+static constexpr float kRayDirEpsilon = 1e-30f; ///< Guards against divide-by-zero in slab test.
+
 EntityPicker::EntityPicker(entt::registry& registry)
     : registry_(registry)
 {}
@@ -57,9 +59,9 @@ entt::entity EntityPicker::pick(const glm::vec3& rayOrigin,
                                  const glm::vec3& rayDirection) const
 {
     const glm::vec3 rayDirInv(
-        1.0f / (rayDirection.x != 0.0f ? rayDirection.x : 1e-30f),
-        1.0f / (rayDirection.y != 0.0f ? rayDirection.y : 1e-30f),
-        1.0f / (rayDirection.z != 0.0f ? rayDirection.z : 1e-30f));
+        1.0f / (rayDirection.x != 0.0f ? rayDirection.x : kRayDirEpsilon),
+        1.0f / (rayDirection.y != 0.0f ? rayDirection.y : kRayDirEpsilon),
+        1.0f / (rayDirection.z != 0.0f ? rayDirection.z : kRayDirEpsilon));
 
     entt::entity closest   = entt::null;
     float        closestT  = std::numeric_limits<float>::max();
