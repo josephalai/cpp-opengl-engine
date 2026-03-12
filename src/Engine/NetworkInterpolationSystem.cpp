@@ -2,8 +2,8 @@
 
 #include "NetworkInterpolationSystem.h"
 #include "../ECS/Components/TransformComponent.h"
-#include "../ECS/Components/NetworkSyncData.h"
 #include "../ECS/Components/AnimatedModelComponent.h"
+#include "../ECS/Components/NetworkSyncData.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -24,9 +24,6 @@ void NetworkInterpolationSystem::update(float deltaTime) {
         // Nothing to do until we have received at least one snapshot.
         if (nsd.buffer.empty()) continue;
 
-        // In NetworkInterpolationSystem::update():
-        // REMOVE the renderTime == 0.0f seed block entirely.
-        // Let NetworkSystem.cpp be the SOLE clock seeder via the "started" flag.
         if (!nsd.started) {
             // Not yet seeded — just snap to latest position, don't advance clock
             tc.position = nsd.buffer.back().position;
@@ -34,108 +31,74 @@ void NetworkInterpolationSystem::update(float deltaTime) {
             continue;
         }
 
-        // Advance the playback clock at real-time speed.
-        nsd.renderTime += deltaTime;
+        // --- NEW: ELASTIC CLOCK (RUBBER-BANDING) ---
+        // Instead of chasing a jittery server packet timestamp, we scale our 
+        // playback speed based on how full our queue of packets is.
+        float timeScale = 1.0f;
+        size_t bufferSize = nsd.buffer.size();
 
-        // --- Slingshot Prevention ---
-        // If the newest snapshot is very far from our current visual position,
-        // the entity likely left and re-entered our Area of Interest.
-        // Snap instantly instead of trying to interpolate a massive distance.
-        // Threshold: 625.0 = 25 units squared (half a spatial-grid cell).
-        // Normal interpolation lag is < 10 units; AoI re-entry is 50+ units.
-        {
-            float distToNewestSq = glm::length2(nsd.buffer.back().position - tc.position);
-            if (distToNewestSq > 625.0f) { // > 25 units (AoI re-entry only)
-                tc.position = nsd.buffer.back().position;
-                tc.rotation = nsd.buffer.back().rotation;
-
-                // Fast-forward the render clock so we don't replay old data.
-                nsd.renderTime = nsd.buffer.back().timestamp + nsd.interpolationDelay;
-                nsd.buffer.clear();
-                nsd.started = false;
-
-                // Force idle animation after teleport.
-                if (auto* amc = registry_.try_get<AnimatedModelComponent>(entity)) {
-                    if (amc->controller) amc->controller->setState("Idle");
-                }
-                continue;
-            }
+        if (bufferSize > 4) {
+            // We have a backlog of packets. The client is falling behind the server.
+            timeScale = 1.10f; // Play 10% faster to catch up
+        } else if (bufferSize < 2) {
+            // We are running out of packets. The client is advancing too fast.
+            timeScale = 0.90f; // Play 10% slower to let the buffer refill
         }
 
-        // After: nsd.renderTime += deltaTime;
-
-        // The "ideal" renderTime is: latest server timestamp (i.e. what the
-        // server clock reads RIGHT NOW, from our perspective).
-        // We want renderTime to track (latestServerTime) so that
-        // targetTime = renderTime - delay always has data to interpolate.
-        float latestServerTime = nsd.buffer.back().timestamp;
-        float idealRenderTime  = latestServerTime; // We want to be HERE
-
-        // Gently steer renderTime toward the ideal.
-        // This corrects both drift directions (too fast AND too slow).
-        float clockError = idealRenderTime - nsd.renderTime;
-        float correction = clockError * 0.1f; // 10% per frame = smooth convergence
-        nsd.renderTime += correction;
-
-        // --- CLOCK DRIFT CORRECTION ---
-        const float maxRenderTime = nsd.buffer.back().timestamp + nsd.interpolationDelay + 0.01f;
-        if (nsd.renderTime > maxRenderTime) {
-            nsd.renderTime = maxRenderTime;
-        }
+        // Advance the playback clock using our elastic scale
+        nsd.renderTime += (deltaTime * timeScale);
 
         // The time we actually want to display (lagging interpolationDelay behind).
         const float targetTime = nsd.renderTime - nsd.interpolationDelay;
 
         // -----------------------------------------------------------------------
-        // Hold case: only one snapshot or targetTime is before the earliest one.
-        // -----------------------------------------------------------------------
-        if (nsd.buffer.size() == 1 || targetTime <= nsd.buffer.front().timestamp) {
-            tc.position = nsd.buffer.front().position;
-            tc.rotation = nsd.buffer.front().rotation;
-
-        // -----------------------------------------------------------------------
         // Starvation case: targetTime is beyond our newest snapshot.
-        // Hold at the last known position rather than extrapolating.
+        // Snap/Hold at the newest position to avoid dangerous extrapolation overshoots.
         // -----------------------------------------------------------------------
-        } else if (targetTime >= nsd.buffer.back().timestamp) {
+        if (targetTime >= nsd.buffer.back().timestamp) {
             tc.position = nsd.buffer.back().position;
             tc.rotation = nsd.buffer.back().rotation;
 
-            // Prune stale snapshots.
-            const float keepFrom = (nsd.renderTime - nsd.interpolationDelay) - nsd.interpolationDelay;
-            while (nsd.buffer.size() > 2 && nsd.buffer.front().timestamp < keepFrom) {
-                nsd.buffer.pop_front();
-            }
+        // -----------------------------------------------------------------------
+        // Hold case: targetTime is before our earliest snapshot (massive lag spike recovery).
+        // -----------------------------------------------------------------------
+        } else if (targetTime <= nsd.buffer.front().timestamp) {
+            tc.position = nsd.buffer.front().position;
+            tc.rotation = nsd.buffer.front().rotation;
 
         // -----------------------------------------------------------------------
         // Normal case: find the two snapshots that bracket targetTime and LERP.
         // -----------------------------------------------------------------------
         } else {
-            for (std::size_t i = 0; i + 1 < nsd.buffer.size(); ++i) {
-                const auto& s0 = nsd.buffer[i];
-                const auto& s1 = nsd.buffer[i + 1];
-
-                if (s0.timestamp <= targetTime && targetTime <= s1.timestamp) {
-                    const float span = s1.timestamp - s0.timestamp;
-                    const float t    = (span > 0.0f)
-                                           ? glm::clamp((targetTime - s0.timestamp) / span, 0.0f, 1.0f)
-                                           : 0.0f;
-
-                    // Interpolate position with LERP.
-                    tc.position = glm::mix(s0.position, s1.position, t);
-
-                    // Interpolate rotation with SLERP (quaternion) to avoid gimbal lock.
-                    const glm::quat q0 = glm::quat(glm::radians(s0.rotation));
-                    const glm::quat q1 = glm::quat(glm::radians(s1.rotation));
-                    const glm::quat qi = glm::slerp(q0, q1, t);
-                    tc.rotation        = glm::degrees(glm::eulerAngles(qi));
+            // Find the segment
+            size_t interpIndex = 0;
+            for (size_t i = 0; i + 1 < nsd.buffer.size(); ++i) {
+                if (nsd.buffer[i].timestamp <= targetTime && targetTime <= nsd.buffer[i + 1].timestamp) {
+                    interpIndex = i;
                     break;
                 }
             }
 
-            // Prune stale snapshots.
-            const float keepFrom = (nsd.renderTime - nsd.interpolationDelay) - nsd.interpolationDelay;
-            while (nsd.buffer.size() > 2 && nsd.buffer.front().timestamp < keepFrom) {
+            const auto& s0 = nsd.buffer[interpIndex];
+            const auto& s1 = nsd.buffer[interpIndex + 1];
+
+            const float span = s1.timestamp - s0.timestamp;
+            const float t    = (span > 0.0f) ? glm::clamp((targetTime - s0.timestamp) / span, 0.0f, 1.0f) : 0.0f;
+
+            // Interpolate position
+            tc.position = glm::mix(s0.position, s1.position, t);
+
+            // Interpolate rotation (SLERP)
+            const glm::quat q0 = glm::quat(glm::radians(s0.rotation));
+            const glm::quat q1 = glm::quat(glm::radians(s1.rotation));
+            const glm::quat qi = glm::slerp(q0, q1, t);
+            tc.rotation        = glm::degrees(glm::eulerAngles(qi));
+            
+            // --- NEW: SAFE BUFFER PRUNING ---
+            // Discard packets that we have completely passed, BUT ALWAYS KEEP
+            // the packet immediately preceding targetTime (buffer[0]) so we 
+            // always have an `s0` to interpolate from!
+            while (nsd.buffer.size() > 2 && nsd.buffer[1].timestamp < targetTime) {
                 nsd.buffer.pop_front();
             }
         }
