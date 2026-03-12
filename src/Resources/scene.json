@@ -71,7 +71,7 @@
     {
       "path": "Characters/characters.glb",
       "x": 100.0, "y": "terrain", "z": -50.0,
-      "scale": 1.0,
+      "scale": 2.5,
       "rot": { "rx": -90.0, "ry": 0.0, "rz": 0.0 },
       "offset": { "ox": 0.0, "oy": 0.0, "oz": 0.0 }
     }

@@ -17,6 +17,7 @@
 #include "../Events/EventBus.h"
 #include "../Events/EntityClickedEvent.h"
 #include "../ECS/Components/NetworkIdComponent.h"
+#include "../ECS/Components/InputStateComponent.h"
 #include <iostream>
 #include <cstring>
 #include <cmath>
@@ -99,12 +100,40 @@ void NetworkSystem::update(float deltaTime) {
             localPlayer_->setPosition(target);
             if (physicsSystem_) physicsSystem_->warpPlayer(target);
             hasReconcileTarget_ = false;
+
+            // Stop animation — tell AnimationSystem we are no longer moving.
+            if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
+                is->currentSpeed = 0.0f;
+            }
         } else {
             // Lerp by kReconcileLerp fraction of the remaining gap each frame.
             glm::vec3 newPos = glm::mix(curr, target, kReconcileLerp);
             newPos.y = curr.y;
             localPlayer_->setPosition(newPos);
             if (physicsSystem_) physicsSystem_->warpPlayer(newPos);
+
+            // Inject synthetic speed so AnimationSystem plays the Run animation
+            // instead of Idle while the server is dragging us along.
+            if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
+                float actualDistanceMoved = glm::length(newPos - curr);
+                is->currentSpeed = (deltaTime > 0.0001f)
+                    ? (actualDistanceMoved / deltaTime) * 1.5f
+                    : 0.0f;
+            }
+
+            // Smoothly rotate the player to face the travel direction.
+            if (glm::length(diff) > 0.001f) {
+                glm::vec3 dir = glm::normalize(diff);
+                float targetYaw = glm::degrees(std::atan2(dir.x, dir.z));
+                float currentYaw = localPlayer_->getRotation().y;
+                float angleDiff = targetYaw - currentYaw;
+                while (angleDiff <= -180.0f) angleDiff += 360.0f;
+                while (angleDiff >  180.0f) angleDiff -= 360.0f;
+
+                glm::vec3 curRot = localPlayer_->getRotation();
+                curRot.y += angleDiff * 0.2f;  // Smooth rotation speed
+                localPlayer_->setRotation(curRot);
+            }
         }
     }
 

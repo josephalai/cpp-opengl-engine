@@ -3,6 +3,7 @@
 #include "NetworkInterpolationSystem.h"
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/NetworkSyncData.h"
+#include "../ECS/Components/AnimatedModelComponent.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -35,6 +36,29 @@ void NetworkInterpolationSystem::update(float deltaTime) {
 
         // Advance the playback clock at real-time speed.
         nsd.renderTime += deltaTime;
+
+        // --- Slingshot Prevention ---
+        // If the newest snapshot is very far from our current visual position,
+        // the entity likely left and re-entered our Area of Interest.
+        // Snap instantly instead of trying to interpolate a massive distance.
+        {
+            float distToNewestSq = glm::length2(nsd.buffer.back().position - tc.position);
+            if (distToNewestSq > 25.0f) { // > 5 meters
+                tc.position = nsd.buffer.back().position;
+                tc.rotation = nsd.buffer.back().rotation;
+
+                // Fast-forward the render clock so we don't replay old data.
+                nsd.renderTime = nsd.buffer.back().timestamp + nsd.interpolationDelay;
+                nsd.buffer.clear();
+                nsd.started = false;
+
+                // Force idle animation after teleport.
+                if (auto* amc = registry_.try_get<AnimatedModelComponent>(entity)) {
+                    if (amc->controller) amc->controller->setState("Idle");
+                }
+                continue;
+            }
+        }
 
         // After: nsd.renderTime += deltaTime;
 
