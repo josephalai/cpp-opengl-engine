@@ -28,7 +28,7 @@ public:
     ///                      that the physics engine doesn't snap entities back to
     ///                      their pre-pathfinding positions each tick.
     PathfindingSystem(entt::registry& registry,
-                      float           moveSpeed    = 5.0f,
+                      float           moveSpeed    = 20.0f,
                       PhysicsSystem*  physicsSystem = nullptr)
         : registry_(registry), moveSpeed_(moveSpeed), physicsSystem_(physicsSystem) {}
 
@@ -88,14 +88,19 @@ public:
                 float step = moveSpeed_ * deltaTime;
                 float dist = std::sqrt(dist2);
                 if (step > dist) step = dist;
-                tc.position += dir * step;
 
-                // Sync the Bullet CharacterController ghost to the new position so
-                // that PhysicsSystem::update() (which runs before PathfindingSystem
-                // on the next tick) reads the correct ghost origin and does not snap
-                // tc.position back to the pre-pathfinding location.
+                // Drive movement through Bullet's character controller so that
+                // PhysicsSystem::update() applies the displacement and the
+                // ghost→tc sync produces the correct final position.  Direct
+                // tc.position writes would be overwritten by the ghost sync the
+                // following tick when no WASD input is present.
                 if (physicsSystem_ && physicsSystem_->hasCharacterController(entity)) {
-                    physicsSystem_->warpCharacterController(entity, tc.position);
+                    glm::vec3 displacement = dir * step;
+                    physicsSystem_->setEntityWalkDirection(entity,
+                        glm::vec3(displacement.x, 0.0f, displacement.z));
+                } else {
+                    // Fallback for entities without a character controller.
+                    tc.position += dir * step;
                 }
 
                 // Face the direction of travel (yaw only).

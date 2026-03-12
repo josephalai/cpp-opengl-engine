@@ -113,9 +113,14 @@ void NetworkInterpolationSystem::update(float deltaTime) {
                 nsd.previousPositionInitialized = true;
                 nsd.currentSpeed                = 0.0f;
             } else {
-                const glm::vec3 d    = cur - nsd.previousPosition;
-                const float     dist = std::sqrt(d.x * d.x + d.z * d.z);
-                nsd.currentSpeed     = (deltaTime > 0.0f) ? dist / deltaTime : 0.0f;
+                const glm::vec3 d        = cur - nsd.previousPosition;
+                const float     dist     = std::sqrt(d.x * d.x + d.z * d.z);
+                const float     rawSpeed = (deltaTime > 0.0f) ? dist / deltaTime : 0.0f;
+                // Exponential moving average: smooths frame-to-frame noise so that
+                // brief starvation frames (zero movement) don't immediately flip the
+                // animation state to Idle.
+                constexpr float kSpeedSmoothingAlpha = 0.15f;
+                nsd.currentSpeed = glm::mix(nsd.currentSpeed, rawSpeed, kSpeedSmoothingAlpha);
             }
             nsd.previousPosition = cur;
         }

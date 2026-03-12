@@ -1475,8 +1475,11 @@ int main() {
                             auto& queue   = inputView.get<InputQueueComponent>(entity);
 
                             if (step >= static_cast<int>(queue.inputs.size())) {
-                                // Prevent infinite sliding when the input queue runs dry
-                                if (physicsSystem.hasCharacterController(entity)) {
+                                // Prevent infinite sliding when the input queue runs dry.
+                                // Skip entities being auto-steered by PathfindingSystem —
+                                // they drive movement via setEntityWalkDirection themselves.
+                                if (physicsSystem.hasCharacterController(entity) &&
+                                    !registry.all_of<PathfindingComponent>(entity)) {
                                     physicsSystem.setEntityWalkDirection(entity, glm::vec3(0.0f));
                                 }
                                 continue;
@@ -1521,9 +1524,13 @@ int main() {
                     }
                 } else {
 
-                    // No inputs this tick — clear velocities to prevent sliding
+                    // No inputs this tick — clear velocities to prevent sliding.
+                    // Skip entities being auto-steered by PathfindingSystem so that
+                    // their walk direction (set later in pathfindingSystem.update) is
+                    // not immediately zeroed before physicsSystem.update() runs.
                     for (auto entity : inputView) {
-                        if (physicsSystem.hasCharacterController(entity)) {
+                        if (physicsSystem.hasCharacterController(entity) &&
+                            !registry.all_of<PathfindingComponent>(entity)) {
                             physicsSystem.setEntityWalkDirection(entity, glm::vec3(0.0f));
                             lastJumpState[inputView.get<NetworkIdComponent>(entity).id] = false;
                         }
