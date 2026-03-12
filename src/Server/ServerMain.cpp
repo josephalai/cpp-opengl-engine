@@ -1274,10 +1274,6 @@ int main() {
                 for (auto entity : view) {
                     auto& tc = view.get<TransformComponent>(entity);
                     auto& nid = view.get<NetworkIdComponent>(entity);
-                    if (!nid.isNPC) {
-                        std::cout << "Client " << nid.id << " at position ("
-                                  << tc.position.x << ", " << tc.position.y << ", " << tc.position.z << ")\n";
-                    }
                 }
                 std::cout << "-------------------------------------------\n";
             }
