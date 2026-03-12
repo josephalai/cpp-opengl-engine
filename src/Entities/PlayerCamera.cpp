@@ -24,14 +24,14 @@ void PlayerCamera::move(Terrain *terrain) {
     // This prevents the camera from rigidly snapping with the player during
     // server-authoritative auto-walk (reconcile LERP) while remaining
     // imperceptibly tight during normal keyboard-driven movement.
-    const float dt        = DisplayManager::getFrameTimeSeconds();
-    const glm::vec3 pPos  = player->getPosition();
+    const float deltaTime      = DisplayManager::getFrameTimeSeconds();
+    const glm::vec3 playerPosition = player->getPosition();
     if (!pivotInitialized_) {
-        pivotPosition_    = pPos;
+        pivotPosition_    = playerPosition;
         pivotInitialized_ = true;
     } else {
-        const float alpha = 1.0f - std::exp(-kPivotSmoothing * dt);
-        pivotPosition_    = glm::mix(pivotPosition_, pPos, alpha);
+        const float alpha = 1.0f - std::exp(-kPivotSmoothing * deltaTime);
+        pivotPosition_    = glm::mix(pivotPosition_, playerPosition, alpha);
     }
 
     float horizontalDistance = calculateHorizontalDistance();

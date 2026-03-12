@@ -25,9 +25,11 @@ void NetworkInterpolationSystem::update(float deltaTime) {
         if (nsd.buffer.empty()) continue;
 
         if (!nsd.started) {
-            // Not yet seeded — just snap to latest position, don't advance clock
-            tc.position = nsd.buffer.back().position;
-            tc.rotation = nsd.buffer.back().rotation;
+            // Not yet seeded — display the OLDEST snapshot so there is no
+            // position jump when the clock seeds at buffer.front().timestamp +
+            // interpolationDelay (see NetworkSystem.cpp).
+            tc.position = nsd.buffer.front().position;
+            tc.rotation = nsd.buffer.front().rotation;
             continue;
         }
 
