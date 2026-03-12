@@ -26,6 +26,7 @@ void AnimatedRenderer::render(const std::vector<AnimatedEntity*>& entities,
 
         glm::mat4 transform = Maths::createTransformationMatrix(
             ae->position + ae->modelOffset, ae->rotation, ae->scale)
+            * ae->modelRotationMat
             * ae->model->coordinateCorrection;
         shader->loadTransformationMatrix(transform);
 

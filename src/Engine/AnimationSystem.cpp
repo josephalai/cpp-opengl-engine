@@ -112,6 +112,7 @@ void AnimationSystem::update(float deltaTime) {
         ae.rotation     = tc.rotation;
         ae.scale        = amc.scale;
         ae.modelOffset  = amc.modelOffset;
+        ae.modelRotationMat = amc.modelRotationMat;
         ae.isLocalPlayer = amc.isLocalPlayer;
         ae.ownsModel    = false;  // ownership stays in the component
         ae.pairedEntity = nullptr;

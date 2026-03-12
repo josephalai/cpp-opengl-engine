@@ -17,6 +17,7 @@
 #include "../ECS/Components/AnimatedModelComponent.h"
 #include "../Animation/AnimationLoader.h"
 #include "../Util/FileSystem.h"
+#include <glm/gtc/matrix_transform.hpp>
 #endif
 
 #include <nlohmann/json.hpp>
@@ -211,6 +212,20 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                         amc.modelOffset.x = j["model_offset"].value("x", 0.0f);
                         amc.modelOffset.y = j["model_offset"].value("y", 0.0f);
                         amc.modelOffset.z = j["model_offset"].value("z", 0.0f);
+                    }
+                    if (j.contains("model_rotation")) {
+                        const float rx = j["model_rotation"].value("x", 0.0f);
+                        const float ry = j["model_rotation"].value("y", 0.0f);
+                        const float rz = j["model_rotation"].value("z", 0.0f);
+                        // Build a model-space rotation matrix from per-axis degree values.
+                        // Rotations are accumulated in X-then-Y-then-Z intrinsic order
+                        // (i.e. X is applied first, then Y around the new Y axis, then Z),
+                        // matching the order used by Maths::createTransformationMatrix.
+                        glm::mat4 rotMat(1.0f);
+                        rotMat = glm::rotate(rotMat, glm::radians(rx), glm::vec3(1.0f, 0.0f, 0.0f));
+                        rotMat = glm::rotate(rotMat, glm::radians(ry), glm::vec3(0.0f, 1.0f, 0.0f));
+                        rotMat = glm::rotate(rotMat, glm::radians(rz), glm::vec3(0.0f, 0.0f, 1.0f));
+                        amc.modelRotationMat = rotMat;
                     }
                 }
             } else {
