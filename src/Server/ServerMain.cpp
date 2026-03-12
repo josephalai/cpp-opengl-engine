@@ -686,25 +686,9 @@ static void loadHeadlessScene(entt::registry& registry,
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helper: create a registry entity with TransformComponent + NetworkIdComponent
-// ---------------------------------------------------------------------------
-
-static entt::entity spawnEntity(entt::registry& registry,
-                                 uint32_t networkId,
-                                 glm::vec3 position,
-                                 const std::string& modelType,
-                                 bool isNPC = false) {
-    auto entity = registry.create();
-    registry.emplace<TransformComponent>(entity,
-        TransformComponent{position, glm::vec3(0.0f), 1.0f});
-    registry.emplace<NetworkIdComponent>(entity,
-        NetworkIdComponent{networkId, modelType, isNPC, 0});
-    // [Phase 3.3] Every entity gets an input queue so the tick loop can
-    // drain it through SharedMovement::applyInput() each server tick.
-    registry.emplace<InputQueueComponent>(entity);
-    return entity;
-}
+// spawnEntity() was removed. NPC entities are now spawned via EntityFactory::spawn()
+// which reads the full prefab JSON and attaches InteractableComponent, AIScriptComponent,
+// physics capsule, and all other components defined in the prefab file.
 
 // ---------------------------------------------------------------------------
 // main
@@ -961,21 +945,30 @@ int main() {
             if (terrainMgr.isAnyValid())
                 pos.y = terrainMgr.getHeight(pos.x, pos.z);
 
-            auto entity = spawnEntity(registry, nid, pos, d.modelType, /*isNPC=*/true);
+            // Use EntityFactory to spawn via the prefab JSON.  This loads ALL
+            // components from the data file: InteractableComponent, AIScriptComponent,
+            // physics capsule dimensions, AnimatedModelComponent scale, etc.
+            // Falling back to d.modelType ensures compatibility with legacy cfg-only entries.
+            const std::string prefabId = d.prefab.empty() ? d.modelType : d.prefab;
+            auto entity = EntityFactory::spawn(registry, prefabId, pos, &physicsSystem);
+            if (entity == entt::null) {
+                std::cerr << "[Server] EntityFactory failed to spawn NPC with prefab '"
+                          << prefabId << "' — skipping.\n";
+                continue;
+            }
+
+            // EntityFactory sets NetworkIdComponent::id = 0. Stamp the real ID now.
+            if (auto* netIdComp = registry.try_get<NetworkIdComponent>(entity)) {
+                netIdComp->id = nid;
+            } else {
+                registry.emplace<NetworkIdComponent>(entity,
+                    NetworkIdComponent{nid, d.modelType, /*isNPC=*/true, 0});
+            }
             networkIdToEntity[nid] = entity;
 
-            // Read capsule dimensions from the prefab if available; fall back to
-            // ConfigManager defaults.  This eliminates the hardcoded 0.5f / 1.8f.
-            float capsuleRadius = ConfigManager::get().physics.defaultCapsuleRadius;
-            float capsuleHeight = ConfigManager::get().physics.defaultCapsuleHeight;
-            if (!d.prefab.empty() && PrefabManager::get().hasPrefab(d.prefab)) {
-                const auto& prefab = PrefabManager::get().getPrefab(d.prefab);
-                if (prefab.contains("physics")) {
-                    capsuleRadius = prefab["physics"].value("radius", capsuleRadius);
-                    capsuleHeight = prefab["physics"].value("height", capsuleHeight);
-                }
-            }
-            physicsSystem.addCharacterController(entity, capsuleRadius, capsuleHeight);
+            // EntityFactory::spawn() already called physicsSystem.addCharacterController()
+            // via the prefab's "physics" block.  Do NOT call it a second time here.
+
             npcManager.registerNPC(nid, d.scriptType);
 
             // Phase 4: Register NPC in spatial grid (dynamic entity).

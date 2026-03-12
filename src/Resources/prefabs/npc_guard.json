@@ -19,9 +19,9 @@
       "max_buffer_size": 20
     },
     "AnimatedModelComponent": {
-      "scale": 3.5,
+      "scale": 1.5,
       "model_rotation": { "x": -90.0, "y": 0.0, "z": 0.0 },
-      "model_offset": { "x": 0.0, "y": 0.0, "z": 0.0 }
+      "model_offset": { "x": 0.0, "y": -0.9, "z": 0.0 }
     },
     "AIComponent": {
       "script": "GuardAI"
