@@ -233,6 +233,9 @@ void Engine::loadScene() {
             amc.scale       = ae->scale;
             amc.ownsModel   = true;
             amc.isLocalPlayer = false;  // marked below
+            // Default to the loader's coordinate correction so Y-up auto-correction
+            // is preserved when AnimatedRenderer no longer applies coordinateCorrection.
+            amc.modelRotationMat = ae->model->coordinateCorrection;
             ae->model      = nullptr;   // prevent double-delete
             ae->controller = nullptr;
             delete ae;
@@ -571,6 +574,22 @@ entt::entity Engine::onNetworkSpawn(uint32_t networkId,
     // Attach interpolation state so NetworkInterpolationSystem can drive this entity.
     registry.emplace<NetworkSyncData>(e);
 
+    // Add a ColliderComponent so EntityPicker::pick() can find this entity
+    // via Ray-AABB when the player right-clicks on it.
+    // The AABB is derived from the prefab's physics radius/height.
+    {
+        const auto& prefab = PrefabManager::get().getPrefab(modelType);
+        if (!prefab.is_null() && prefab.contains("physics")) {
+            const auto& phys = prefab["physics"];
+            float r = phys.value("radius", 0.5f);
+            float h = phys.value("height", 1.8f);
+            glm::vec3 halfExtents(r, h * 0.5f, r);
+            auto* box = new BoundingBox(nullptr, glm::vec3(1.0f));
+            box->setAABB(-halfExtents, halfExtents);
+            registry.emplace_or_replace<ColliderComponent>(e, ColliderComponent{box});
+        }
+    }
+
     std::cout << "[Engine] Remote entity " << networkId
               << " (model=\"" << modelType << "\") spawned at ("
               << position.x << ", " << position.y << ", " << position.z << ")\n";
@@ -588,6 +607,12 @@ void Engine::onNetworkDespawn(uint32_t /*networkId*/, entt::entity e) {
             delete amc->model;
         }
         delete amc->controller;
+    }
+
+    // Release ColliderComponent bounding box if it was heap-allocated here.
+    if (auto* cc = registry.try_get<ColliderComponent>(e)) {
+        delete cc->box;
+        cc->box = nullptr;
     }
 
     // Destroy all ECS components and the entity itself.

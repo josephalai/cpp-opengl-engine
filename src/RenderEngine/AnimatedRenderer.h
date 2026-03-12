@@ -27,8 +27,10 @@ struct AnimatedEntity {
     /// Does not affect physics. Use Up/Down arrows at runtime to find the
     /// correct value, then bake it into scene.cfg or the constructor.
     glm::vec3            modelOffset   = glm::vec3(0.0f);
-    /// Per-prefab model-space rotation correction. Applied in model space after
-    /// the world transform and before coordinateCorrection. Identity by default.
+    /// Authoritative model-space rotation correction.  Defaults to the loader's
+    /// coordinateCorrection; overridden by the prefab's model_rotation when set.
+    /// AnimatedRenderer uses ONLY this matrix — coordinateCorrection is not
+    /// multiplied again so that the two corrections are never compounded.
     glm::mat4            modelRotationMat = glm::mat4(1.0f);
     /// True only for the local client's own character (loaded via SceneLoader).
     /// Remote animated entities leave this false so AnimationSystem does not

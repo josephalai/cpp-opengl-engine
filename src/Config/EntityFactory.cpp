@@ -202,6 +202,9 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                 amc.controller  = controller;
                 amc.ownsModel   = true;
                 amc.isLocalPlayer = false;  // marked true by Engine after initial load
+                // Default the model-space correction to the loader's auto-detected
+                // coordinateCorrection.  The prefab can override it with model_rotation.
+                amc.modelRotationMat = animModel->coordinateCorrection;
                 // Optional per-prefab visual scale / offset.
                 amc.scale = prefab.value("scale", 1.0f);
                 if (prefab.contains("components") &&
@@ -218,9 +221,10 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                         const float ry = j["model_rotation"].value("y", 0.0f);
                         const float rz = j["model_rotation"].value("z", 0.0f);
                         // Build a model-space rotation matrix from per-axis degree values.
-                        // Rotations are accumulated in X-then-Y-then-Z intrinsic order
-                        // (i.e. X is applied first, then Y around the new Y axis, then Z),
-                        // matching the order used by Maths::createTransformationMatrix.
+                        // Each glm::rotate post-multiplies, so rotations are applied in
+                        // extrinsic (fixed-axis) X-Y-Z order: X is applied first to the
+                        // vertices, then Y around the world Y axis, then Z around world Z.
+                        // This matches the convention of Maths::createTransformationMatrix.
                         glm::mat4 rotMat(1.0f);
                         rotMat = glm::rotate(rotMat, glm::radians(rx), glm::vec3(1.0f, 0.0f, 0.0f));
                         rotMat = glm::rotate(rotMat, glm::radians(ry), glm::vec3(0.0f, 1.0f, 0.0f));

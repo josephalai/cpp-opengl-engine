@@ -24,10 +24,14 @@ void AnimatedRenderer::render(const std::vector<AnimatedEntity*>& entities,
 
         shader->loadBoneMatrices(boneMatrices);
 
+        // modelRotationMat is the authoritative model-space correction.
+        // It defaults to the loader's coordinateCorrection (set in EntityFactory /
+        // Engine / SceneLoaderJson), but a prefab's model_rotation field overrides
+        // it entirely.  coordinateCorrection is NOT multiplied again here so that
+        // an explicit prefab rotation is not compounded with the auto-detected one.
         glm::mat4 transform = Maths::createTransformationMatrix(
             ae->position + ae->modelOffset, ae->rotation, ae->scale)
-            * ae->modelRotationMat
-            * ae->model->coordinateCorrection;
+            * ae->modelRotationMat;
         shader->loadTransformationMatrix(transform);
 
         for (const AnimatedMesh& mesh : ae->model->meshes) {

@@ -25,11 +25,20 @@ struct AnimatedModelComponent {
     /// Does not affect physics. Use Up/Down arrows at runtime to find the
     /// correct value, then bake it into scene.json or the prefab.
     glm::vec3            modelOffset = glm::vec3(0.0f);
-    /// Per-prefab model-space rotation correction applied before the coordinate
-    /// correction from Assimp. Used to fix models that load sideways or on their
-    /// stomachs due to differing coordinate conventions in the source .glb/.fbx.
-    /// Set from the prefab's AnimatedModelComponent.model_rotation JSON field
-    /// (Euler angles in degrees, XYZ order). Identity by default (no correction).
+    /// Per-prefab model-space rotation correction applied in place of the
+    /// automatic coordinateCorrection from the Assimp loader.  Used to fix
+    /// models that load sideways or on their stomachs due to differing
+    /// coordinate conventions in the source .glb/.fbx.
+    ///
+    /// **Initialisation rules** (must be maintained by every creation site):
+    ///   - EntityFactory, Engine (legacy promotion), SceneLoaderJson:
+    ///     default to `animModel->coordinateCorrection` so Y-up auto-correction
+    ///     is preserved when no explicit override is provided.
+    ///   - If the prefab specifies `components.AnimatedModelComponent.model_rotation`,
+    ///     EntityFactory REPLACES this field with the user-specified rotation.
+    ///
+    /// AnimatedRenderer multiplies ONLY this matrix (not coordinateCorrection)
+    /// so the two corrections are never compounded.
     glm::mat4            modelRotationMat = glm::mat4(1.0f);
     float                scale       = 1.0f;
     /// True only for the local client's own character (marked by Engine after load).
