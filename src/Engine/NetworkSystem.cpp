@@ -120,20 +120,6 @@ void NetworkSystem::update(float deltaTime) {
                     ? (actualDistanceMoved / deltaTime) * 1.5f
                     : 0.0f;
             }
-
-            // Smoothly rotate the player to face the travel direction.
-            if (glm::length(diff) > 0.001f) {
-                glm::vec3 dir = glm::normalize(diff);
-                float targetYaw = glm::degrees(std::atan2(dir.x, dir.z));
-                float currentYaw = localPlayer_->getRotation().y;
-                float angleDiff = targetYaw - currentYaw;
-                while (angleDiff <= -180.0f) angleDiff += 360.0f;
-                while (angleDiff >  180.0f) angleDiff -= 360.0f;
-
-                glm::vec3 curRot = localPlayer_->getRotation();
-                curRot.y += angleDiff * 0.2f;  // Smooth rotation speed
-                localPlayer_->setRotation(curRot);
-            }
         }
     }
 

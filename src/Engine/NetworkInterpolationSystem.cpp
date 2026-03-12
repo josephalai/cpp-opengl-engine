@@ -41,9 +41,11 @@ void NetworkInterpolationSystem::update(float deltaTime) {
         // If the newest snapshot is very far from our current visual position,
         // the entity likely left and re-entered our Area of Interest.
         // Snap instantly instead of trying to interpolate a massive distance.
+        // Threshold: 625.0 = 25 units squared (half a spatial-grid cell).
+        // Normal interpolation lag is < 10 units; AoI re-entry is 50+ units.
         {
             float distToNewestSq = glm::length2(nsd.buffer.back().position - tc.position);
-            if (distToNewestSq > 25.0f) { // > 5 meters
+            if (distToNewestSq > 625.0f) { // > 25 units (AoI re-entry only)
                 tc.position = nsd.buffer.back().position;
                 tc.rotation = nsd.buffer.back().rotation;
 
