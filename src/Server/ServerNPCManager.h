@@ -92,9 +92,18 @@ public:
     void tick(float dt,
               std::unordered_map<uint32_t, Network::PlayerInputPacket>& outInputs);
 
+    /// Pause AI input generation for a specific NPC for `duration` seconds.
+    /// Called by the Lua engine.AI.pause() callback so interaction scripts
+    /// can freeze an NPC in place during dialogue.
+    void setPauseTimer(uint32_t networkId, float duration);
+
 private:
     /// Per-NPC AI runtime data, keyed by networkId.
     std::unordered_map<uint32_t, NPCAIState> aiStates_;
+
+    /// Per-NPC pause timers (seconds remaining), keyed by networkId.
+    /// When > 0, the AI tick is skipped so the NPC stands still.
+    std::unordered_map<uint32_t, float> pauseTimers_;
 
     /// Script type per NPC, keyed by networkId.
     std::unordered_map<uint32_t, std::string> scripts_;

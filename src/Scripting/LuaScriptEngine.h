@@ -107,6 +107,14 @@ public:
         onSendMessage_ = std::move(cb);
     }
 
+    /// Inject the NPC pause closure.
+    /// When set, engine.AI.pause(npc_id, seconds) in Lua will freeze the NPC's
+    /// AI input generation for the given duration via ServerNPCManager.
+    /// @param cb  Callable(npcNetworkId, durationSeconds)
+    void setNpcPauseCallback(std::function<void(uint32_t, float)> cb) {
+        onPauseNpc_ = std::move(cb);
+    }
+
 private:
     /// Build the `engine` table passed to every on_interact() call.
     /// Contains sub-tables: Network, Stats, Inventory, Health, Entities,
@@ -123,6 +131,10 @@ private:
     /// Optional server-side callback wired up by ServerMain to forward
     /// engine.Network.sendMessage() calls to ENet packets.
     std::function<void(uint32_t, const std::string&)> onSendMessage_;
+
+    /// Optional callback wired up by ServerMain to pause an NPC's AI via
+    /// ServerNPCManager::setPauseTimer() when Lua calls engine.AI.pause().
+    std::function<void(uint32_t, float)> onPauseNpc_;
 };
 
 #else // !HAS_LUA — stub so code compiles without Lua installed
@@ -149,6 +161,7 @@ public:
     bool hasScript(const std::string&) const { return false; }
     void shutdown() {}
     void setSendMessageCallback(std::function<void(uint32_t, const std::string&)>) {}
+    void setNpcPauseCallback(std::function<void(uint32_t, float)>) {}
 };
 
 #endif // HAS_LUA

@@ -18,6 +18,11 @@ struct AIScriptComponent {
     /// Logical script name (e.g. "GuardAI", "WanderAI") used as a lookup
     /// key when the LuaScriptEngine dispatches tick updates.
     std::string scriptName;
+
+    /// When > 0, the AI input generation is suppressed for this many seconds.
+    /// Decremented each tick by ServerNPCManager.  Set via engine.AI.pause()
+    /// in interaction scripts so NPCs stand still during dialogue.
+    float pauseTimer = 0.0f;
 };
 
 #endif // ECS_AISCRIPTCOMPONENT_H

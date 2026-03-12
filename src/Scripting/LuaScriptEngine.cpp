@@ -300,6 +300,18 @@ sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
     };
     engine["Loot"] = loot;
 
+    // --- engine.AI ---
+    // Allows interaction scripts to control NPC behaviour:
+    //   engine.AI.pause(npc_id, seconds)  — freezes NPC movement for N seconds.
+    sol::table ai = lua_.create_table();
+    ai["pause"] = [this](uint32_t npcId, float duration) {
+        std::cout << "[Lua] AI.pause(" << npcId << ", " << duration << ")\n";
+        if (onPauseNpc_) {
+            onPauseNpc_(npcId, duration);
+        }
+    };
+    engine["AI"] = ai;
+
     return engine;
 }
 

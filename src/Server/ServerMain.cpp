@@ -991,6 +991,15 @@ int main() {
         npcManager.initLua(HOME_PATH);
     }
 
+    // -------------------------------------------------------------------------
+    // Wire engine.AI.pause() in interaction scripts to ServerNPCManager so
+    // Lua can freeze an NPC's wandering behaviour during dialogue.
+    // -------------------------------------------------------------------------
+    interactionLua.setNpcPauseCallback(
+        [&npcManager](uint32_t npcId, float duration) {
+            npcManager.setPauseTimer(npcId, duration);
+        });
+
     // Populate networkIdToEntity for all static world objects (trees, stalls, lamps)
     // that were loaded from baked chunks before this map existed.  Static entities
     // have the high bit set in their NetworkIdComponent::id (see generateStaticId).
@@ -1147,6 +1156,22 @@ int main() {
                             auto eit = networkIdToEntity.find(nid);
                             if (eit != networkIdToEntity.end()) {
                                 auto entity = eit->second;
+
+                                // --- ACTION INTERRUPTION ---
+                                // If the player deliberately moves (WASD), cancel
+                                // any ongoing pathfinding or interaction so they
+                                // can walk away cleanly (e.g. break a chop loop).
+                                if (input.moveForward || input.moveBackward ||
+                                    input.moveLeft   || input.moveRight) {
+                                    if (registry.all_of<ActionStateComponent>(entity)) {
+                                        registry.remove<ActionStateComponent>(entity);
+                                    }
+                                    if (registry.all_of<PathfindingComponent>(entity)) {
+                                        registry.remove<PathfindingComponent>(entity);
+                                    }
+                                }
+                                // ----------------------------
+
                                 // Append to the entity's input queue; the
                                 // tick loop drains it with SharedMovement.
                                 auto& queue = registry.get<InputQueueComponent>(entity);

@@ -1,377 +1,645 @@
-# Scripting Guide: Script-Driven Interaction State Machine
+# Engine Scripting & Interaction Guide
 
-## Overview
+> **Audience**: Game designers and script developers who want to add gameplay  
+> without touching C++.  
+> **Scope**: NPC dialogue, resource gathering, action loops, AI pausing,  
+> stateful interactions, and custom content.
 
-This guide covers the **Script-Driven Interaction State Machine** (Step 6.1) — the architecture that transforms the C++ engine into a pure simulation layer. C++ handles memory, pathfinding, distance checking, and networking. **Lua handles all game logic.** Zero hardcoded C++ game logic — every interaction (woodcutting, combat, dialogue) is defined entirely in hot-reloadable Lua scripts.
+---
 
-This is the exact architecture used by industry giants (RuneScape, WoW private servers, MUDs) to build infinitely scalable MMOs.
+## Table of Contents
+
+1. [Architecture Overview](#1-architecture-overview)
+2. [The WalkTo Infrastructure (Built-in)](#2-the-walkto-infrastructure-built-in)
+3. [Making an Object Interactable](#3-making-an-object-interactable)
+4. [Writing the Lua Script](#4-writing-the-lua-script)
+5. [The State Machine Return Value](#5-the-state-machine-return-value)
+6. [The Engine API Reference](#6-the-engine-api-reference)
+7. [Stateful Interactions (Persistent Variables)](#7-stateful-interactions-persistent-variables)
+8. [Action Interruption](#8-action-interruption)
+9. [NPC AI Pausing](#9-npc-ai-pausing)
+10. [Complete Script Examples](#10-complete-script-examples)
+    - [Stateful Guard Dialogue](#101-stateful-guard-dialogue)
+    - [Wanderer with Penalty Cooldown](#102-wanderer-with-penalty-cooldown)
+    - [Looping Resource Gathering (Woodcutting)](#103-looping-resource-gathering-woodcutting)
+11. [Adding a New Interactable Entity](#11-adding-a-new-interactable-entity)
+12. [Adding a New NPC](#12-adding-a-new-npc)
+13. [Prefab JSON Reference](#13-prefab-json-reference)
+14. [Troubleshooting](#14-troubleshooting)
 
 ---
 
 ## 1. Architecture Overview
 
+This engine uses a strict **separation of concerns**:
+
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     CLIENT                              │
-│  Mouse Click → EntityPicker → EntityClickedEvent        │
-│      → NetworkSystem.sendActionRequest(targetId)         │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                     CLIENT (OpenGL)                      │
+│  Mouse Right-Click → EntityPicker → EntityClickedEvent   │
+│      → NetworkSystem.sendActionRequest(targetNetworkId)  │
+└──────────────────────────────────────────────────────────┘
                            │  ENet UDP
                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                     SERVER (C++)                        │
-│                                                         │
-│  Receive ActionRequestPacket                            │
-│    → Validate InteractableComponent exists              │
-│    → Emplace ActionStateComponent on player             │
-│    → Run A* → Assign PathfindingComponent               │
-│                                                         │
-│  Server Tick Loop (10 Hz):                              │
-│    PathfindingSystem.update(dt)  ← steers player        │
-│    InteractionSystem.update(dt)  ← checks distance      │
-│      if within range:                                   │
-│        remove PathfindingComponent                      │
-│        tick actionTimer down                            │
-│        when timer == 0:                                 │
-│          LuaScriptEngine.executeInteraction(...)        │
-│            ↓                                            │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                SERVER (C++ Headless)                     │
+│                                                          │
+│  Receive ActionRequestPacket                             │
+│    → Validate InteractableComponent exists               │
+│    → Emplace ActionStateComponent on player entity       │
+│    → Run A* pathfinding → Assign PathfindingComponent    │
+│                                                          │
+│  Server Tick Loop (configurable Hz):                     │
+│    PathfindingSystem.update(dt)  ← steers player         │
+│    InteractionSystem.update(dt)  ← checks distance       │
+│      if dist ≤ interact_range:                           │
+│        remove PathfindingComponent (stop walking)        │
+│        countdown actionTimer                             │
+│        when timer == 0:                                  │
+│          LuaScriptEngine.executeInteraction(...)         │
+│                                                          │
+│  ServerNPCManager.tick(dt)       ← drives NPC AI        │
+│    respects pauseTimer per NPC                           │
+└──────────────────────────────────────────────────────────┘
                            │
                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                  LUA SCRIPT                             │
-│  on_interact(player_id, target_id, engine)              │
-│    engine.Network.broadcastAnimation(...)               │
-│    engine.Stats.getLevel(...)                           │
-│    engine.Inventory.addItem(...)                        │
-│    return cooldown_seconds  ← or 0.0 to stop            │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                  LUA SCRIPT                              │
+│  on_interact(player_id, target_id, engine)               │
+│    engine.Network.sendMessage(player_id, "Hello!")       │
+│    engine.AI.pause(target_id, 5.0)                       │
+│    engine.Stats.getLevel(player_id, "Woodcutting")       │
+│    engine.Inventory.addItem(player_id, "Logs", 1)        │
+│    return cooldown_seconds   ← 0.0 = stop, >0 = loop    │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### Division of Responsibilities
 
 | Layer | Responsibility |
-|-------|---------------|
-| **C++ Engine** | Memory management, physics, pathfinding, distance checking, networking, timer countdown |
-| **Lua Scripts** | All game logic: what happens when you interact, what reward you get, what animation plays |
+|-------|----------------|
+| **C++ Engine** | Physics, pathfinding, distance checking, networking, ENet packets, timer countdown, action interruption |
+| **Lua Scripts** | Game logic: dialogue, rewards, animations, AI pausing, stat checks, RNG rolls |
+
+> **Rule**: If it moves, collides, or travels over the network → C++.  
+> If it has game meaning → Lua.
 
 ---
 
-## 2. The Anatomy of a Click
+## 2. The WalkTo Infrastructure (Built-in)
 
-A single right-click triggers this complete lifecycle:
+**You never need to write WalkTo logic.** It is baked into the C++ engine.
 
-1. **The Intent (Client):** User right-clicks. Engine calculates a 3D ray from camera through mouse cursor.
-2. **The Intersect (Client):** `EntityPicker` performs Ray-AABB intersection tests against all renderable entities with bounding boxes. Finds the closest hit entity.
-3. **The Dispatch (Client):** If the hit entity has a `NetworkIdComponent`, the client sends `ActionRequestPacket { targetNetworkId: 4052 }` to the server. The client does **not** start any action — it waits.
-4. **The Acknowledgment (Server C++):** Server receives packet. Validates Entity `4052` exists and has an `InteractableComponent` (which contains the Lua script path and required distance).
-5. **The State Change (Server C++):** Server attaches `ActionStateComponent` to the player. Player's state is now in the interaction pipeline.
-6. **The Chase (Server C++):** Server runs A* pathfinding and assigns `PathfindingComponent`. `PathfindingSystem` steers the player tick-by-tick.
-7. **The Arrival (Server C++):** `InteractionSystem` detects player is within `interactRange` (e.g., 1.5 metres). Halts movement (removes `PathfindingComponent`) and flags `isArrived = true`.
-8. **The Loop (Server C++):** Every server tick, `InteractionSystem` decrements `actionTimer`. When it hits 0, C++ calls the Lua script.
-9. **The Logic & Reward (Lua → Client):** Lua executes, rolls RNG, tells C++ to add an item, broadcasts an animation packet, and returns a cooldown float. C++ routes the state machine accordingly.
+When a player right-clicks an interactable object:
+
+1. The client sends an `ActionRequestPacket` to the server.
+2. The server validates that the target has an `InteractableComponent`.
+3. C++ attaches an `ActionStateComponent` to the player entity.
+4. C++ runs A\* pathfinding and attaches a `PathfindingComponent`.
+5. `PathfindingSystem::update()` steers the player toward the target each tick.
+6. `InteractionSystem::update()` polls distance. When `dist ≤ interact_range`:
+   - `PathfindingComponent` is removed (player stops).
+   - The Lua script's `on_interact()` is called.
+
+### Cancellation
+
+If the player presses **WASD** at any point during the approach or while an
+action is active, `ServerMain` immediately strips both `ActionStateComponent`
+and `PathfindingComponent`. The player regains manual control instantly and any
+looping script (e.g. woodcutting) is silently terminated.
 
 ---
 
-## 3. Creating Your First Interaction Script
+## 3. Making an Object Interactable
 
-### Step 1: Create a Prefab JSON with `InteractableComponent`
-
-Create or update a prefab in `src/Resources/prefabs/`:
+Add the `InteractableComponent` block to the entity's **prefab JSON**:
 
 ```json
 {
-  "alias": "my_rock",
-  "model_type": "my_rock",
-  "physics": { "type": "static", "shape": "box", "halfExtents": [1.0, 1.0, 1.0] },
-  "InteractableComponent": {
-    "script": "scripts/skills/mining.lua",
-    "interact_range": 1.5
+  "id": "my_npc",
+  "mesh": "models/walkrun_and_idle.glb",
+  "animated": true,
+  "components": {
+    "InteractableComponent": {
+      "script": "scripts/interactions/my_npc.lua",
+      "interact_range": 2.5
+    }
   }
 }
 ```
 
-The `"InteractableComponent"` block can be at the **top level** or nested inside a `"components"` block — the EntityFactory handles both.
-
-### Step 2: Write a Lua Script with `on_interact()`
-
-Create `src/Resources/scripts/skills/mining.lua`:
-
-```lua
-function on_interact(player_id, target_id, engine)
-    -- Play the mining animation
-    engine.Network.broadcastAnimation(player_id, "Swing_Pickaxe")
-
-    -- Get the player's Mining skill level
-    local mining_level = engine.Stats.getLevel(player_id, "Mining")
-
-    -- Roll success chance based on level
-    if engine.Math.rollChance(0.25 + (mining_level * 0.01)) then
-        engine.Inventory.addItem(player_id, "Copper Ore", 1)
-        engine.Network.sendMessage(player_id, "You mine some copper ore.")
-    end
-
-    -- Return cooldown: 2.4 seconds (OSRS 4-tick cycle)
-    return 2.4
-end
-```
-
-### Step 3: Register the Prefab in Scene
-
-The prefab is automatically available once the file exists in `src/Resources/prefabs/`. Reference it in `scene.json` or spawn it via the Asset Baker:
-
-```json
-{
-  "entities": [
-    { "alias": "my_rock", "x": 100.0, "y": 0.0, "z": -80.0 }
-  ]
-}
-```
-
-### Step 4: Test with the Server
-
-Start the headless server:
-```bash
-./build/headless_server
-```
-
-You should see log output when the interaction fires:
-```
-[Lua] broadcastAnimation(101, "Swing_Pickaxe")
-[Lua] Stats.getLevel(_, "Mining") -> 1
-[Lua] Inventory.addItem(101, "Copper Ore", 1)
-[Lua] sendMessage(101, "You mine some copper ore.")
-```
-
-### Step 5: Click an Entity in the Client
-
-With both the server and client running, **right-click on any entity that has an `InteractableComponent`** (e.g., a tree). The click pipeline works as follows:
-
-1. `InputDispatcher::update()` detects the right-click rising edge.
-2. It builds a world-space pick ray via `EntityPicker::buildPickRay()` using the mouse position, camera view matrix, and projection matrix.
-3. `EntityPicker::pick()` performs Ray-AABB tests against all scene entities.
-4. If an entity with a `NetworkIdComponent` is hit, `EntityClickedEvent` is published to the `EventBus`.
-5. `NetworkSystem::init()` subscribed to `EntityClickedEvent`; it calls `sendActionRequest(networkId)`, which sends an `ActionRequestPacket` to the server over ENet.
-6. If the ray misses all entities, the click falls back to terrain walking (`TargetLocationClickedEvent`).
-
-> **Tip:** If right-click sends the player to a ground point instead of interacting, the entity either lacks a `NetworkIdComponent` (check `EntityFactory::spawn()` assigns it) or the bounding box is not set up for ray intersection.
+| Field | Type | Description |
+|-------|------|-------------|
+| `script` | string | Path relative to `src/Resources/`, e.g. `"scripts/interactions/guard.lua"` |
+| `interact_range` | float | Distance in world-units at which the interaction fires. `2.0` is about arm's reach. |
 
 ---
 
-## 4. The Engine API Reference
+## 4. Writing the Lua Script
 
-Every `on_interact` function receives an `engine` table as its third argument. This table exposes the following C++ subsystem APIs:
+Every interaction script **must** define the global function `on_interact`.
+
+```lua
+function on_interact(player_id, target_id, engine)
+    -- player_id  : uint32  — the NetworkIdComponent::id of the acting player
+    -- target_id  : uint32  — the NetworkIdComponent::id of the object clicked
+    -- engine     : table   — the full C++ API bridge (see Section 6)
+
+    engine.Network.sendMessage(player_id, "Hello!")
+
+    return 0.0   -- see Section 5
+end
+```
+
+### Isolated Environments
+
+Each script path gets its **own isolated Sol2 environment**. Module-level
+variables (outside functions) are private to that script and persist for the
+lifetime of the server. Two different scripts can both define `on_interact`
+without conflict.
+
+```lua
+-- This variable is private to THIS script file.
+local visit_count = {}
+
+function on_interact(player_id, target_id, engine)
+    visit_count[player_id] = (visit_count[player_id] or 0) + 1
+    engine.Network.sendMessage(player_id,
+        "You have visited " .. visit_count[player_id] .. " times.")
+    return 0.0
+end
+```
+
+---
+
+## 5. The State Machine Return Value
+
+The `float` returned by `on_interact` controls the C++ Interaction State
+Machine:
+
+| Return value | Meaning |
+|---|---|
+| `return 0.0` | **Action complete.** C++ releases the player to IDLE immediately. |
+| `return N` (N > 0) | **Loop.** C++ holds the player in ACTION state, waits exactly `N` seconds, then calls this script again. The loop continues until the script returns `0.0` or the player moves. |
+
+```lua
+-- Woodcutting example: keep chopping every 2.4 seconds
+function on_interact(player_id, target_id, engine)
+    engine.Network.sendMessage(player_id, "CHOP CHOP CHOP...")
+    if engine.Math.rollChance(0.25) then
+        engine.Network.sendMessage(player_id, "You got some logs!")
+        return 0.0      -- stop the loop
+    end
+    return 2.4          -- try again after 2.4 seconds
+end
+```
+
+---
+
+## 6. The Engine API Reference
+
+The `engine` table is passed to every `on_interact()` call. It contains the
+following sub-tables:
+
+---
 
 ### `engine.Network`
 
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `engine.Network.broadcastAnimation(playerId, animName)` | Broadcasts an animation event to nearby clients | void |
-| `engine.Network.sendMessage(playerId, message)` | Sends a chat message to the player | void |
-| `engine.Network.sendOpenUI(playerId, uiName)` | Tells the client to open a specific UI panel | void |
-| `engine.Network.broadcastDamageSplat(targetId, damage)` | Broadcasts a floating damage number to nearby clients | void |
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `sendMessage` | `(player_id: uint32, msg: string)` | Sends a reliable ENet `ServerMessagePacket` to the specific client. Appears as `[NPC DIALOGUE]: <msg>` in the client terminal. Will be routed to the ImGui chat box in a future phase. |
+| `broadcastAnimation` | `(entity_id: uint32, anim: string)` | Tells all clients to play an animation on the entity (stub — logs to server console, will broadcast in a future phase). |
+| `broadcastDamageSplat` | `(entity_id: uint32, dmg: int)` | Shows a damage number above the entity on all clients (stub). |
+| `sendOpenUI` | `(player_id: uint32, ui_name: string)` | Sends a UI-open command to a specific client (stub). |
+
+---
 
 ### `engine.Stats`
 
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `engine.Stats.getLevel(entityId, skillName)` | Returns the entity's level in the given skill | integer |
-| `engine.Stats.getAll(entityId)` | Returns a table of all skill levels for the entity | table |
+| Function | Signature | Returns | Description |
+|----------|-----------|---------|-------------|
+| `getLevel` | `(entity_id, skill_name: string)` | `int` | Returns the current level for the given skill name (stub returns 1). |
+| `getAll` | `(entity_id)` | `table` | Returns a table of all skill levels. |
+
+---
 
 ### `engine.Inventory`
 
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `engine.Inventory.addItem(playerId, itemName, count)` | Adds items to the player's inventory | void |
-| `engine.Inventory.hasItem(playerId, itemName)` | Returns true if the player has the item | boolean |
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `addItem` | `(player_id, item_name: string, count: int)` | Adds items to the player's inventory (stub — logs to server console). |
+| `hasItem` | `(player_id, item_name: string)` → `bool` | Returns true if the player has at least one of the item (stub returns false). |
+
+---
 
 ### `engine.Health`
 
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `engine.Health.dealDamage(targetId, amount)` | Applies damage to the target entity | void |
-| `engine.Health.isDead(targetId)` | Returns true if the entity's health is zero or below | boolean |
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `dealDamage` | `(entity_id, amount: int)` | Deals damage to an entity (stub). |
+| `isDead` | `(entity_id)` → `bool` | Returns true if entity has 0 HP (stub returns false). |
 
-### `engine.Entities`
+---
 
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `engine.Entities.destroy(targetId)` | Destroys the target entity from the ECS registry | void |
+### `engine.AI`
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `pause` | `(npc_id: uint32, duration: float)` | **Freezes the NPC's AI** input generation for `duration` seconds. The NPC stands still on the server (zero-movement input). After the timer expires, normal wandering resumes. Use during dialogue so the NPC doesn't walk away. |
+
+```lua
+-- Stop the wanderer from walking away for 5 seconds
+engine.AI.pause(target_id, 5.0)
+```
+
+---
 
 ### `engine.Math`
 
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `engine.Math.rollChance(probability)` | Rolls a deterministic RNG. Returns true with the given probability (0.0–1.0) | boolean |
+| Function | Signature | Returns | Description |
+|----------|-----------|---------|-------------|
+| `rollChance` | `(probability: float)` | `bool` | Pass a value between 0.0 and 1.0. Returns `true` with that probability. Uses a thread-local LCG seeded from `std::random_device`. |
+
+```lua
+if engine.Math.rollChance(0.25) then   -- 25% chance
+    engine.Network.sendMessage(player_id, "Critical hit!")
+end
+```
+
+---
+
+### `engine.Entities`
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `destroy` | `(entity_id: uint32)` | Marks the entity for removal from the world (stub — logs intent). |
+
+---
 
 ### `engine.Transform`
 
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `engine.Transform.lookAt(entityA, entityB)` | Rotates entity A to face entity B | void |
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `lookAt` | `(entityA_id, entityB_id)` | Rotates entity A to face entity B (stub). |
+
+---
 
 ### `engine.CombatMath`
 
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `engine.CombatMath.calculateMeleeHit(attackerStats, defenderStats)` | Runs the combat formula and returns damage dealt | integer |
+| Function | Signature | Returns | Description |
+|----------|-----------|---------|-------------|
+| `calculateMeleeHit` | `(attackerStats: table, defenderStats: table)` | `int` | Returns a damage value based on attacker and defender stats (stub returns 1–5). |
+
+---
 
 ### `engine.Equipment`
 
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `engine.Equipment.getWeaponSpeed(playerId)` | Returns the player's equipped weapon attack speed in seconds | float |
+| Function | Signature | Returns | Description |
+|----------|-----------|---------|-------------|
+| `getWeaponSpeed` | `(player_id)` | `float` | Returns the attack speed in seconds (stub returns 2.4). |
+
+---
 
 ### `engine.Loot`
 
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `engine.Loot.generateDrop(targetId, lootTable)` | Generates a loot drop from the named loot table | void |
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `generateDrop` | `(entity_id, loot_table: string)` | Rolls the loot table and drops items (stub). |
 
 ---
 
-## 5. Return Value Conventions
+## 7. Stateful Interactions (Persistent Variables)
 
-The return value of `on_interact()` is a `float` that controls what the C++ state machine does next:
-
-| Return Value | Meaning |
-|-------------|---------|
-| `> 0.0` | **Loop the action.** The `ActionStateComponent.actionTimer` is reset to this value (in seconds). The script will be called again after this delay. Use this for repeated actions like woodcutting or combat. |
-| `0.0` | **End the action.** The `ActionStateComponent` is removed from the player. Use this for instant actions like dialogue, or when a resource is depleted or an enemy is killed. |
-
-Examples:
-```lua
-return 2.4    -- Call me again in 2.4 seconds (OSRS 4-tick woodcutting cycle)
-return 1.8    -- Fast attack speed
-return 0.0    -- Action complete, clean up immediately
-```
-
----
-
-## 6. Advanced Patterns
-
-### Multi-Step Interactions
-
-Use a flag in the inventory or a custom tracking mechanism to implement multi-step quests. The Lua script can check game state and return different cooldowns:
+Module-level Lua variables persist for the **server's lifetime**. Use tables
+keyed by `player_id` to store per-player state:
 
 ```lua
+-- Module-level: persists between calls
+local kills = {}
+
 function on_interact(player_id, target_id, engine)
-    local has_knife = engine.Inventory.hasItem(player_id, "Knife")
-    if not has_knife then
-        engine.Network.sendMessage(player_id, "You need a knife to do that.")
-        return 0.0  -- End immediately
-    end
-    -- ... rest of logic
-    return 3.0
+    kills[player_id] = (kills[player_id] or 0) + 1
+    engine.Network.sendMessage(player_id,
+        "Total kills this session: " .. kills[player_id])
+    return 0.0
 end
 ```
 
-### Conditional Branching
+> **Note**: State is lost on server restart. For persistent progression
+> (e.g. XP between sessions) you will need a database integration
+> (planned for a future phase).
 
-Scripts can inspect entity state and behave differently:
+---
+
+## 8. Action Interruption
+
+The engine automatically cancels any ongoing interaction when the player
+presses **WASD**:
+
+- `ActionStateComponent` is removed → the Lua loop never fires again.
+- `PathfindingComponent` is removed → auto-walk stops immediately.
+- The player regains full manual control.
+
+This is handled entirely in C++ (`ServerMain.cpp`, `PlayerInput` receive block).
+**You do not need to write any cancellation logic in Lua.**
+
+Practical impact:
+- Woodcutting loop → player presses W → loop ends instantly.
+- Walking to NPC → player presses S → walk aborts, NPC ignores the event.
+
+---
+
+## 9. NPC AI Pausing
+
+Wandering NPCs are driven by `ServerNPCManager::tick()` which generates
+synthetic `PlayerInputPacket` events each tick. During dialogue this makes the
+NPC keep moving, which looks wrong.
+
+Use `engine.AI.pause(target_id, seconds)` to freeze the NPC:
 
 ```lua
 function on_interact(player_id, target_id, engine)
-    if engine.Health.isDead(target_id) then
-        engine.Network.sendMessage(player_id, "It's already dead.")
+    -- Freeze for 5 seconds so the NPC faces us and stands still
+    engine.AI.pause(target_id, 5.0)
+    engine.Network.sendMessage(player_id, "NPC: Hello there!")
+    return 0.0
+end
+```
+
+Internally:
+1. `engine.AI.pause(target_id, 5.0)` calls `onPauseNpc_(target_id, 5.0)`.
+2. The C++ closure calls `npcManager.setPauseTimer(target_id, 5.0)`.
+3. `ServerNPCManager::tick()` skips input generation for that NPC while `pauseTimer > 0`.
+4. After 5 seconds the NPC resumes its normal wander pattern.
+
+---
+
+## 10. Complete Script Examples
+
+### 10.1 Stateful Guard Dialogue
+
+**File**: `src/Resources/scripts/interactions/guard.lua`
+
+The guard delivers a unique line each time the player clicks, advancing
+sequentially through a fixed script. State is per-player.
+
+```lua
+local dialogue_index = {}
+
+local lines = {
+    "Halt! Who goes there?",
+    "I've got my eye on you, traveler.",
+    "Move along, citizen.",
+    "I used to be an adventurer like you, then I took an arrow in the knee.",
+    "The guard stares at you blankly."
+}
+
+function on_interact(player_id, target_id, engine)
+    local idx = dialogue_index[player_id] or 1
+    engine.Network.sendMessage(player_id, "Guard: " .. (lines[idx] or lines[#lines]))
+    if idx < #lines then
+        dialogue_index[player_id] = idx + 1
+    end
+    return 0.0
+end
+```
+
+---
+
+### 10.2 Wanderer with Penalty Cooldown
+
+**File**: `src/Resources/scripts/interactions/wanderer.lua`
+
+The wanderer pauses their walk, talks up to 3 times, then imposes a 45-second
+cooldown. Talking during the cooldown resets it.
+
+```lua
+local interaction_counts = {}
+local penalty_start = {}
+local MAX_FREE_INTERACTIONS = 3
+local PENALTY_DURATION = 45
+local NPC_PAUSE_DURATION = 5.0
+
+function on_interact(player_id, target_id, engine)
+    engine.AI.pause(target_id, NPC_PAUSE_DURATION)
+
+    local now = os.time()
+
+    -- Penalty check
+    local pstart = penalty_start[player_id]
+    if pstart ~= nil and (now - pstart) < PENALTY_DURATION then
+        engine.Network.sendMessage(player_id, "Wanderer: Fuck off, peach fuzz.")
+        penalty_start[player_id] = now   -- reset timer from this click
         return 0.0
     end
-    -- normal combat logic...
+
+    -- Normal dialogue
+    local count = interaction_counts[player_id] or 0
+    if count == 0 then
+        engine.Network.sendMessage(player_id, "Wanderer: Hi there! Lovely weather.")
+    elseif count == 1 then
+        engine.Network.sendMessage(player_id, "Wanderer: Again? Do you mind?")
+    elseif count == 2 then
+        engine.Network.sendMessage(player_id, "Wanderer: STOP BOTHERING ME.")
+        penalty_start[player_id] = now
+        interaction_counts[player_id] = 0
+        return 0.0
+    end
+
+    interaction_counts[player_id] = count + 1
+    return 0.0
 end
 ```
 
-### Resource Depletion
+---
 
-Return `0.0` after destroying the target to stop the loop:
+### 10.3 Looping Resource Gathering (Woodcutting)
+
+**File**: `src/Resources/scripts/skills/woodcutting.lua`
+
+A repeating action. Returns `2.4` to loop every 2.4 seconds. Returns `0.0`
+when the tree is felled or to let C++ stop on WASD.
 
 ```lua
-if engine.Math.rollChance(0.10) then
-    engine.Network.sendMessage(player_id, "The tree falls.")
-    engine.Entities.destroy(target_id)
-    return 0.0  -- Stop — the tree is gone
+local BASE_SUCCESS_RATE = 0.25
+local LEVEL_BONUS       = 0.01
+local DEPLETION_CHANCE  = 0.10
+local SWING_COOLDOWN    = 2.4
+
+function on_interact(player_id, target_id, engine)
+    engine.Network.broadcastAnimation(player_id, "Chop_Axe")
+    engine.Network.sendMessage(player_id, "CHOP CHOP CHOP...")
+
+    local level = engine.Stats.getLevel(player_id, "Woodcutting")
+    if engine.Math.rollChance(BASE_SUCCESS_RATE + level * LEVEL_BONUS) then
+        engine.Inventory.addItem(player_id, "Logs", 1)
+        engine.Network.sendMessage(player_id, "You successfully chopped the wood!")
+        if engine.Math.rollChance(DEPLETION_CHANCE) then
+            engine.Entities.destroy(target_id)
+            return 0.0   -- tree is gone, stop loop
+        end
+    end
+
+    return SWING_COOLDOWN   -- try again in 2.4 seconds
 end
-return 2.4  -- Keep chopping
 ```
 
 ---
 
-## 7. Hot Reloading
+## 11. Adding a New Interactable Entity
 
-Each interaction script is loaded **once** and cached in `LuaScriptEngine::interactionEnvs_` by script path. To hot-reload a script during development:
+**Step 1**: Create or edit the prefab JSON in `src/Resources/prefabs/`.
 
-1. **Restart the server** — the simplest approach for development builds.
-2. **Clear the cache** — a future extension could expose a `/reload` console command that calls `interactionEnvs_.clear()`, forcing all scripts to be re-loaded on next invocation.
-
-The scripts themselves have no compiled binary dependency — they are plain text files. Changing a `.lua` file and reloading the server takes effect immediately.
-
----
-
-## 8. Troubleshooting
-
-### "Interaction script not found"
-```
-[LuaScriptEngine] Interaction script not found: /path/to/src/Resources/scripts/skills/mining.lua
-```
-**Fix:** Check that the path in your prefab JSON matches the actual file location under `src/Resources/`.
-
-### "on_interact not defined"
-```
-[LuaScriptEngine] on_interact not defined in: scripts/skills/mining.lua
-```
-**Fix:** Make sure your script defines the function as `function on_interact(player_id, target_id, engine)`.
-
-### "ActionRequest denied — target has no InteractableComponent"
-```
-[Server] ActionRequest denied — target 4052 has no InteractableComponent.
-```
-**Fix:** Verify the prefab JSON for the target entity has an `"InteractableComponent"` block with a `"script"` field.
-
-### "ActionRequest denied — target too far"
-```
-[Server] ActionRequest denied — target too far (cell dist 3).
-```
-**Fix:** The server validates proximity using a `SpatialGrid` (cell size 50 units). The player and target must be in the same or an adjacent grid cell (Chebyshev distance ≤ 1) for the `ActionRequestPacket` to be accepted. Move your character closer to the target entity before right-clicking, or increase the `SpatialGrid` cell size in `ServerMain.cpp` if you expect interaction at longer range.
-
-### Script error at runtime
-```
-[LuaScriptEngine] Error in on_interact (scripts/skills/mining.lua): attempt to call nil value
-```
-**Fix:** You're calling an `engine.*` function that doesn't exist. Check the API reference table above for the correct function names.
-
----
-
-## 9. Adding New API Functions
-
-To add a new function to the `engine` table:
-
-1. Open `src/Scripting/LuaScriptEngine.cpp`
-2. Find `LuaScriptEngine::buildEngineTable()`
-3. Add your function to the appropriate sub-table (or create a new one):
-
-```cpp
-// In buildEngineTable():
-sol::table quest = lua_.create_table();
-quest["completeStep"] = [](uint32_t playerId, const std::string& questId, int step) {
-    std::cout << "[Lua] Quest.completeStep(" << playerId << ", \""
-              << questId << "\", " << step << ")\n";
-    // TODO: real implementation
-};
-engine["Quest"] = quest;
+```json
+{
+  "id": "my_chest",
+  "model_type": "my_chest",
+  "mesh": "models/chest.glb",
+  "animated": false,
+  "physics": {
+    "type": "static",
+    "shape": "box",
+    "halfExtents": [0.5, 0.5, 0.5]
+  },
+  "components": {
+    "InteractableComponent": {
+      "script": "scripts/interactions/chest.lua",
+      "interact_range": 1.5
+    }
+  }
+}
 ```
 
-Then use it in Lua:
+**Step 2**: Create the script `src/Resources/scripts/interactions/chest.lua`:
+
 ```lua
-engine.Quest.completeStep(player_id, "Tutorial", 1)
+function on_interact(player_id, target_id, engine)
+    engine.Network.sendMessage(player_id, "You open the chest. It is empty.")
+    return 0.0
+end
 ```
+
+**Step 3**: Place the entity in the scene.
+
+For static world objects: add it to `scene.json` → run `./asset_baker` to
+bake it into `baked_chunks/`.
+
+For dynamic NPCs: add a `{ "prefab": "my_chest", ... }` entry to
+`src/Resources/npcs.json`.
 
 ---
 
-## 10. Example Scripts
+## 12. Adding a New NPC
 
-Three complete example scripts are included in `src/Resources/scripts/`:
+**Step 1**: Create `src/Resources/prefabs/npc_mycharacter.json`:
 
-| Script | Path | Use Case |
-|--------|------|----------|
-| Woodcutting | `scripts/skills/woodcutting.lua` | Resource gathering with RNG and depletion |
-| Melee Combat | `scripts/combat/melee_combat.lua` | Combat with damage, death, and loot |
-| Banker Dialogue | `scripts/interactions/banker_dialogue.lua` | Instant NPC dialogue that opens a UI |
+```json
+{
+  "id": "npc_mycharacter",
+  "model_type": "npc_mycharacter",
+  "mesh": "models/walkrun_and_idle.glb",
+  "animated": true,
+  "physics": {
+    "type": "character_controller",
+    "radius": 0.5,
+    "height": 1.8
+  },
+  "components": {
+    "AnimatedModelComponent": {
+      "scale": 1.5,
+      "model_rotation": { "x": -90.0, "y": 0.0, "z": 0.0 },
+      "model_offset": { "x": 0.0, "y": -0.9, "z": 0.0 }
+    },
+    "AIComponent": {
+      "script": "WanderAI"
+    },
+    "InteractableComponent": {
+      "script": "scripts/interactions/mycharacter.lua",
+      "interact_range": 2.0
+    }
+  }
+}
+```
+
+**Step 2**: Add the AI script `src/Resources/scripts/ai/wander.lua` already
+exists; use `WanderAI` or `GuardAI` as the `AIComponent.script` value.
+
+**Step 3**: Add a spawn entry to `src/Resources/npcs.json`:
+
+```json
+{
+  "npc_id": 10,
+  "prefab": "npc_mycharacter",
+  "model_type": "npc_mycharacter",
+  "position": { "x": 120.0, "y": 3.0, "z": -60.0 },
+  "script": "WanderAI"
+}
+```
+
+**Step 4**: Create the interaction script.
+
+---
+
+## 13. Prefab JSON Reference
+
+### Humanoid NPC AnimatedModelComponent (all fields)
+
+```json
+"AnimatedModelComponent": {
+  "scale": 1.5,
+  "model_rotation": { "x": -90.0, "y": 0.0, "z": 0.0 },
+  "model_offset":   { "x": 0.0,   "y": -0.9, "z": 0.0 }
+}
+```
+
+| Field | Purpose |
+|-------|---------|
+| `scale` | Uniform scale. `1.5` = close to real-world human height from the GLB base. |
+| `model_rotation` | Corrects coordinate system. GLB exports are Y-up; the engine is Y-up but models need `-90° X` to stand upright. |
+| `model_offset` | Vertical offset so the model's feet align with the physics capsule origin. |
+
+### Physics types
+
+| `type` | Usage |
+|--------|-------|
+| `"kinematic_character"` | Player (full physics, gravity, step-up) |
+| `"character_controller"` | NPC (physics-driven, pathfinding-compatible) |
+| `"static"` | Immovable world objects (trees, rocks, buildings) |
+
+---
+
+## 14. Troubleshooting
+
+### "NPC keeps walking away during dialogue"
+Call `engine.AI.pause(target_id, N)` at the start of `on_interact()`.  
+`N` should be at least as long as the total interaction time (e.g. `5.0`).
+
+### "Script fires but player sees nothing"
+- Confirm `engine.Network.sendMessage(player_id, ...)` is called (not `target_id`).
+- Check the server console for `[Lua] sendMessage(...)` output — if missing,
+  the script returned before reaching that line.
+
+### "Player can't reach the NPC"
+- Increase `interact_range` in the prefab's `InteractableComponent`.
+- Verify the target has a physics collider registered in `networkIdToEntity`.
+
+### "Action never fires (player just stops near target)"
+- Ensure the target entity has an `InteractableComponent` in its prefab.
+- Check the server log for `ActionRequest denied — target X has no InteractableComponent`.
+
+### "Script doesn't loop even though I return > 0"
+- Make sure `on_interact` returns a **positive number**, not `nil` or `0.0`.
+- The C++ `InteractionSystem` checks `cooldown > 0.0f` to decide whether to
+  loop.
+
+### "NPC doesn't speak (no dialogue message on client)"
+- Run both server and client. The `ServerMessagePacket` travels over ENet —
+  it will not appear if you are only running one side.
+- Confirm `setSendMessageCallback` is wired in `ServerMain.cpp` (it is by
+  default; check if the `interactionLua` object is the same instance as the one
+  used by `InteractionSystem`).
+
+### "Player can walk through the NPC"
+- Ensure the NPC prefab has `"physics": { "type": "character_controller", ... }`.
+- Physics bodies are only created server-side. Client-side visibility (collider
+  for picking) uses `ColliderComponent` (set in `Engine.cpp::onNetworkSpawn`).
