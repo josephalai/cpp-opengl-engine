@@ -115,6 +115,16 @@ public:
         onPauseNpc_ = std::move(cb);
     }
 
+    /// Inject the NPC yaw-sync closure.
+    /// When set, engine.Transform.lookAt() in Lua will call this after updating
+    /// TransformComponent.rotation.y so that the NPC's AI cameraYaw state is
+    /// kept in sync.  Without this, the AI tick overwrites the new facing
+    /// direction on the very next frame.
+    /// @param cb  Callable(npcNetworkId, newYawDegrees)
+    void setNpcYawCallback(std::function<void(uint32_t, float)> cb) {
+        onSetNpcYaw_ = std::move(cb);
+    }
+
 private:
     /// Build the `engine` table passed to every on_interact() call.
     /// Contains sub-tables: Network, Stats, Inventory, Health, Entities,
@@ -136,6 +146,12 @@ private:
     /// Optional callback wired up by ServerMain to pause an NPC's AI via
     /// ServerNPCManager::setPauseTimer() when Lua calls engine.AI.pause().
     std::function<void(uint32_t, float)> onPauseNpc_;
+
+    /// Optional callback wired up by ServerMain to sync the NPC AI heading when
+    /// Lua calls engine.Transform.lookAt().  Keeps NPCAIState::cameraYaw and
+    /// LuaAIState::cameraYaw aligned with the new facing direction so the AI
+    /// does not overwrite the rotation on the next tick.
+    std::function<void(uint32_t, float)> onSetNpcYaw_;
 };
 
 #else // !HAS_LUA — stub so code compiles without Lua installed

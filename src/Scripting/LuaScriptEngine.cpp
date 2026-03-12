@@ -36,9 +36,9 @@ LuaScriptEngine::~LuaScriptEngine() {
 void LuaScriptEngine::init(const std::string& resourceRoot) {
     resourceRoot_ = resourceRoot;
 
-    // Open standard Lua libraries (math, string, table, etc.)
+    // Open standard Lua libraries (math, string, table, os, etc.)
     lua_.open_libraries(sol::lib::base, sol::lib::math, sol::lib::string,
-                        sol::lib::table);
+                        sol::lib::table, sol::lib::os);
 
     // --- Register LuaAIState as a Lua usertype ---
     lua_.new_usertype<LuaAIState>("AIState",
@@ -267,7 +267,7 @@ sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
 
     // --- engine.Transform ---
     sol::table transform = lua_.create_table();
-    transform["lookAt"] = [registry](uint32_t lookerId, uint32_t targetId) {
+    transform["lookAt"] = [this, registry](uint32_t lookerId, uint32_t targetId) {
         if (!registry) {
             std::cout << "[Lua] Transform.lookAt(" << lookerId << ", "
                       << targetId << ") — no registry\n";
@@ -301,7 +301,14 @@ sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
         if (glm::length(dir) > 0.001f) {
             dir = glm::normalize(dir);
             // rotation.y is in degrees (SharedMovement uses glm::radians to convert)
-            lookerTc->rotation.y = glm::degrees(std::atan2(dir.x, dir.z));
+            float newYaw = glm::degrees(std::atan2(dir.x, dir.z));
+            lookerTc->rotation.y = newYaw;
+
+            // Sync the new yaw into the NPC AI state so the AI does not
+            // overwrite this rotation on the very next tick.
+            if (onSetNpcYaw_) {
+                onSetNpcYaw_(lookerId, newYaw);
+            }
         }
     };
     engine["Transform"] = transform;

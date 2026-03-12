@@ -79,6 +79,34 @@ void NetworkSystem::init() {
 void NetworkSystem::update(float deltaTime) {
     if (!client_) return;
 
+    // -----------------------------------------------------------------
+    // 0. Apply smooth server-authoritative reconciliation each frame.
+    //    When the server has moved the player via pathfinding (or any
+    //    other server-side authority) we store a target position instead
+    //    of hard-snapping.  Here we LERP toward that target so the
+    //    player appears to walk smoothly rather than teleport.
+    // -----------------------------------------------------------------
+    if (hasReconcileTarget_ && localPlayer_) {
+        glm::vec3 curr   = localPlayer_->getPosition();
+        glm::vec3 target = reconcileTarget_;
+        target.y = curr.y;  // Physics owns the Y axis
+
+        glm::vec3 diff = target - curr;
+        diff.y = 0.0f;
+        float distSq = glm::dot(diff, diff);
+
+        if (distSq < 0.0025f) {   // within 0.05 m — snap and stop
+            localPlayer_->setPosition(target);
+            if (physicsSystem_) physicsSystem_->warpPlayer(target);
+            hasReconcileTarget_ = false;
+        } else {
+            // Lerp by kReconcileLerp fraction of the remaining gap each frame.
+            glm::vec3 newPos = glm::mix(curr, target, kReconcileLerp);
+            newPos.y = curr.y;
+            localPlayer_->setPosition(newPos);
+            if (physicsSystem_) physicsSystem_->warpPlayer(newPos);
+        }
+    }
 
 
     // -----------------------------------------------------------------
@@ -89,7 +117,9 @@ void NetworkSystem::update(float deltaTime) {
     // -----------------------------------------------------------------
     if (localPlayer_ && serverPeer_) {
 
-        // ---> ADD THIS: Record the actual physical result of the PREVIOUS frame's input
+        // Record the actual physical result of the PREVIOUS frame's input
+        // so the reconciliation handler can compare it against the server
+        // snapshot for the same sequence number.
         if (inputSequenceNumber_ > 0) {
             localHistory_.push_back({inputSequenceNumber_, localPlayer_->getPosition()});
             if (localHistory_.size() > kMaxLocalHistorySize) localHistory_.erase(localHistory_.begin());
@@ -97,10 +127,6 @@ void NetworkSystem::update(float deltaTime) {
 
         Network::PlayerInputPacket input;
         input.sequenceNumber = ++inputSequenceNumber_;
-        // --- ADD THESE TWO LINES ---
-        // localHistory_.push_back({input.sequenceNumber, localPlayer_->getPosition()});
-        if (localHistory_.size() > kMaxLocalHistorySize) localHistory_.erase(localHistory_.begin());
-        // ---------------------------
 
         input.deltaTime      = deltaTime;
         input.cameraYaw      = localPlayer_->getRotation().y;
@@ -251,37 +277,73 @@ void NetworkSystem::update(float deltaTime) {
                     if (snapshot.networkId == localPlayerId_) {
                         if (localPlayer_) {
                             glm::vec3 currentClientPos = localPlayer_->getPosition();
-                            glm::vec3 historicalPos = currentClientPos;
 
-                            // 1. Find where the client WAS when the server processed this
-                            auto it = std::find_if(localHistory_.begin(), localHistory_.end(),
-                                [&](const PlayerHistory& h) { return h.sequenceNumber == snapshot.lastProcessedInputSequence; });
-                            
-                            if (it != localHistory_.end()) {
-                                historicalPos = it->position;
-                                localHistory_.erase(localHistory_.begin(), it); // Clear older history
-                            }
+                            // The server position with the client's authoritative Y.
+                            glm::vec3 serverPos = glm::vec3(snapshot.position.x,
+                                                             currentClientPos.y,
+                                                             snapshot.position.z);
 
-                            // 2. Compare Server Past vs Client Past
-                            glm::vec3 diff = snapshot.position - historicalPos;
-                            diff.y = 0.0f; // Exclude Y
+                            // ---- Already in server-authoritative LERP mode ----
+                            // While lerping (e.g. mid-pathfinding), skip history-based
+                            // reconciliation entirely.  Just advance the target to the
+                            // latest server position and let the per-frame lerp catch up.
+                            if (hasReconcileTarget_) {
+                                reconcileTarget_ = serverPos;
+                                localHistory_.clear();
+                            } else {
+                                // ---- Normal history-based reconciliation ----
+                                glm::vec3 historicalPos = currentClientPos;
 
-                            float distSq = glm::dot(diff, diff);
-                            if (distSq > kReconcileThreshSq) {
-                                // 3. We actually desynced! Apply the mathematical error to our CURRENT position.
-                                glm::vec3 correctedPos = currentClientPos + diff;
-                                correctedPos.y = currentClientPos.y; // Preserve client Y
-                                
-                                localPlayer_->setPosition(correctedPos);
+                                // 1. Find where the client WAS when the server processed this
+                                auto it = std::find_if(localHistory_.begin(), localHistory_.end(),
+                                    [&](const PlayerHistory& h) { return h.sequenceNumber == snapshot.lastProcessedInputSequence; });
 
-                                if (physicsSystem_) {
-                                    physicsSystem_->warpPlayer(correctedPos);
+                                if (it != localHistory_.end()) {
+                                    historicalPos = it->position;
+                                    // Clear this entry and all older ones so they cannot
+                                    // re-trigger reconciliation on future snapshots.
+                                    localHistory_.erase(localHistory_.begin(), std::next(it));
                                 }
 
-                                std::cout << "[NetworkSystem] Real Reconcile Triggered.\n"
-                                          << "   -> Client Hist Pos: (" << historicalPos.x << ", " << historicalPos.z << ")\n"
-                                          << "   -> Server Snap Pos: (" << snapshot.position.x << ", " << snapshot.position.z << ")\n"
-                                          << "   -> XZ Discrepancy : (" << diff.x << ", " << diff.z << ")\n";
+                                // 2. Compare Server Past vs Client Past
+                                glm::vec3 diff = snapshot.position - historicalPos;
+                                diff.y = 0.0f; // Exclude Y
+
+                                float distSq = glm::dot(diff, diff);
+                                if (distSq > kReconcileThreshSq) {
+                                    // Determine whether the client was stationary when the
+                                    // server processed this input.  If the client did not
+                                    // move (clientMovedSq ≈ 0), the server position delta
+                                    // is authoritative (e.g. pathfinding, knockback).
+                                    // Start LERP toward the server position instead of
+                                    // hard-snapping (which would cause a visible skip).
+                                    glm::vec3 clientDelta = currentClientPos - historicalPos;
+                                    clientDelta.y = 0.0f;
+                                    float clientMovedSq = glm::dot(clientDelta, clientDelta);
+
+                                    if (clientMovedSq <= kReconcileThreshSq) {
+                                        // Server-authoritative movement: begin smooth LERP.
+                                        reconcileTarget_    = serverPos;
+                                        hasReconcileTarget_ = true;
+                                        localHistory_.clear();
+                                    } else {
+                                        // 3. Genuine prediction error: apply the mathematical
+                                        //    error to our CURRENT position.
+                                        glm::vec3 correctedPos = currentClientPos + diff;
+                                        correctedPos.y = currentClientPos.y; // Preserve client Y
+
+                                        localPlayer_->setPosition(correctedPos);
+
+                                        if (physicsSystem_) {
+                                            physicsSystem_->warpPlayer(correctedPos);
+                                        }
+
+                                        std::cout << "[NetworkSystem] Real Reconcile Triggered.\n"
+                                                  << "   -> Client Hist Pos: (" << historicalPos.x << ", " << historicalPos.z << ")\n"
+                                                  << "   -> Server Snap Pos: (" << snapshot.position.x << ", " << snapshot.position.z << ")\n"
+                                                  << "   -> XZ Discrepancy : (" << diff.x << ", " << diff.z << ")\n";
+                                    }
+                                }
                             }
                         }
                     } else {

@@ -993,6 +993,16 @@ int main() {
             npcManager.setPauseTimer(npcId, duration);
         });
 
+    // -------------------------------------------------------------------------
+    // Wire engine.Transform.lookAt() in interaction scripts to ServerNPCManager
+    // so that the new facing direction is propagated into the NPC's AI state.
+    // Without this, the AI tick overwrites the rotation on the very next frame.
+    // -------------------------------------------------------------------------
+    interactionLua.setNpcYawCallback(
+        [&npcManager](uint32_t npcId, float yaw) {
+            npcManager.setNpcCameraYaw(npcId, yaw);
+        });
+
     // Populate networkIdToEntity for all static world objects (trees, stalls, lamps)
     // that were loaded from baked chunks before this map existed.  Static entities
     // have the high bit set in their NetworkIdComponent::id (see generateStaticId).
