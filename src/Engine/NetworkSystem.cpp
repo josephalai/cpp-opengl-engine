@@ -259,7 +259,9 @@ void NetworkSystem::update(float deltaTime) {
                             
                             if (it != localHistory_.end()) {
                                 historicalPos = it->position;
-                                localHistory_.erase(localHistory_.begin(), it); // Clear older history
+                                // Clear this entry and all older ones so they cannot
+                                // re-trigger reconciliation on future snapshots.
+                                localHistory_.erase(localHistory_.begin(), std::next(it));
                             }
 
                             // 2. Compare Server Past vs Client Past
@@ -268,20 +270,46 @@ void NetworkSystem::update(float deltaTime) {
 
                             float distSq = glm::dot(diff, diff);
                             if (distSq > kReconcileThreshSq) {
-                                // 3. We actually desynced! Apply the mathematical error to our CURRENT position.
-                                glm::vec3 correctedPos = currentClientPos + diff;
-                                correctedPos.y = currentClientPos.y; // Preserve client Y
-                                
-                                localPlayer_->setPosition(correctedPos);
+                                // Determine whether the client was stationary when the
+                                // server processed this input.  If the client did not
+                                // move (clientMovedSq ≈ 0), the server position delta
+                                // is authoritative (e.g. pathfinding, knockback).
+                                // In that case we warp directly to the server position
+                                // and clear all stale history so subsequent snapshots
+                                // do not keep re-triggering reconciliation against
+                                // history entries recorded before the warp.
+                                glm::vec3 clientDelta = currentClientPos - historicalPos;
+                                clientDelta.y = 0.0f;
+                                float clientMovedSq = glm::dot(clientDelta, clientDelta);
 
-                                if (physicsSystem_) {
-                                    physicsSystem_->warpPlayer(correctedPos);
+                                if (clientMovedSq <= kReconcileThreshSq) {
+                                    // Server-authoritative movement (pathfinding, etc.).
+                                    // Accept the server position directly and clear history.
+                                    glm::vec3 serverPos = glm::vec3(snapshot.position.x,
+                                                                     currentClientPos.y,
+                                                                     snapshot.position.z);
+                                    localPlayer_->setPosition(serverPos);
+                                    if (physicsSystem_) {
+                                        physicsSystem_->warpPlayer(serverPos);
+                                    }
+                                    localHistory_.clear();
+                                } else {
+                                    // 3. Genuine prediction error: apply the mathematical
+                                    //    error to our CURRENT position.
+                                    glm::vec3 correctedPos = currentClientPos + diff;
+                                    correctedPos.y = currentClientPos.y; // Preserve client Y
+                                    
+                                    localPlayer_->setPosition(correctedPos);
+
+                                    if (physicsSystem_) {
+                                        physicsSystem_->warpPlayer(correctedPos);
+                                    }
+
+                                    std::cout << "[NetworkSystem] Real Reconcile Triggered.\n"
+                                              << "   -> Client Hist Pos: (" << historicalPos.x << ", " << historicalPos.z << ")\n"
+                                              << "   -> Server Snap Pos: (" << snapshot.position.x << ", " << snapshot.position.z << ")\n"
+                                              << "   -> XZ Discrepancy : (" << diff.x << ", " << diff.z << ")\n";
                                 }
-
-                                std::cout << "[NetworkSystem] Real Reconcile Triggered.\n"
-                                          << "   -> Client Hist Pos: (" << historicalPos.x << ", " << historicalPos.z << ")\n"
-                                          << "   -> Server Snap Pos: (" << snapshot.position.x << ", " << snapshot.position.z << ")\n"
-                                          << "   -> XZ Discrepancy : (" << diff.x << ", " << diff.z << ")\n";
                             }
                         }
                     } else {

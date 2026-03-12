@@ -139,6 +139,24 @@ void ServerNPCManager::setPauseTimer(uint32_t networkId, float duration) {
 }
 
 // -------------------------------------------------------------------------
+// setNpcCameraYaw — sync a new facing direction into the NPC's AI state
+// Called by the Lua engine.Transform.lookAt() binding so that the AI tick
+// on the next frame starts from the updated heading instead of overwriting
+// the rotation that lookAt just set.
+// -------------------------------------------------------------------------
+
+void ServerNPCManager::setNpcCameraYaw(uint32_t networkId, float yawDegrees) {
+    auto ait = aiStates_.find(networkId);
+    if (ait != aiStates_.end()) {
+        ait->second.cameraYaw = yawDegrees;
+    }
+    auto lit = luaAIStates_.find(networkId);
+    if (lit != luaAIStates_.end()) {
+        lit->second.cameraYaw = yawDegrees;
+    }
+}
+
+// -------------------------------------------------------------------------
 // initLua — initialise the Lua scripting engine and load AI scripts
 // -------------------------------------------------------------------------
 

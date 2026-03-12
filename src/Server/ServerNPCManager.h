@@ -97,6 +97,13 @@ public:
     /// can freeze an NPC in place during dialogue.
     void setPauseTimer(uint32_t networkId, float duration);
 
+    /// Update the AI heading for a specific NPC.
+    /// Called by the Lua engine.Transform.lookAt() callback so that the new
+    /// facing direction is propagated into both NPCAIState::cameraYaw and
+    /// LuaAIState::cameraYaw.  Without this the AI tick overwrites the rotation
+    /// set by lookAt on the very next frame.
+    void setNpcCameraYaw(uint32_t networkId, float yawDegrees);
+
 private:
     /// Per-NPC AI runtime data, keyed by networkId.
     std::unordered_map<uint32_t, NPCAIState> aiStates_;
