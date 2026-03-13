@@ -123,6 +123,14 @@ void NetworkSystem::update(float deltaTime) {
             localPlayer_->setPosition(newPos);
             if (physicsSystem_) physicsSystem_->warpPlayer(newPos);
 
+            // Face direction of travel.
+            // Set the ECS TransformComponent rotation — AnimationSystem reads
+            // this for the visual model. localPlayer_->getRotation() (which the
+            // camera orbits) stays untouched.
+            if (auto* tc = registry_.try_get<TransformComponent>(localPlayer_->getHandle())) {
+                tc->rotation.y = reconcileTargetYaw_;
+            }
+
             // Report the actual per-frame speed so AnimationSystem plays Run.
             if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
                 float moved = glm::length(newPos - curr);
@@ -357,6 +365,7 @@ void NetworkSystem::update(float deltaTime) {
                                     if (clientMovedSq <= kReconcileThreshSq) {
                                         // Server-authoritative movement: begin smooth LERP.
                                         reconcileTarget_    = serverPos;
+                                        reconcileTargetYaw_ = snapshot.rotation.y;
                                         hasReconcileTarget_ = true;
                                         localHistory_.clear();
                                     } else {

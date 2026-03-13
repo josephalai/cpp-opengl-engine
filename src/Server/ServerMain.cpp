@@ -1241,17 +1241,33 @@ int main() {
 
                                 // Step 6.1: Attach ActionStateComponent to the player.
                                 // This starts the interaction state machine.
-                                registry.emplace_or_replace<ActionStateComponent>(
-                                    playerEntity,
-                                    ActionStateComponent{targetEntity, 0.0f, false});
 
-                                // Run A* to find a path from player to target.
-                                auto path = navMesh.findPath(playerTC.position, targetTC.position);
-                                if (!path.empty()) {
-                                    // Assign PathfindingComponent for auto-steering.
-                                    registry.emplace_or_replace<PathfindingComponent>(
+                                // --- NEW: Check if already within interact range ---
+                                auto& targetInteract = registry.get<InteractableComponent>(targetEntity);
+                                float dist = glm::distance(
+                                    glm::vec3(playerTC.position.x, 0.0f, playerTC.position.z),
+                                    glm::vec3(targetTC.position.x, 0.0f, targetTC.position.z));
+
+                                if (dist <= targetInteract.interactRange) {
+                                    // Already in range — skip pathfinding, go straight
+                                    // to the interaction state machine.
+                                    registry.emplace_or_replace<ActionStateComponent>(
                                         playerEntity,
-                                        PathfindingComponent{path, 0, 0.1f, true});
+                                        ActionStateComponent{targetEntity, 0.0f, true});
+                                    // isArrived = true  ← skips the walk phase entirely
+                                } else {
+                                    // Normal case: need to walk to the target.
+                                    registry.emplace_or_replace<ActionStateComponent>(
+                                        playerEntity,
+                                        ActionStateComponent{targetEntity, 0.0f, false});
+
+                                    // Run A* to find a path from player to target.
+                                    auto path = navMesh.findPath(playerTC.position, targetTC.position);
+                                    if (!path.empty()) {
+                                        registry.emplace_or_replace<PathfindingComponent>(
+                                            playerEntity,
+                                            PathfindingComponent{path, 0, 0.1f, true});
+                                    }
                                 }
                             }
                         }

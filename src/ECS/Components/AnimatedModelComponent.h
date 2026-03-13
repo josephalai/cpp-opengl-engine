@@ -24,6 +24,7 @@ struct AnimatedModelComponent {
     /// Pure visual offset applied on top of position at render time.
     /// Does not affect physics. Use Up/Down arrows at runtime to find the
     /// correct value, then bake it into scene.json or the prefab.
+    glm::vec3            lastPosition = glm::vec3(0.0f);
     glm::vec3            modelOffset = glm::vec3(0.0f);
     /// Per-prefab model-space rotation correction applied in place of the
     /// automatic coordinateCorrection from the Assimp loader.  Used to fix
@@ -40,6 +41,8 @@ struct AnimatedModelComponent {
     /// AnimatedRenderer multiplies ONLY this matrix (not coordinateCorrection)
     /// so the two corrections are never compounded.
     glm::mat4            modelRotationMat = glm::mat4(1.0f);
+    float                autoWalkYaw = 0.0f;
+    bool                 useAutoWalkYaw = false;
     float                scale       = 1.0f;
     /// True only for the local client's own character (marked by Engine after load).
     /// False for remote entities so AnimationSystem does not overwrite their

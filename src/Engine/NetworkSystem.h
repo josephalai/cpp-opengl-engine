@@ -114,6 +114,7 @@ private:
     static constexpr float kReconcileThreshSq = 0.1f; ///< squared-distance threshold
     static constexpr float kReconcileLerp     = 0.3f; ///< alpha per frame toward server
     glm::vec3 reconcileTarget_    = {};
+    float     reconcileTargetYaw_ = 0.0f;
     bool      hasReconcileTarget_ = false;
     PhysicsSystem* physicsSystem_ = nullptr;
 };
