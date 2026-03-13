@@ -50,10 +50,15 @@ struct CameraConfig {
     float maxZoomDistance   = 50.0f;
     float pitchOffset      = 4.0f;
 
-    /// Speed (units/second) at which the detach→attach transition blend
-    /// fraction moves.  Lower values = slower, smoother transition.
-    /// 1.5 → ~0.67 s transition; 3.0 → ~0.33 s (old hardcoded value).
+    /// Retained for JSON backward-compatibility; no longer drives visual
+    /// speed — all orbit transition speed is controlled by rotation360Time.
     float transitionSpeed  = 1.5f;
+
+    /// Time in seconds for the camera orbit angle to complete a full 360°
+    /// automatic rotation during mode-change transitions (e.g. when clicking
+    /// an NPC and the re-attach sweep begins).  Does NOT affect mouse-driven
+    /// orbit, which always responds instantly.  Default: 1.35 s / 360°.
+    float rotation360Time  = 1.35f;
 
     /// Maximum orbit angle (degrees) either side of directly behind the
     /// player.  Clamped in attached mode so the camera can never wrap

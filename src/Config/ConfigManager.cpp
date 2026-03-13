@@ -150,6 +150,7 @@ void ConfigManager::loadClientSettings(const std::string& path) {
         client.camera.maxZoomDistance   = cam.value("max_zoom",          client.camera.maxZoomDistance);
         client.camera.pitchOffset      = cam.value("pitch_offset",      client.camera.pitchOffset);
         client.camera.transitionSpeed  = cam.value("transition_speed",  client.camera.transitionSpeed);
+        client.camera.rotation360Time  = cam.value("rotation_360_time", client.camera.rotation360Time);
         client.camera.maxOrbitAngle    = cam.value("max_orbit_angle",   client.camera.maxOrbitAngle);
     }
 

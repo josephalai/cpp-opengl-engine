@@ -94,10 +94,16 @@ private:
     /// Absolute world-space orbit angle used while in detached mode.
     float worldAngle_          = 0.0f;
 
-    /// Blend fraction: 1.0 = fully attached, 0.0 = fully detached.
-    /// Advances toward 1 or 0 at kTransitionSpeed per second so mode
-    /// changes happen smoothly rather than snapping.
+    /// Blend fraction: kept for compatibility; always snapped to 0 (detached)
+    /// or 1 (attached) — the visual smoothing is handled by currentOrbitAngle_.
     float transitionFraction_ = 1.0f;
+
+    /// The actual rendered orbit angle.  Chases effectiveOrbitAngle() at a
+    /// configurable angular speed (rotation_360_time in client_settings.json)
+    /// so automatic mode-change transitions never "blast" the camera.
+    /// Mouse-driven orbit bypasses the limiter and updates this directly.
+    float currentOrbitAngle_   = 0.0f;
+    bool  orbitAngleInitialized_ = false;
 
     /// Saved detached state captured before auto-walk began, restored on end.
     bool  autoWalkWasDetached_ = false;
@@ -113,8 +119,9 @@ private:
     /// frame, preventing the mouse from controlling the camera without a click.
     bool  escConsumedByDetach_ = false;
 
-    /// Returns the current effective orbit angle, blending between the
-    /// detached world angle and the player-relative attached angle.
+    /// Returns the logical target orbit angle for the current mode:
+    /// worldAngle_ when detached, player-yaw + angleAroundPlayer when attached.
+    /// Visual smoothing is applied separately via currentOrbitAngle_ in move().
     float effectiveOrbitAngle() const;
 
     /// Wraps an angle difference to the range [-180, +180) so that

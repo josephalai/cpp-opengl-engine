@@ -14,7 +14,7 @@
     "min_zoom": 5,
     "max_zoom": 50,
     "pitch_offset": 4,
-    "transition_speed": 1.5,
+    "rotation_360_time": 1.35,
     "max_orbit_angle": 150.0
   }
 }
