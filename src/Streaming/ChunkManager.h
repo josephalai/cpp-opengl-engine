@@ -88,6 +88,10 @@ private:
     int loadingRadius_ = 2;   ///< Loading: trigger background I/O.
     int unloadRadius_  = 3;   ///< Unloading: destroy entities & free buffers.
 
+    /// Maximum number of GL upload tasks to drain per frame when an
+    /// active-radius chunk is still loading asynchronously.
+    static constexpr int kUrgentDrainLimit = 32;
+
     /// Phase 4 Step 4.2.1 — Background thread pool for async chunk I/O.
     JobQueue                                        jobQueue_{2};
     std::mutex                                      pendingMutex_;

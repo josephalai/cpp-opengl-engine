@@ -51,8 +51,8 @@ struct InputStateComponent {
     float cameraYaw    = 0.0f;  ///< Absolute camera yaw (degrees) for movement direction.
 
     // --- Dependencies (non-owning pointers, set during init) ---
-    Terrain*               terrain     = nullptr;
-    std::vector<Terrain*>* allTerrains = nullptr; ///< Live list of streamed tiles (Engine::allTerrains).
+    Terrain*               terrain       = nullptr;
+    std::vector<Terrain*>* allTerrains   = nullptr; ///< Live list of streamed tiles (Engine::allTerrains).
     PhysicsSystem*         physicsSystem = nullptr;
 
     // --- EventBus mode flag ---

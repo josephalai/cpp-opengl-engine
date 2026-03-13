@@ -690,15 +690,6 @@ void Engine::buildSystems() {
     systems.push_back(std::make_unique<InputSystem>(
         playerCamera, primaryTerrain, picker, sampleModifiedGui, pNameText, &editorState_));
 
-    // PlayerMovementSystem — ECS replacement for InputComponent::update().
-    // Runs after InputSystem (camera) and PhysicsSystem, reads InputStateComponent.
-    // init() subscribes to PlayerMoveCommandEvent on the EventBus.
-    {
-        auto pms = std::make_unique<PlayerMovementSystem>(registry);
-        pms->init();
-        systems.push_back(std::move(pms));
-    }
-
     // Build the chunk manager from the first loaded terrain's texture config.
     // Initial scene entities are registered so they appear inside their chunk.
 
@@ -821,6 +812,17 @@ void Engine::buildSystems() {
         }
         systems.push_back(std::make_unique<StreamingSystem>(
             chunkManager, player, allTerrains));
+    }
+
+    // PlayerMovementSystem — ECS replacement for InputComponent::update().
+    // IMPORTANT: must run AFTER StreamingSystem so that allTerrains is
+    // refreshed with newly loaded chunks before terrain-height collision runs.
+    // Runs after InputSystem (camera), PhysicsSystem, and StreamingSystem.
+    // init() subscribes to PlayerMoveCommandEvent on the EventBus.
+    {
+        auto pms = std::make_unique<PlayerMovementSystem>(registry);
+        pms->init();
+        systems.push_back(std::move(pms));
     }
 
     // Phase 4 Step 4.2 — OriginShiftSystem: prevents float-precision jitter
