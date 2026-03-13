@@ -29,6 +29,7 @@
 #include <entt/entt.hpp>
 
 class PhysicsSystem;
+class PlayerCamera;
 
 class Player;
 
@@ -64,6 +65,12 @@ public:
     uint32_t localPlayerId() const { return localPlayerId_; }
 
     void setPhysicsSystem(PhysicsSystem* physics) { physicsSystem_ = physics; }
+
+    /// Provide the PlayerCamera so that NetworkSystem can notify it when
+    /// server-authoritative auto-walk begins or ends.  The camera
+    /// automatically enters detached mode during auto-walk and restores
+    /// the previous mode (with a smooth transition) when it ends.
+    void setPlayerCamera(PlayerCamera* cam) { playerCamera_ = cam; }
 
     /// Send an ActionRequestPacket to the server, asking it to start an
     /// interaction between the local player and the target entity.
@@ -117,6 +124,7 @@ private:
     float     reconcileTargetYaw_ = 0.0f;
     bool      hasReconcileTarget_ = false;
     PhysicsSystem* physicsSystem_ = nullptr;
+    PlayerCamera*  playerCamera_  = nullptr;
 };
 
 #endif // ENGINE_NETWORKSYSTEM_H

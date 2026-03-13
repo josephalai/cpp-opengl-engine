@@ -837,6 +837,7 @@ void Engine::buildSystems() {
         );
 
         netSys->setPhysicsSystem(physicsSystem);
+        if (playerCamera) netSys->setPlayerCamera(playerCamera);
 
         netSys->init();
 

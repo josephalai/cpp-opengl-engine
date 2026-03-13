@@ -13,6 +13,7 @@
 
 #include "NetworkSystem.h"
 #include "../Entities/Player.h"
+#include "../Entities/PlayerCamera.h"
 #include "../Physics/PhysicsSystem.h"
 #include "../Network/SharedMovement.h"
 #include "../Events/EventBus.h"
@@ -102,6 +103,7 @@ void NetworkSystem::update(float deltaTime) {
             localPlayer_->setPosition(target);
             if (physicsSystem_) physicsSystem_->warpPlayer(target);
             hasReconcileTarget_ = false;
+            if (playerCamera_) playerCamera_->setAutoWalkActive(false);
 
             // Stop animation — tell AnimationSystem we are no longer moving.
             // if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
@@ -235,6 +237,7 @@ void NetworkSystem::update(float deltaTime) {
                         if (localPlayer_) {
                             localPlayer_->setPosition(sp.position);
                             hasReconcileTarget_ = false;
+                            if (playerCamera_) playerCamera_->setAutoWalkActive(false);
                             localHistory_.clear();
                             if (physicsSystem_) physicsSystem_->warpPlayer(sp.position);
                         }
@@ -245,6 +248,7 @@ void NetworkSystem::update(float deltaTime) {
                         // first TransformSnapshot, triggering an unwanted LERP walk.
                         localHistory_.clear();
                         hasReconcileTarget_ = false;
+                        if (playerCamera_) playerCamera_->setAutoWalkActive(false);
 
                         // Already registered via WelcomePacket handling.
                         if (networkEntities_.find(localPlayerId_) ==
@@ -367,6 +371,7 @@ void NetworkSystem::update(float deltaTime) {
                                         reconcileTarget_    = serverPos;
                                         reconcileTargetYaw_ = snapshot.rotation.y;
                                         hasReconcileTarget_ = true;
+                                        if (playerCamera_) playerCamera_->setAutoWalkActive(true);
                                         localHistory_.clear();
                                     } else {
                                         // 3. Genuine prediction error: apply the mathematical

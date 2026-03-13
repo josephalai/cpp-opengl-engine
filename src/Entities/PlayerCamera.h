@@ -46,6 +46,22 @@ public:
 
     void calculateAngleAroundPlayer();
 
+    // -----------------------------------------------------------------------
+    // Detached-rotation camera mode
+    // -----------------------------------------------------------------------
+
+    /// Enable or disable detached rotation mode with a smooth transition.
+    /// In detached mode the camera orbit angle is fixed in world space and
+    /// does not follow changes to player->getRotation().y.
+    void setDetachedRotation(bool detach);
+
+    /// Called by NetworkSystem when server-authoritative auto-walk starts
+    /// or stops.  Auto-walk automatically enables detached mode and restores
+    /// the previous mode (with smooth transition) when it ends.
+    void setAutoWalkActive(bool active);
+
+    bool isDetachedRotation() const { return detachedRotation_; }
+
 private:
     float calculateHorizontalDistance() const;
 
@@ -67,6 +83,38 @@ private:
     // Normal walking speed ≈7 u/s → steady-state lag < 0.5 u (imperceptible).
     // Auto-walk LERP jumps of 2–3 u are smoothed over ~150 ms.
     static constexpr float kPivotSmoothing = 15.0f;
+
+    // -----------------------------------------------------------------------
+    // Detached-rotation state
+    // -----------------------------------------------------------------------
+
+    /// True = camera orbit is fixed in world space (doesn't follow player yaw).
+    bool  detachedRotation_    = false;
+
+    /// Absolute world-space orbit angle used while in detached mode.
+    float worldAngle_          = 0.0f;
+
+    /// Blend fraction: 1.0 = fully attached, 0.0 = fully detached.
+    /// Advances toward 1 or 0 at kTransitionSpeed per second so mode
+    /// changes happen smoothly rather than snapping.
+    float transitionFraction_ = 1.0f;
+
+    /// Saved detached state captured before auto-walk began, restored on end.
+    bool  autoWalkWasDetached_ = false;
+
+    /// True while server-authoritative auto-walk is active.
+    bool  autoWalkActive_      = false;
+
+    /// Previous-frame ESC state used for single-press edge detection.
+    bool  prevEscDown_         = false;
+
+    /// Speed at which transitionFraction_ moves (units per second).
+    /// Value of 3 → transition completes in ~0.33 s.
+    static constexpr float kTransitionSpeed = 3.0f;
+
+    /// Returns the current effective orbit angle, blending between the
+    /// detached world angle and the player-relative attached angle.
+    float effectiveOrbitAngle() const;
 
 
 };
