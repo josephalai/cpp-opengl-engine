@@ -20,13 +20,17 @@
 // On-disk binary format
 // ============================================================================
 
+static constexpr uint32_t kBakedChunkMagic   = 0x4B434842; // 'BCHK'
+static constexpr uint32_t kBakedChunkVersion = 2;
+static constexpr size_t   kMaxAliasLength    = 32;  ///< Size of BakedEntity::alias buffer.
+
 /// A single pre-baked entity to be spawned in a chunk.
 struct BakedEntity {
     uint32_t prefabId;      ///< e.g. 101 for "tree", 102 for "npc_wanderer"
     float    x, y, z;       ///< Pre-calculated absolute world position
     float    rotationY;     ///< Y-axis rotation in degrees
     float    scale;         ///< Uniform scale factor
-    char     alias[32];     ///< Fallback alias string for prefabs not in the hardcoded enum (v2+)
+    char     alias[kMaxAliasLength]; ///< Fallback alias string for prefabs not in the hardcoded enum (v2+)
 };
 
 /// Header written at the start of each chunk .dat file.
@@ -37,9 +41,6 @@ struct BakedChunkHeader {
     int32_t  gridX;         ///< Chunk grid X coordinate
     int32_t  gridZ;         ///< Chunk grid Z coordinate
 };
-
-static constexpr uint32_t kBakedChunkMagic   = 0x4B434842; // 'BCHK'
-static constexpr uint32_t kBakedChunkVersion = 2;
 
 // ============================================================================
 // Alias-to-prefabId mapping (shared between Baker and Runtime)

@@ -405,6 +405,85 @@ bool SceneLoaderJson::load(
     }
 
     // -----------------------------------------------------------------------
+    // Editor-placed entities — spawned by the Map Editor and saved in
+    // scene.json under "editor_entities".  The Y value is a literal
+    // world-space float (set by the terrain picker at placement time).
+    //
+    // Each entity receives:
+    //   - NetworkIdComponent  (deterministic ID = generateStaticId(x, z))
+    //   - ColliderComponent   (AABB from prefab physics halfExtents / radius)
+    // These are required for EntityPicker to detect right-clicks and for
+    // InputDispatcher/NetworkSystem to send the correct network ID in an
+    // ActionRequestPacket.  The entity is also added to entityAliasByHandle
+    // so that physics_bodies can wire up Bullet colliders as normal.
+    // -----------------------------------------------------------------------
+    if (root.contains("editor_entities") && root["editor_entities"].is_array()) {
+        for (auto& e : root["editor_entities"]) {
+            std::string alias = e.value("alias", "");
+            StringId aliasId(alias);
+            auto it = modelMap.find(aliasId);
+
+            float x     = e.value("x",     0.0f);
+            float z     = e.value("z",     0.0f);
+            float y     = e.value("y",     0.0f);   // world-space, already resolved
+            float ry    = e.value("ry",    0.0f);
+            float scale = e.value("scale", 1.0f);
+
+            // Resolve prefab physics halfExtents for ColliderComponent.
+            glm::vec3 physHalfExtents(0.5f);
+            bool      hasPrefabPhys = false;
+            const auto& prefab = PrefabManager::get().getPrefab(alias);
+            if (!prefab.is_null() && prefab.contains("physics")) {
+                const auto& phys = prefab["physics"];
+                if (phys.contains("halfExtents") && phys["halfExtents"].is_array()
+                        && phys["halfExtents"].size() >= 3) {
+                    physHalfExtents = glm::vec3(
+                        phys["halfExtents"][0].get<float>(),
+                        phys["halfExtents"][1].get<float>(),
+                        phys["halfExtents"][2].get<float>());
+                    hasPrefabPhys = true;
+                } else if (phys.contains("radius")) {
+                    float r2 = phys.value("radius", 0.5f);
+                    physHalfExtents = glm::vec3(r2);
+                    hasPrefabPhys = true;
+                }
+            }
+
+            auto ent = registry.create();
+            auto& tc = registry.emplace<TransformComponent>(ent);
+            tc.position = glm::vec3(x, y, z);
+            tc.rotation = glm::vec3(0.0f, ry, 0.0f);
+            tc.scale    = scale;
+
+            // Attach visual mesh if this alias has a loaded model.
+            if (it != modelMap.end()) {
+                auto& lm = it->second;
+                auto& smc       = registry.emplace<StaticModelComponent>(ent);
+                smc.model       = lm.model;
+                smc.boundingBox = new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId());
+                smc.textureIndex = 0;
+            }
+
+            // Assign deterministic network ID (matches server + EntityPicker).
+            uint32_t staticNetId = generateStaticId(x, z);
+            registry.emplace<NetworkIdComponent>(ent,
+                NetworkIdComponent{staticNetId, alias, false, 0});
+
+            // Attach ColliderComponent AABB so EntityPicker can detect clicks.
+            if (hasPrefabPhys) {
+                glm::vec3 scaledHalf = physHalfExtents * scale;
+                auto* box = new BoundingBox(nullptr, glm::vec3(1.0f));
+                box->setAABB(-scaledHalf, scaledHalf);
+                registry.emplace<ColliderComponent>(ent, ColliderComponent{box});
+            }
+
+            // Register in entityAliasByHandle so physics_bodies can set up
+            // Bullet collision for local-player physics (client-side Bullet).
+            entityAliasByHandle[aliasId].push_back(ent);
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Assimp entities
     // -----------------------------------------------------------------------
     if (root.contains("assimp") && root["assimp"].is_array()) {

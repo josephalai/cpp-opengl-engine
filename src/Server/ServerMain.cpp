@@ -55,6 +55,7 @@
 #include <csignal>
 #include <atomic>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <algorithm>
 #include <random>
@@ -742,7 +743,153 @@ static void loadHeadlessScene(entt::registry& registry,
 // physics capsule, and all other components defined in the prefab file.
 
 // ---------------------------------------------------------------------------
-// main
+// Supplement: load editor_entities from scene.json even when baked chunk
+// data already exists.
+//
+// The Map Editor writes placements to scene.json["editor_entities"] but the
+// AssetBaker may not have been re-run after the latest edits.  This function
+// is called AFTER loadBakedChunkEntities so that:
+//  - Entities already present in baked data are skipped (dedup via registry).
+//  - Newly added editor entities that are not yet baked get spawned anyway.
+//
+// Physics config is read from physBodies (parsed from scene.json
+// "physics_bodies"), falling back to the prefab JSON if the alias is absent.
+// ---------------------------------------------------------------------------
+static void loadEditorEntitiesFromScene(
+        entt::registry& registry,
+        PhysicsSystem& physics,
+        const std::unordered_map<std::string, PhysCfg>& physBodies,
+        const std::string& jsonPath) {
+    auto bytes = FileSystem::readAllBytes(jsonPath);
+    if (bytes.empty()) return;
+
+    nlohmann::json root;
+    try {
+        root = nlohmann::json::parse(bytes.begin(), bytes.end());
+    } catch (const std::exception& ex) {
+        std::cerr << "[Server] loadEditorEntitiesFromScene: failed to parse "
+                  << jsonPath << ": " << ex.what() << "\n";
+        return;
+    }
+
+    if (!root.contains("editor_entities") || !root["editor_entities"].is_array())
+        return;
+
+    // Build a set of existing static network IDs so we can skip duplicates.
+    std::unordered_set<uint32_t> existingStaticIds;
+    {
+        auto view = registry.view<NetworkIdComponent>();
+        for (auto entity : view) {
+            const auto& nid = view.get<NetworkIdComponent>(entity);
+            if (nid.id & 0x80000000u)
+                existingStaticIds.insert(nid.id);
+        }
+    }
+
+    int spawned = 0;
+    for (auto& e : root["editor_entities"]) {
+        std::string alias = e.value("alias", "");
+        float x     = e.value("x",     0.0f);
+        float z     = e.value("z",     0.0f);
+        float y     = e.value("y",     0.0f);
+        float ry    = e.value("ry",    0.0f);
+        float scale = e.value("scale", 1.0f);
+
+        uint32_t staticNetId = generateStaticId(x, z);
+        if (existingStaticIds.count(staticNetId)) continue; // already in baked data
+
+        // Resolve physics config: prefer scene.json physics_bodies, then prefab JSON.
+        PhysCfg cfg;
+        bool hasCfg = false;
+        auto it = physBodies.find(alias);
+        if (it != physBodies.end()) {
+            cfg    = it->second;
+            hasCfg = true;
+        } else {
+            const auto& prefab = PrefabManager::get().getPrefab(alias);
+            if (!prefab.is_null() && prefab.contains("physics")) {
+                const auto& phys = prefab["physics"];
+                cfg.type        = phys.value("type",        "static");
+                cfg.shape       = phys.value("shape",       "box");
+                cfg.friction    = phys.value("friction",    0.5f);
+                cfg.restitution = phys.value("restitution", 0.3f);
+                cfg.mass        = phys.value("mass",        0.0f);
+                cfg.radius      = phys.value("radius",      0.5f);
+                cfg.height      = phys.value("height",      1.8f);
+                if (phys.contains("halfExtents") && phys["halfExtents"].is_array()
+                        && phys["halfExtents"].size() >= 3) {
+                    cfg.halfExtents = glm::vec3(
+                        phys["halfExtents"][0].get<float>(),
+                        phys["halfExtents"][1].get<float>(),
+                        phys["halfExtents"][2].get<float>());
+                }
+                hasCfg = true;
+            }
+        }
+
+        if (!hasCfg) {
+            std::cout << "[Server] WARNING: editor_entity '" << alias
+                      << "' has no physics config — spawning without Bullet body.\n";
+        }
+
+        auto entity = registry.create();
+        registry.emplace<TransformComponent>(entity,
+            TransformComponent{glm::vec3(x, y, z), glm::vec3(0.0f, ry, 0.0f), scale});
+
+        if (hasCfg) {
+            ColliderShape colShape = ColliderShape::Box;
+            if (cfg.shape == "sphere")  colShape = ColliderShape::Sphere;
+            if (cfg.shape == "capsule") colShape = ColliderShape::Capsule;
+            glm::vec3 scaledHalfExtents = cfg.halfExtents * scale;
+            float     scaledRadius      = cfg.radius      * scale;
+            float     scaledHeight      = cfg.height      * scale;
+            PhysicsBodyDef def;
+            def.type        = BodyType::Static;
+            def.shape       = colShape;
+            def.mass        = 0.0f;
+            def.halfExtents = scaledHalfExtents;
+            def.radius      = scaledRadius;
+            def.height      = scaledHeight;
+            def.friction    = cfg.friction;
+            def.restitution = cfg.restitution;
+            physics.addDynamicBody(entity, def);
+        }
+
+        // Stamp NetworkIdComponent and InteractableComponent.
+        if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
+            nid->id    = staticNetId;
+            nid->isNPC = false;
+        } else {
+            registry.emplace<NetworkIdComponent>(entity,
+                NetworkIdComponent{staticNetId, alias, false, 0});
+        }
+
+        const auto& prefab = PrefabManager::get().getPrefab(alias);
+        if (!prefab.is_null()) {
+            const nlohmann::json* icJson = nullptr;
+            if (prefab.contains("InteractableComponent"))
+                icJson = &prefab["InteractableComponent"];
+            else if (prefab.contains("components") &&
+                     prefab["components"].contains("InteractableComponent"))
+                icJson = &prefab["components"]["InteractableComponent"];
+            if (icJson && !registry.all_of<InteractableComponent>(entity)) {
+                auto& ic      = registry.emplace<InteractableComponent>(entity);
+                ic.scriptPath    = icJson->value("script",         "");
+                ic.interactRange = icJson->value("interact_range", 1.5f);
+            }
+        }
+
+        existingStaticIds.insert(staticNetId); // prevent double-spawn if (x,z) repeats
+        ++spawned;
+    }
+
+    if (spawned > 0) {
+        std::cout << "[Server] Supplemented " << spawned
+                  << " editor_entities from scene.json (not in baked data).\n";
+    }
+}
+
+
 // ---------------------------------------------------------------------------
 
 int main() {
@@ -847,11 +994,8 @@ int main() {
     // Physics body configs — parsed once from scene.json and reused by the
     // baked-chunk loader (loadBakedChunkEntities) for spawning Bullet colliders.
     // -------------------------------------------------------------------------
-    std::unordered_map<std::string, PhysCfg> physBodiesCfg;
-    {
-        std::string scenePath = FileSystem::Scene("scene.json");
-        physBodiesCfg = parsePhysBodies(scenePath);
-    }
+    const std::string scenePath = FileSystem::Scene("scene.json");
+    std::unordered_map<std::string, PhysCfg> physBodiesCfg = parsePhysBodies(scenePath);
 
     // -------------------------------------------------------------------------
     // GEA Step 5.1 — Baked Chunk Entity Tracking
@@ -884,9 +1028,15 @@ int main() {
     if (totalBakedEntities == 0) {
         std::cout << "[Server] No baked chunk data found — falling back to "
                      "scene.json direct load.\n";
-        loadHeadlessScene(registry, physicsSystem, terrainMgr,
-                          FileSystem::Scene("scene.json"));
+        loadHeadlessScene(registry, physicsSystem, terrainMgr, scenePath);
     }
+
+    // Always supplement editor_entities from scene.json.
+    // The Map Editor writes to scene.json immediately on save, but AssetBaker
+    // may not have been re-run.  loadEditorEntitiesFromScene deduplicates
+    // against whatever was already loaded (baked or headless), so it is safe
+    // to call unconditionally.
+    loadEditorEntitiesFromScene(registry, physicsSystem, physBodiesCfg, scenePath);
 
     // -------------------------------------------------------------------------
     // Phase 4 — Spatial Partitioning Grid (Interest Management)

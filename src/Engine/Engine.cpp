@@ -600,29 +600,43 @@ entt::entity Engine::onNetworkSpawn(uint32_t networkId,
 
     // Add a ColliderComponent so EntityPicker::pick() can find this entity
     // via Ray-AABB when the player clicks on it.  The AABB is derived from the
-    // prefab's physics capsule dimensions and scaled to match the visual size
-    // (amc.scale) so that clicking anywhere on the visible character is a hit.
+    // prefab's physics dimensions and scaled to match the visual size.
     {
         const auto& prefab = PrefabManager::get().getPrefab(modelType);
         if (!prefab.is_null() && prefab.contains("physics")) {
             const auto& phys = prefab["physics"];
-            float r = phys.value("radius", 0.5f);
-            float h = phys.value("height", 1.8f);
 
-            // Use the visual (AnimatedModelComponent) scale so the AABB
-            // covers what the player actually sees on screen.
-            float s = 1.0f;
-            if (auto* amc = registry.try_get<AnimatedModelComponent>(e)) {
-                s = amc->scale;
+            auto* box = new BoundingBox(nullptr, glm::vec3(1.0f));
+
+            if (phys.contains("halfExtents") && phys["halfExtents"].is_array()
+                    && phys["halfExtents"].size() >= 3) {
+                // Static box-shaped prefab (e.g. tree, fluffytree, stall).
+                // Use the prefab's halfExtents directly — they are already
+                // in model-local space and match what the artist intended.
+                glm::vec3 half(
+                    phys["halfExtents"][0].get<float>(),
+                    phys["halfExtents"][1].get<float>(),
+                    phys["halfExtents"][2].get<float>());
+                box->setAABB(-half, half);
+            } else {
+                // Capsule/sphere prefab (e.g. player, NPC).
+                // Use radius and height, scaled to match visual size.
+                float r = phys.value("radius", 0.5f);
+                float h = phys.value("height", 1.8f);
+
+                // Use the visual (AnimatedModelComponent) scale so the AABB
+                // covers what the player actually sees on screen.
+                float s = 1.0f;
+                if (auto* amc = registry.try_get<AnimatedModelComponent>(e)) {
+                    s = amc->scale;
+                }
+
+                // Bottom of the AABB sits at the entity origin (ground level);
+                // top at h*s — the full visual character height.
+                box->setAABB(glm::vec3(-r * s, 0.0f,  -r * s),
+                             glm::vec3( r * s, h * s,   r * s));
             }
 
-            // Bottom of the AABB sits at the entity origin (ground level);
-            // top at h*s — the full visual character height.
-            // Previously used symmetric halfExtents which put half the box
-            // underground, making the upper body impossible to click.
-            auto* box = new BoundingBox(nullptr, glm::vec3(1.0f));
-            box->setAABB(glm::vec3(-r * s, 0.0f,  -r * s),
-                         glm::vec3( r * s, h * s,   r * s));
             registry.emplace_or_replace<ColliderComponent>(e, ColliderComponent{box});
         }
     }
@@ -726,8 +740,11 @@ void Engine::buildSystems() {
 
             chunkManager->setEntityCallback(
                 [this, generateStaticId](const BakedEntity& be, int cx, int cz) {
-                    // Use the well-known BakedPrefab mapping (ChunkData.h)
+                    // Use the well-known BakedPrefab mapping (ChunkData.h), falling
+                    // back to the embedded alias string for prefabs not in the enum.
                     std::string alias = BakedPrefab::toAlias(be.prefabId);
+                    if (alias.empty() && be.alias[0] != '\0')
+                        alias = std::string(be.alias);
                     if (alias.empty()) {
                         return;
                     }
