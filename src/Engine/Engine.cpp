@@ -699,6 +699,12 @@ void Engine::buildSystems() {
                                         primaryTerrain->getBlendMap(),
                                         terrainHeightmapFile);
 
+        chunkManager->setTerrainLoadCallback([this](Terrain* newlyLoadedTerrain) {
+            if (this->physicsSystem) {
+                this->physicsSystem->addTerrainCollider(newlyLoadedTerrain);
+            }
+        });
+
         // GEA Phase 5.4 — Wire the ChunkManager's spawn callback.
         // When a chunk streams in, each baked entity is routed here:
         //   - If the prefab has "render_mode": "instanced", push its

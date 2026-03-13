@@ -139,14 +139,17 @@ void ChunkManager::update(const glm::vec3& playerPos) {
                          baked = std::move(bakedEntities)]() mutable {
                             chunk->finalizeAsync(data, loader_, texPack_, blendMap_);
 
-                            // ---> ADD THIS LOG <---
                             std::cout << "[ChunkManager] STREAMED IN Chunk [" 
                                       << chunk->gridX << ", " << chunk->gridZ << "]\n";
 
-                            // GEA Step 5.1 — Spawn baked entities on the main
                             if (chunk->state == StreamingChunk::State::LOADED) {
                                 fireBakedSpawns(baked, chunk->gridX, chunk->gridZ);
                                 chunk->bakedSpawned = true;
+                                
+                                // ---> NEW CODE: Tell the physics system the ground is ready!
+                                if (terrainLoadCallback_ && chunk->terrain) {
+                                    terrainLoadCallback_(chunk->terrain);
+                                }
                             }
                         });
                 });
