@@ -14,6 +14,9 @@
 #include "../ECS/Components/AnimatedModelComponent.h"
 #include "../ECS/Components/StaticModelComponent.h"
 #include "../ECS/Components/TransformComponent.h"
+#include "../ECS/Components/NetworkIdComponent.h"
+#include "../ECS/Components/ColliderComponent.h"
+#include "../Config/PrefabManager.h"
 #include "../Entities/Entity.h"
 #include "../Util/FileSystem.h"
 #include "../RenderEngine/DisplayManager.h"
@@ -23,6 +26,7 @@
 #include "../Guis/Text/FontMeshCreator/TextMeshData.h"
 #include "../Toolbox/Color.h"
 #include "../Animation/AnimationLoader.h"
+#include "../BoundingBox/BoundingBox.h"
 #include "StringId.h"
 
 #include <nlohmann/json.hpp>
@@ -62,6 +66,14 @@ glm::vec3 gRandomPosition(Terrain* terrain, float yOffset = 0.0f) {
 glm::vec3 gRandomRotation() {
     float ry = (gRandomFloat() * 100.f - 50.f) * 180.0f;
     return glm::vec3(0.0f, ry, 0.0f);
+}
+
+// Deterministic static entity ID — mirrors ServerMain::generateStaticId exactly.
+// Both client and server use this to produce matching IDs for the same world object.
+inline uint32_t generateStaticId(float x, float z) {
+    uint32_t ux = static_cast<uint32_t>(std::round(x * 10.0f) + 2000000.0f) & 0x7FFF;
+    uint32_t uz = static_cast<uint32_t>(std::round(z * 10.0f) + 2000000.0f) & 0x7FFF;
+    return 0x80000000u | (ux << 15) | uz;
 }
 
 // Parse a JSON y-value: either a float or a string like "terrain" / "terrain+3".
@@ -293,11 +305,104 @@ bool SceneLoaderJson::load(
     }
 
     // -----------------------------------------------------------------------
-    // Random entities — REMOVED (GEA Phase 5.4, Step 3)
-    // Entity placement is now driven entirely by baked .dat files produced
-    // by the AssetBaker.  The client boots empty and populates the world
-    // as chunks stream in via the ChunkManager.
+    // Random entities — spawned using a deterministic mt19937 PRNG so that
+    // every client produces exactly the same world positions as the server
+    // (ServerMain::loadHeadlessScene uses the same seed and draw order).
+    //
+    // Each entity with a "physics" block in its prefab also receives:
+    //   - NetworkIdComponent  (deterministic ID = generateStaticId(x, z))
+    //   - ColliderComponent   (AABB from prefab physics halfExtents)
+    // These are required for EntityPicker to detect right-clicks on trees,
+    // and for InputDispatcher/NetworkSystem to send the correct network ID
+    // in an ActionRequestPacket.
     // -----------------------------------------------------------------------
+    if (root.contains("random") && root["random"].is_array()) {
+        unsigned int seed = root.value("random_seed", 1u);
+        std::mt19937 rng(seed);
+        std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
+        auto randF = [&]() { return dist01(rng); };
+
+        for (auto& r : root["random"]) {
+            std::string alias    = r.value("alias",    "");
+            int         count    = r.value("count",    0);
+            float       scaleMin = r.value("scaleMin", 0.75f);
+            float       scaleMax = r.value("scaleMax", 1.5f);
+            bool        useAtlas = r.value("atlas",    false);
+
+            StringId aliasId(alias);
+            auto it = modelMap.find(aliasId);
+
+            // Resolve prefab physics halfExtents for ColliderComponent (EntityPicker).
+            glm::vec3 physHalfExtents(0.5f);
+            bool      hasPrefabPhys = false;
+            const auto& prefab = PrefabManager::get().getPrefab(alias);
+            if (!prefab.is_null() && prefab.contains("physics")) {
+                const auto& phys = prefab["physics"];
+                if (phys.contains("halfExtents") && phys["halfExtents"].is_array()
+                        && phys["halfExtents"].size() >= 3) {
+                    physHalfExtents = glm::vec3(
+                        phys["halfExtents"][0].get<float>(),
+                        phys["halfExtents"][1].get<float>(),
+                        phys["halfExtents"][2].get<float>());
+                    hasPrefabPhys = true;
+                } else if (phys.contains("radius")) {
+                    float r2 = phys.value("radius", 0.5f);
+                    physHalfExtents = glm::vec3(r2);
+                    hasPrefabPhys = true;
+                }
+            }
+
+            for (int i = 0; i < count; ++i) {
+                // Consume draws in identical order to ServerMain and AssetBaker:
+                // draw 1: x  draw 2: z  draw 3: ry  draw 4: scale  [draw 5: atlas]
+                float rx = randF();
+                float rz = randF();
+                float rr = randF();
+                float rs = randF();
+                if (useAtlas) randF(); // atlas index — consume to stay in sync
+
+                float x  = std::floor(rx * 1500.f - 800.f);
+                float z  = std::floor(rz * -800.f);
+                float y  = primaryTerrain
+                    ? primaryTerrain->getHeightOfTerrain(x, z) : 0.0f;
+                float ry = (rr * 100.f - 50.f) * 180.0f;
+
+                // Mirror gRandomScale() algorithm for bit-identical results.
+                float multiplier = (scaleMax > 1.0f) ? std::ceil(scaleMax) : 1.0f;
+                float scale = rs * multiplier;
+                if (scale < scaleMin) scale = scaleMin;
+                if (scale > scaleMax) scale = scaleMax;
+
+                auto ent = registry.create();
+                auto& tc = registry.emplace<TransformComponent>(ent);
+                tc.position = glm::vec3(x, y, z);
+                tc.rotation = glm::vec3(0.0f, ry, 0.0f);
+                tc.scale    = scale;
+
+                // Attach visual mesh if this alias has a loaded model.
+                if (it != modelMap.end()) {
+                    auto& lm = it->second;
+                    auto& smc       = registry.emplace<StaticModelComponent>(ent);
+                    smc.model       = lm.model;
+                    smc.boundingBox = new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId());
+                    smc.textureIndex = 0;
+                }
+
+                // Assign deterministic network ID (matches server + EntityPicker).
+                uint32_t staticNetId = generateStaticId(x, z);
+                registry.emplace<NetworkIdComponent>(ent,
+                    NetworkIdComponent{staticNetId, alias, false, 0});
+
+                // Attach ColliderComponent AABB so EntityPicker can detect clicks.
+                if (hasPrefabPhys) {
+                    glm::vec3 scaledHalf = physHalfExtents * scale;
+                    auto* box = new BoundingBox(nullptr, glm::vec3(1.0f));
+                    box->setAABB(-scaledHalf, scaledHalf);
+                    registry.emplace<ColliderComponent>(ent, ColliderComponent{box});
+                }
+            }
+        }
+    }
 
     // -----------------------------------------------------------------------
     // Assimp entities

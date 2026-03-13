@@ -132,8 +132,13 @@ void InputDispatcher::update(float /*deltaTime*/) {
         PlayerMoveCommandEvent moveCmd{};
         moveCmd.forward     = InputMaster::isActionDown("MoveForward")  ?  1.0f
                             : InputMaster::isActionDown("MoveBackward") ? -1.0f : 0.0f;
-        moveCmd.turn        = InputMaster::isActionDown("MoveLeft")     ?  1.0f
+        // A/D are strafe keys in camera-relative movement.
+        // +1 = strafe left (A), -1 = strafe right (D).
+        moveCmd.strafe      = InputMaster::isActionDown("MoveLeft")     ?  1.0f
                             : InputMaster::isActionDown("MoveRight")    ? -1.0f : 0.0f;
+        // Camera::Yaw is kept in sync with PlayerCamera::orbitYaw_ each frame
+        // by PlayerCamera::calculateCameraPosition so we can read it here.
+        moveCmd.cameraYaw   = Camera::Yaw;
         moveCmd.jump        = InputMaster::isActionDown("Jump");
         moveCmd.sprint      = InputMaster::isActionDown("Sprint");
         moveCmd.sprintReset = InputMaster::isActionDown("SprintReset");

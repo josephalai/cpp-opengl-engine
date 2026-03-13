@@ -43,9 +43,11 @@ void SharedMovement::applyInput(const Network::PlayerInputPacket& input,
     position.z += distance * cosY;
 
     // --- Strafing (left / right) ---
+    // Screen-right in world space = cross(forward, up) = (-cosY, 0, sinY).
+    // So screen-left = (+cosY, 0, -sinY).  moveLeft (A) → positive cosY offset.
     float strafeSpeed = 0.0f;
-    if      (input.moveLeft)  strafeSpeed = -speed_val;
-    else if (input.moveRight) strafeSpeed =  speed_val;
+    if      (input.moveLeft)  strafeSpeed =  speed_val;
+    else if (input.moveRight) strafeSpeed = -speed_val;
 
     float strafeDistance = strafeSpeed * input.deltaTime;
     position.x += strafeDistance *  cosY;

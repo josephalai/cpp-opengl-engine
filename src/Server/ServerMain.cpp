@@ -322,6 +322,23 @@ struct PhysCfg {
 };
 
 /// Parse the "physics_bodies" array from scene.json into a reusable map.
+// ---------------------------------------------------------------------------
+// Deterministic static entity ID — same algorithm on server and client so
+// both sides independently produce matching IDs for the same tree/stall.
+// The high bit (0x80000000) is set to guarantee no collision with dynamic
+// entity IDs (players/NPCs are assigned sequential IDs < 0x80000000).
+//
+// The offset of 2000000 accommodates world-space coordinates in the range
+// [-200000, ~128000] units before the low 15 bits wrap.  Note: two entities
+// at the same (X, Z) but different Y levels share an ID — this is intentional
+// and safe because baked terrain entities are never vertically stacked.
+// ---------------------------------------------------------------------------
+static uint32_t generateStaticId(float x, float z) {
+    uint32_t ux = static_cast<uint32_t>(std::round(x * 10.0f) + 2000000.0f) & 0x7FFF;
+    uint32_t uz = static_cast<uint32_t>(std::round(z * 10.0f) + 2000000.0f) & 0x7FFF;
+    return 0x80000000u | (ux << 15) | uz;
+}
+
 static std::unordered_map<std::string, PhysCfg> parsePhysBodies(
         const std::string& jsonPath) {
     std::unordered_map<std::string, PhysCfg> physBodies;
@@ -425,20 +442,6 @@ static std::vector<entt::entity> loadBakedChunkEntities(
         // No baked data for this chunk — not an error, just nothing to load.
         return spawned;
     }
-
-    // Deterministic static ID: derived from world (X, Z) coordinates so both
-    // client and server independently produce the same ID for the same tree/stall.
-    // The high bit is set to guarantee no collision with dynamic entity IDs
-    // (players start at 100, NPCs follow sequentially, all < 0x80000000).
-    //
-    // Offset of 2000000 accommodates coordinates in the range [-200000, ~128000]
-    // world units before wrapping. Note: two entities at the same (X, Z) but
-    // different Y levels would share an ID — not an issue for baked terrain entities.
-    auto generateStaticId = [](float x, float z) -> uint32_t {
-        uint32_t ux = static_cast<uint32_t>(std::round(x * 10.0f) + 2000000.0f) & 0x7FFF;
-        uint32_t uz = static_cast<uint32_t>(std::round(z * 10.0f) + 2000000.0f) & 0x7FFF;
-        return 0x80000000u | (ux << 15) | uz;
-    };
 
     spawned.reserve(entities.size());
     for (const auto& be : entities) {
@@ -574,9 +577,9 @@ static void loadHeadlessScene(entt::registry& registry,
     int staticCount = 0, dynamicCount = 0;
     auto spawnSceneBody = [&](const std::string& alias,
                                float x, float y, float z, float ry,
-                               float scale = 1.0f) {
+                               float scale = 1.0f) -> entt::entity {
         auto it = physBodies.find(alias);
-        if (it == physBodies.end()) return;
+        if (it == physBodies.end()) return entt::null;
         const auto& cfg = it->second;
 
         auto entity = registry.create();
@@ -617,6 +620,36 @@ static void loadHeadlessScene(entt::registry& registry,
             physics.addDynamicBody(entity, def);
             ++staticCount;
         }
+        return entity;
+    };
+
+    // Helper: after spawning any scene entity, wire up NetworkIdComponent and
+    // InteractableComponent so ActionRequest can find and interact with it.
+    auto stampEntity = [&](entt::entity entity, const std::string& alias,
+                           float x, float z) {
+        if (entity == entt::null) return;
+        uint32_t staticNetId = generateStaticId(x, z);
+        if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
+            nid->id    = staticNetId;
+            nid->isNPC = false;
+        } else {
+            registry.emplace<NetworkIdComponent>(entity,
+                NetworkIdComponent{staticNetId, alias, false, 0});
+        }
+        const auto& prefab = PrefabManager::get().getPrefab(alias);
+        if (!prefab.is_null()) {
+            const nlohmann::json* icJson = nullptr;
+            if (prefab.contains("InteractableComponent"))
+                icJson = &prefab["InteractableComponent"];
+            else if (prefab.contains("components") &&
+                     prefab["components"].contains("InteractableComponent"))
+                icJson = &prefab["components"]["InteractableComponent"];
+            if (icJson && !registry.all_of<InteractableComponent>(entity)) {
+                auto& ic         = registry.emplace<InteractableComponent>(entity);
+                ic.scriptPath    = icJson->value("script",         "");
+                ic.interactRange = icJson->value("interact_range", 1.5f);
+            }
+        }
     };
 
     // ---- Fixed-position entities ------------------------------------------
@@ -628,7 +661,8 @@ static void loadHeadlessScene(entt::registry& registry,
             float ry    = e.value("ry",    0.0f);
             float scale = e.value("scale", 1.0f);
             float y     = parseY(e, x, z);
-            spawnSceneBody(alias, x, y, z, ry, scale);
+            auto entity = spawnSceneBody(alias, x, y, z, ry, scale);
+            stampEntity(entity, alias, x, z);
         }
     }
 
@@ -670,7 +704,8 @@ static void loadHeadlessScene(entt::registry& registry,
                     float scale = rs * multiplier;
                     if (scale < scaleMin) scale = scaleMin;
                     if (scale > scaleMax) scale = scaleMax;
-                    spawnSceneBody(alias, x, y, z, ry, scale);
+                    auto entity = spawnSceneBody(alias, x, y, z, ry, scale);
+                    stampEntity(entity, alias, x, z);
                 }
             }
         }
@@ -795,12 +830,6 @@ int main() {
     // -------------------------------------------------------------------------
     // Physics body configs — parsed once from scene.json and reused by the
     // baked-chunk loader (loadBakedChunkEntities) for spawning Bullet colliders.
-    //
-    // GEA Step 5.1: loadHeadlessScene() is no longer called.  All static
-    // entities (trees, stalls, lamps) are now loaded exclusively from the
-    // pre-baked binary .dat files produced by the offline Asset Baker.
-    // This eliminates the old double-spawn (JSON + binary) and ensures the
-    // server boots with zero scene entities until the baked chunks are read.
     // -------------------------------------------------------------------------
     std::unordered_map<std::string, PhysCfg> physBodiesCfg;
     {
@@ -822,12 +851,25 @@ int main() {
         bakedChunkEntities;
 
     // Load baked chunk entities for all initially loaded terrain tiles.
+    size_t totalBakedEntities = 0;
     for (const auto& [cell, idx] : terrainMgr.loadedCells) {
         auto spawned = loadBakedChunkEntities(
             registry, physicsSystem, physBodiesCfg, cell.first, cell.second);
         if (!spawned.empty()) {
+            totalBakedEntities += spawned.size();
             bakedChunkEntities[cell] = std::move(spawned);
         }
+    }
+
+    // Fallback: if no baked chunk files exist (e.g. AssetBaker has not been run
+    // yet), fall back to loading static entities directly from scene.json.
+    // This ensures trees, stalls, and other interactive objects are still
+    // present and clickable even without pre-baked data.
+    if (totalBakedEntities == 0) {
+        std::cout << "[Server] No baked chunk data found — falling back to "
+                     "scene.json direct load.\n";
+        loadHeadlessScene(registry, physicsSystem, terrainMgr,
+                          FileSystem::Scene("scene.json"));
     }
 
     // -------------------------------------------------------------------------

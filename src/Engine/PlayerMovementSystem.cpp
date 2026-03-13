@@ -8,6 +8,7 @@
 #include "../Config/ConfigManager.h"
 #include "../Physics/PhysicsSystem.h"
 #include "../Terrain/Terrain.h"
+#include "../Entities/Camera.h"
 #include <cmath>
 #include <glm/glm.hpp>
 
@@ -28,70 +29,94 @@ void PlayerMovementSystem::update(float deltaTime) {
         auto& tc    = view.get<TransformComponent>(entity);
         auto& input = view.get<InputStateComponent>(entity);
 
-        // --- Poll inputs (or apply EventBus command if EventBus mode is active) ---
+        // --- Read input axes (camera-relative movement) ---
+        // fwdInput:    +1 = W (forward),  -1 = S (backward)
+        // strafeInput: +1 = A (left),     -1 = D (right)
+        // camYaw:      absolute camera orbit yaw in degrees
+        float fwdInput    = 0.0f;
+        float strafeInput = 0.0f;
+        float camYaw      = 0.0f;
+        bool  wantsJump   = false;
+
         if (input.useEventBus) {
-            // Replicate InputComponent::applyMovementCommand() logic using the
-            // latest command stored by the EventBus handler.
             const auto& cmd = pendingCmd_;
-
-            if      (cmd.forward > 0.0f) input.currentSpeed =  input.runSpeed * input.speedHack;
-            else if (cmd.forward < 0.0f) input.currentSpeed = -input.runSpeed * input.speedHack;
-            else                         input.currentSpeed = 0.0f;
-
-            if      (cmd.turn > 0.0f) input.currentTurnSpeed =  input.turnSpeed * input.speedHack / 2.0f;
-            else if (cmd.turn < 0.0f) input.currentTurnSpeed = -input.turnSpeed * input.speedHack / 2.0f;
-            else                      input.currentTurnSpeed = 0.0f;
+            fwdInput    = cmd.forward;
+            strafeInput = cmd.strafe;
+            camYaw      = cmd.cameraYaw;
+            wantsJump   = cmd.jump;
 
             if (cmd.sprint)      input.speedHack = ConfigManager::get().physics.sprintMultiplier;
             if (cmd.sprintReset) input.speedHack = 1.0f;
 
-            if (cmd.jump && !input.isInAir) {
+            if (wantsJump && !input.isInAir) {
                 input.upwardsSpeed = InputStateComponent::kJumpPower;
                 input.isInAir      = true;
             }
         } else {
-            float fwd  = InputMaster::isActionDown("MoveForward") ?  1.0f
-                       : InputMaster::isActionDown("MoveBackward") ? -1.0f : 0.0f;
-            float turn = InputMaster::isActionDown("MoveLeft") ?  1.0f
-                       : InputMaster::isActionDown("MoveRight") ? -1.0f : 0.0f;
-
-            // applyMovementCommand equivalent
-            if      (fwd > 0.0f) input.currentSpeed =  input.runSpeed * input.speedHack;
-            else if (fwd < 0.0f) input.currentSpeed = -input.runSpeed * input.speedHack;
-            else                 input.currentSpeed = 0.0f;
-
-            if      (turn > 0.0f) input.currentTurnSpeed =  input.turnSpeed * input.speedHack / 2.0f;
-            else if (turn < 0.0f) input.currentTurnSpeed = -input.turnSpeed * input.speedHack / 2.0f;
-            else                  input.currentTurnSpeed = 0.0f;
+            fwdInput    = InputMaster::isActionDown("MoveForward")  ?  1.0f
+                        : InputMaster::isActionDown("MoveBackward") ? -1.0f : 0.0f;
+            strafeInput = InputMaster::isActionDown("MoveLeft")     ?  1.0f
+                        : InputMaster::isActionDown("MoveRight")    ? -1.0f : 0.0f;
+            // Camera::Yaw is kept equal to PlayerCamera::orbitYaw_ each frame.
+            camYaw      = Camera::Yaw;
+            wantsJump   = InputMaster::isActionDown("Jump");
 
             if (InputMaster::isActionDown("Sprint"))      input.speedHack = ConfigManager::get().physics.sprintMultiplier;
             if (InputMaster::isActionDown("SprintReset")) input.speedHack = 1.0f;
 
-            if (InputMaster::isActionDown("Jump") && !input.isInAir) {
+            if (wantsJump && !input.isInAir) {
                 input.upwardsSpeed = InputStateComponent::kJumpPower;
                 input.isInAir      = true;
             }
         }
 
-        // --- Apply yaw rotation ---
-        tc.rotation.y += input.currentTurnSpeed * deltaTime;
+        // --- Compute camera-relative movement vector ---
+        //
+        // Coordinate note: GLM's lookAt computes the view-right vector as
+        //   cross(forward, worldUp)
+        // When the camera faces +Z (orbitYaw=0), that gives world (-1,0,0) as
+        // screen-right.  So the strafe direction that appears on-screen to the
+        // right is world (-cosYaw, 0, sinYaw), and on-screen left is (+cosYaw, 0, -sinYaw).
+        //
+        // Convention:
+        //   strafeInput = +1 (A / MoveLeft)  → screen-left  → (+cosYaw, 0, -sinYaw)
+        //   strafeInput = -1 (D / MoveRight) → screen-right → (-cosYaw, 0, +sinYaw)
+        //
+        // Combined per-frame displacement (before scaling by deltaTime):
+        //   dx = fwdSpeed * sinY + strafeSpeed_v * cosY
+        //   dz = fwdSpeed * cosY - strafeSpeed_v * sinY
+        //
+        // strafeSpeed_v = +strafeInput * speed so that A → positive cosY component
+        // = screen-left.  This matches SharedMovement::applyInput on the server.
+        const float speed      = input.runSpeed * input.speedHack;
+        const float fwdSpeed   = fwdInput * speed;
+        const float strafeSpeed_v = strafeInput * speed;
 
-        float sinY = std::sin(glm::radians(tc.rotation.y));
-        float cosY = std::cos(glm::radians(tc.rotation.y));
+        const float sinY = std::sin(glm::radians(camYaw));
+        const float cosY = std::cos(glm::radians(camYaw));
+
+        const float totalDx = fwdSpeed * sinY + strafeSpeed_v * cosY;
+        const float totalDz = fwdSpeed * cosY - strafeSpeed_v * sinY;
+
+        // --- Snap player model to face movement direction ---
+        // If the player is moving, instantly orient the character model to face
+        // the direction of travel (camera-relative "Action RPG" feel).
+        if (totalDx * totalDx + totalDz * totalDz > 1e-4f) {
+            tc.rotation.y = glm::degrees(std::atan2(totalDx, totalDz));
+        }
 
         // --- Physics path ---
         if (input.physicsSystem) {
             input.physicsSystem->setPlayerWalkDirection(
-                input.currentSpeed * sinY * deltaTime,
-                input.currentSpeed * cosY * deltaTime,
-                InputMaster::isActionDown("Jump"));
+                totalDx * deltaTime,
+                totalDz * deltaTime,
+                wantsJump);
             continue;
         }
 
         // --- Legacy path: manual gravity + terrain-height collision ---
-        float distance = input.currentSpeed * deltaTime;
-        tc.position.x += distance * sinY;
-        tc.position.z += distance * cosY;
+        tc.position.x += totalDx * deltaTime;
+        tc.position.z += totalDz * deltaTime;
 
         input.upwardsSpeed += InputStateComponent::kGravity * deltaTime;
         tc.position.y += input.upwardsSpeed * deltaTime;
@@ -127,4 +152,3 @@ void PlayerMovementSystem::update(float deltaTime) {
         }
     }
 }
-

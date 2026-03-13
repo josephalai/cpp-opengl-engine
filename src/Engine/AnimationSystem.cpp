@@ -4,7 +4,6 @@
 #include "../RenderEngine/AnimatedRenderer.h"
 #include "../Entities/Player.h"
 #include "../ECS/Components/AnimatedModelComponent.h"
-#include "../ECS/Components/InputStateComponent.h"
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/NetworkSyncData.h"
 #include "../Input/InputMaster.h"
@@ -38,22 +37,33 @@ void AnimationSystem::update(float deltaTime) {
             tc.position = player_->getPosition();
             tc.rotation = player_->getRotation();
 
-            // --- Face direction of travel during auto-walk ---
-            auto* isc = registry_.try_get<InputStateComponent>(entity);
-            if (isc && isc->currentSpeed > 0.5f) {
-                if (!InputMaster::isActionDown("MoveForward") &&
-                    !InputMaster::isActionDown("MoveBackward")) {
-                    glm::vec3 moveDir = tc.position - amc.lastPosition;
-                    moveDir.y = 0.0f;
-                    if (glm::dot(moveDir, moveDir) > 0.0001f) {
-                        moveDir = glm::normalize(moveDir);
-                        float yaw = glm::degrees(std::atan2(moveDir.x, moveDir.z));
-                        amc.autoWalkYaw = yaw;
-                        amc.useAutoWalkYaw = true;
-                    }
-                } else {
-                    amc.useAutoWalkYaw = false;
-                }
+            // --- Compute per-frame movement delta (XZ only) ---
+            glm::vec3 deltaPos = tc.position - amc.lastPosition;
+            deltaPos.y = 0.0f;
+            float deltaSq = glm::dot(deltaPos, deltaPos);
+
+            bool anyKeyDown = InputMaster::isActionDown("MoveForward")  ||
+                              InputMaster::isActionDown("MoveBackward") ||
+                              InputMaster::isActionDown("MoveLeft")     ||
+                              InputMaster::isActionDown("MoveRight");
+
+            // isMoving drives the Walk animation condition in the lambda wired
+            // in Engine::loadScene (via setupDefaultTransitions).  It is true
+            // whenever a movement key is held OR the character is actually
+            // displacing (click-to-walk / server-authoritative auto-walk).
+            amc.isMoving = anyKeyDown || (deltaSq > 1e-4f);
+
+            // --- Face direction of travel ---
+            // For keyboard movement PlayerMovementSystem already sets tc.rotation.y
+            // to atan2(totalDx, totalDz), so the model faces the correct direction
+            // for W, S, A, D, and all diagonals without overriding here.
+            // For click-to-walk (no keys pressed) we derive the yaw from the
+            // position delta so the character faces where it is walking.
+            if (deltaSq > 1e-4f && !anyKeyDown) {
+                glm::vec3 dir = glm::normalize(deltaPos);
+                float yaw = glm::degrees(std::atan2(dir.x, dir.z));
+                amc.autoWalkYaw = yaw;
+                amc.useAutoWalkYaw = true;
             } else {
                 amc.useAutoWalkYaw = false;
             }

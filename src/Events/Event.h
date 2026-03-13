@@ -24,11 +24,12 @@ struct Event {
 /// Consumers (Player, PhysicsSystem, networking) subscribe to this event
 /// instead of calling InputMaster::isKeyDown() directly in their update loops.
 struct PlayerMoveCommandEvent : Event {
-    float forward;      ///< +1 = forward,  -1 = backward,  0 = none
-    float turn;         ///< +1 = turn left, -1 = turn right, 0 = none
-    bool  jump;         ///< Space held this frame
-    bool  sprint;       ///< Tab held — activates speed boost
-    bool  sprintReset;  ///< Backslash held — resets sprint speed
+    float forward;    ///< +1 = forward,  -1 = backward,  0 = none
+    float strafe;     ///< +1 = strafe left, -1 = strafe right, 0 = none (camera-relative)
+    float cameraYaw;  ///< Absolute camera orbit yaw (degrees) — movement reference direction
+    bool  jump;       ///< Space held this frame
+    bool  sprint;     ///< Tab held — activates speed boost
+    bool  sprintReset;///< Backslash held — resets sprint speed
 };
 
 /// Published by InputDispatcher on the rising edge of a right-mouse-button
