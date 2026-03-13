@@ -129,7 +129,10 @@ void PlayerCamera::calculateAngleAroundPlayer() {
             // Detached: orbit around the fixed world angle — only worldAngle_
             // advances, player->getRotation().y is not involved.
             worldAngle_        -= angleChange;
-            currentOrbitAngle_ -= angleChange;  // instant response — no rate-limit for mouse
+            // Snap currentOrbitAngle_ to the exact new worldAngle_ so the
+            // rate-limiter in move() sees zero diff and doesn't re-smooth
+            // manual mouse input (instant response).
+            currentOrbitAngle_  = worldAngle_;
         } else {
             // Attached: orbit relative to the player's facing direction.
             angleAroundPlayer  -= angleChange;
@@ -137,11 +140,12 @@ void PlayerCamera::calculateAngleAroundPlayer() {
         }
     }
 
-    // In attached mode, clamp the orbit angle so the camera can never wrap
-    // around to face the player from the front.
+    // Clamp the RELATIVE orbit angle so the camera can never wrap around to
+    // face the player from the front.  currentOrbitAngle_ is an absolute
+    // world-space angle and must NOT be clamped here — doing so would create
+    // a per-frame oscillation whenever player.y is outside [-150°, 150°].
     if (!detachedRotation_) {
-        angleAroundPlayer  = clampOrbitAngle(angleAroundPlayer);
-        currentOrbitAngle_ = clampOrbitAngle(currentOrbitAngle_);
+        angleAroundPlayer = clampOrbitAngle(angleAroundPlayer);
     }
 }
 
