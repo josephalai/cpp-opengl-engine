@@ -28,82 +28,74 @@ public:
     ///                      that the physics engine doesn't snap entities back to
     ///                      their pre-pathfinding positions each tick.
     PathfindingSystem(entt::registry& registry,
-                      float           moveSpeed    = 5.0f,
+                      float           moveSpeed    = 20.0f,
                       PhysicsSystem*  physicsSystem = nullptr)
         : registry_(registry), moveSpeed_(moveSpeed), physicsSystem_(physicsSystem) {}
 
     void init() override {}
 
     void update(float deltaTime) override {
-        // Collect entities to remove PathfindingComponent from (WASD interrupt).
         std::vector<entt::entity> toRemove;
-
         auto view = registry_.view<TransformComponent, PathfindingComponent>();
+
         for (auto entity : view) {
             auto& pc = view.get<PathfindingComponent>(entity);
-            if (!pc.active || pc.waypoints.empty()) {
+            if (!pc.active || pc.waypoints.empty() || pc.currentWaypoint >= static_cast<int>(pc.waypoints.size())) {
                 toRemove.push_back(entity);
                 continue;
             }
 
-            // --- Step 4.4.4: WASD Interrupt ---
-            // If the entity has pending manual input, cancel auto-steering.
+            // --- WASD Interrupt ---
             if (auto* iq = registry_.try_get<InputQueueComponent>(entity)) {
                 if (!iq->inputs.empty()) {
-                    // Check if any input has directional movement.
+                    bool interrupted = false;
                     for (const auto& input : iq->inputs) {
-                        if (input.moveForward || input.moveBackward ||
-                            input.moveLeft    || input.moveRight) {
+                        if (input.moveForward || input.moveBackward || input.moveLeft || input.moveRight) {
                             toRemove.push_back(entity);
+                            interrupted = true;
                             break;
                         }
                     }
-                    // If we're removing this entity from pathfinding, skip movement.
-                    if (std::find(toRemove.begin(), toRemove.end(), entity) != toRemove.end())
-                        continue;
+                    if (interrupted) continue;
                 }
             }
 
-            // --- Auto-steer toward the current waypoint ---
             auto& tc = view.get<TransformComponent>(entity);
-            int idx = pc.currentWaypoint;
-            if (idx >= static_cast<int>(pc.waypoints.size())) {
-                toRemove.push_back(entity);
-                continue;
+            float remainingStep = moveSpeed_ * deltaTime;
+
+            // --- NEW: CONSUME EXACT DISTANCE ACROSS MULTIPLE WAYPOINTS ---
+            while (remainingStep > 0.0f && pc.currentWaypoint < static_cast<int>(pc.waypoints.size())) {
+                glm::vec3 target = pc.waypoints[pc.currentWaypoint];
+                glm::vec3 dir    = target - tc.position;
+                dir.y = 0.0f; 
+                
+                float dist = glm::length(dir);
+
+                if (dist <= pc.arrivalRadius) {
+                    pc.currentWaypoint++;
+                    continue; // Waypoint reached, use remainingStep on the next node
+                }
+
+                float step = std::min(remainingStep, dist);
+                dir /= dist; // Normalize safely
+                tc.position += dir * step;
+                remainingStep -= step;
+
+                // Face the direction of travel
+                tc.rotation.y = glm::degrees(std::atan2(dir.x, dir.z));
             }
 
-            glm::vec3 target = pc.waypoints[idx];
-            glm::vec3 dir    = target - tc.position;
-            float     dist2  = glm::dot(dir, dir);
+            // --- NEW: STRICT BULLET WARPING ---
+            // Do not use setEntityWalkDirection! Warp the ghost directly to the exact NavMesh line.
+            if (physicsSystem_ && physicsSystem_->hasCharacterController(entity)) {
+                physicsSystem_->warpCharacterController(entity, tc.position);
+            }
 
-            if (dist2 <= pc.arrivalRadius * pc.arrivalRadius) {
-                // Waypoint reached — advance to next.
-                pc.currentWaypoint++;
-                if (pc.currentWaypoint >= static_cast<int>(pc.waypoints.size())) {
-                    toRemove.push_back(entity);
-                }
-            } else {
-                // Move toward the waypoint.
-                dir = glm::normalize(dir);
-                float step = moveSpeed_ * deltaTime;
-                float dist = std::sqrt(dist2);
-                if (step > dist) step = dist;
-                tc.position += dir * step;
-
-                // Sync the Bullet CharacterController ghost to the new position so
-                // that PhysicsSystem::update() (which runs before PathfindingSystem
-                // on the next tick) reads the correct ghost origin and does not snap
-                // tc.position back to the pre-pathfinding location.
-                if (physicsSystem_ && physicsSystem_->hasCharacterController(entity)) {
-                    physicsSystem_->warpCharacterController(entity, tc.position);
-                }
-
-                // Face the direction of travel (yaw only).
-                tc.rotation.y = glm::degrees(std::atan2(dir.x, dir.z));
+            if (pc.currentWaypoint >= static_cast<int>(pc.waypoints.size())) {
+                toRemove.push_back(entity);
             }
         }
 
-        // Remove PathfindingComponent from entities that finished or were interrupted.
         for (auto entity : toRemove) {
             registry_.remove<PathfindingComponent>(entity);
         }

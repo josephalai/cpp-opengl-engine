@@ -104,9 +104,9 @@ void NetworkSystem::update(float deltaTime) {
             hasReconcileTarget_ = false;
 
             // Stop animation — tell AnimationSystem we are no longer moving.
-            if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
-                is->currentSpeed = 0.0f;
-            }
+            // if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
+            //     is->currentSpeed = 0.0f;
+            // }
         } else {
             // Move at the same constant run speed used by WASD input so the
             // auto-walk animation and pace exactly match normal player movement.
@@ -226,7 +226,18 @@ void NetworkSystem::update(float deltaTime) {
                         // is still "settling" from its scene-file spawn height.
                         if (localPlayer_) {
                             localPlayer_->setPosition(sp.position);
+                            hasReconcileTarget_ = false;
+                            localHistory_.clear();
+                            if (physicsSystem_) physicsSystem_->warpPlayer(sp.position);
                         }
+                        // Clear any history recorded before the server-authoritative
+                        // spawn position was applied.  Stale history entries (recorded
+                        // when the client was at its scene-file position before this
+                        // snap) would cause a spurious large reconciliation diff on the
+                        // first TransformSnapshot, triggering an unwanted LERP walk.
+                        localHistory_.clear();
+                        hasReconcileTarget_ = false;
+
                         // Already registered via WelcomePacket handling.
                         if (networkEntities_.find(localPlayerId_) ==
                             networkEntities_.end() && localPlayer_) {

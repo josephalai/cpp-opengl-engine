@@ -1251,7 +1251,7 @@ int main() {
                                     // Assign PathfindingComponent for auto-steering.
                                     registry.emplace_or_replace<PathfindingComponent>(
                                         playerEntity,
-                                        PathfindingComponent{path, 0, 1.5f, true});
+                                        PathfindingComponent{path, 0, 0.1f, true});
                                 }
                             }
                         }
@@ -1475,8 +1475,11 @@ int main() {
                             auto& queue   = inputView.get<InputQueueComponent>(entity);
 
                             if (step >= static_cast<int>(queue.inputs.size())) {
-                                // Prevent infinite sliding when the input queue runs dry
-                                if (physicsSystem.hasCharacterController(entity)) {
+                                // Prevent infinite sliding when the input queue runs dry.
+                                // Skip entities being auto-steered by PathfindingSystem —
+                                // they drive movement via setEntityWalkDirection themselves.
+                                if (physicsSystem.hasCharacterController(entity) &&
+                                    !registry.all_of<PathfindingComponent>(entity)) {
                                     physicsSystem.setEntityWalkDirection(entity, glm::vec3(0.0f));
                                 }
                                 continue;
@@ -1493,9 +1496,13 @@ int main() {
                                 glm::vec3 disp = tc.position - prevPos;
                                 tc.position = prevPos; // revert; ghost sync writes authoritative pos
 
-                                // Only XZ displacement passed; Bullet owns vertical.
-                                physicsSystem.setEntityWalkDirection(entity,
-                                    glm::vec3(disp.x, 0.0f, disp.z));
+                                // If auto-steered by PathfindingSystem and this input
+                                // carries no directional movement, skip overriding the
+                                // walk direction.  PathfindingSystem::update() (which runs
+                                // after physicsSystem.update() each tick) owns the direction
+                                // for these entities; a zero-displacement idle input must
+                                // not cancel the direction it sets each tick.
+                                physicsSystem.setEntityWalkDirection(entity, glm::vec3(disp.x, 0.0f, disp.z));
 
                                 // Trigger a jump impulse when requested and grounded.
                                 if (inp.jump && !lastJumpState[nidComp.id]) {
@@ -1521,7 +1528,10 @@ int main() {
                     }
                 } else {
 
-                    // No inputs this tick — clear velocities to prevent sliding
+                    // No inputs this tick — clear velocities to prevent sliding.
+                    // Skip entities being auto-steered by PathfindingSystem so that
+                    // their walk direction (set later in pathfindingSystem.update) is
+                    // not immediately zeroed before physicsSystem.update() runs.
                     for (auto entity : inputView) {
                         if (physicsSystem.hasCharacterController(entity)) {
                             physicsSystem.setEntityWalkDirection(entity, glm::vec3(0.0f));
