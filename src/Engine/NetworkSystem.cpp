@@ -14,9 +14,11 @@
 #include "NetworkSystem.h"
 #include "../Entities/Player.h"
 #include "../Physics/PhysicsSystem.h"
+#include "../Network/SharedMovement.h"
 #include "../Events/EventBus.h"
 #include "../Events/EntityClickedEvent.h"
 #include "../ECS/Components/NetworkIdComponent.h"
+#include "../ECS/Components/InputStateComponent.h"
 #include <iostream>
 #include <cstring>
 #include <cmath>
@@ -83,8 +85,9 @@ void NetworkSystem::update(float deltaTime) {
     // 0. Apply smooth server-authoritative reconciliation each frame.
     //    When the server has moved the player via pathfinding (or any
     //    other server-side authority) we store a target position instead
-    //    of hard-snapping.  Here we LERP toward that target so the
-    //    player appears to walk smoothly rather than teleport.
+    //    of hard-snapping.  Move toward the target at exactly run speed
+    //    so the animation is indistinguishable from normal WASD walking
+    //    and the player never stops mid-path waiting for the next tick.
     // -----------------------------------------------------------------
     if (hasReconcileTarget_ && localPlayer_) {
         glm::vec3 curr   = localPlayer_->getPosition();
@@ -95,19 +98,38 @@ void NetworkSystem::update(float deltaTime) {
         diff.y = 0.0f;
         float distSq = glm::dot(diff, diff);
 
-        if (distSq < 0.0025f) {   // within 0.05 m — snap and stop
+        if (distSq < 0.0025f) {   // within 0.05 m — snap and clear
             localPlayer_->setPosition(target);
             if (physicsSystem_) physicsSystem_->warpPlayer(target);
             hasReconcileTarget_ = false;
+
+            // Stop animation — tell AnimationSystem we are no longer moving.
+            // if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
+            //     is->currentSpeed = 0.0f;
+            // }
         } else {
-            // Lerp by kReconcileLerp fraction of the remaining gap each frame.
-            glm::vec3 newPos = glm::mix(curr, target, kReconcileLerp);
+            // Move at the same constant run speed used by WASD input so the
+            // auto-walk animation and pace exactly match normal player movement.
+            // This replaces the previous exponential LERP (kReconcileLerp = 0.3)
+            // which slowed to a crawl near the target and caused a visible
+            // stop-wait-restart cycle each time a new server tick arrived.
+            const float runSpd  = SharedMovement::runSpeed();
+            const float maxStep = runSpd * deltaTime;
+            const float dist    = std::sqrt(distSq);
+            const float stepFrac = (maxStep >= dist) ? 1.0f : maxStep / dist;
+
+            glm::vec3 newPos = glm::mix(curr, target, stepFrac);
             newPos.y = curr.y;
             localPlayer_->setPosition(newPos);
             if (physicsSystem_) physicsSystem_->warpPlayer(newPos);
+
+            // Report the actual per-frame speed so AnimationSystem plays Run.
+            if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
+                float moved = glm::length(newPos - curr);
+                is->currentSpeed = (deltaTime > 0.0001f) ? moved / deltaTime : runSpd;
+            }
         }
     }
-
 
     // -----------------------------------------------------------------
     // 1. Send the local player's input flags to the server.
@@ -204,7 +226,18 @@ void NetworkSystem::update(float deltaTime) {
                         // is still "settling" from its scene-file spawn height.
                         if (localPlayer_) {
                             localPlayer_->setPosition(sp.position);
+                            hasReconcileTarget_ = false;
+                            localHistory_.clear();
+                            if (physicsSystem_) physicsSystem_->warpPlayer(sp.position);
                         }
+                        // Clear any history recorded before the server-authoritative
+                        // spawn position was applied.  Stale history entries (recorded
+                        // when the client was at its scene-file position before this
+                        // snap) would cause a spurious large reconciliation diff on the
+                        // first TransformSnapshot, triggering an unwanted LERP walk.
+                        localHistory_.clear();
+                        hasReconcileTarget_ = false;
+
                         // Already registered via WelcomePacket handling.
                         if (networkEntities_.find(localPlayerId_) ==
                             networkEntities_.end() && localPlayer_) {
@@ -363,11 +396,15 @@ void NetworkSystem::update(float deltaTime) {
                                     }
 
                                     // Sync playback clock on 2nd snapshot.
-                                    // In NetworkSystem::update(), where snapshots are pushed:
                                     if (!nsd->started && nsd->buffer.size() >= 2) {
-                                        // Seed renderTime to the OLDEST snapshot's timestamp
-                                        // (not the newest!) so that targetTime = renderTime - delay
-                                        // starts BEHIND the buffer, giving us data to interpolate through.
+                                        // Seed renderTime so that targetTime starts at the
+                                        // OLDEST snapshot in the buffer.  While !started the
+                                        // entity displays buffer.front().position, so seeding
+                                        // here causes no visible position jump.  More importantly,
+                                        // targetTime immediately enters the interpolation window
+                                        // (between front and back) on the very next frame, giving
+                                        // continuous smooth movement without the starvation-driven
+                                        // walk-idle oscillation that back+delay seeding causes.
                                         nsd->renderTime = nsd->buffer.front().timestamp + nsd->interpolationDelay;
                                         nsd->started = true;
                                     }

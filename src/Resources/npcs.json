@@ -20,7 +20,7 @@
       "npc_id": 3,
       "prefab": "npc_guard",
       "model_type": "npc_guard",
-      "position": { "x": 100.0, "y": 3.0, "z": -80.0 },
+      "position": { "x": 104.0, "y": 3.0, "z": -80.0 },
       "script": "GuardAI"
     }
   ]

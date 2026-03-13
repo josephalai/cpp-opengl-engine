@@ -45,12 +45,17 @@ void AnimationSystem::update(float deltaTime) {
             const auto* nsd = registry_.try_get<NetworkSyncData>(entity);
             if (nsd) {
                 const float speed = nsd->currentSpeed;
-                if (speed > 1.0f)
+                // Use raised thresholds with a hysteresis dead-zone to prevent
+                // rapid Walk↔Idle toggling caused by frame-to-frame speed noise.
+                // Idle is only entered below 0.3; Walk only starts above 0.5.
+                // The band [0.3, 0.5] keeps the current state unchanged.
+                if (speed > 2.0f)
                     amc.controller->requestTransition("Run");
-                else if (speed > 0.1f)
+                else if (speed > 0.5f)
                     amc.controller->requestTransition("Walk");
-                else
+                else if (speed < 0.3f)
                     amc.controller->requestTransition("Idle");
+                // else: within dead-zone [0.3, 0.5] — keep current state.
             }
         }
     }

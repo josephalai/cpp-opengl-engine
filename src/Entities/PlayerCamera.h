@@ -55,6 +55,19 @@ private:
 
     void calculateZoom();
 
+    // Smoothed orbit-pivot position.  Updated each frame in move() by
+    // exponentially following player->getPosition().  Using this instead
+    // of the raw player position removes the "rigid" camera snap during
+    // server-authoritative auto-walk (reconcile LERP).
+    glm::vec3 pivotPosition_   = glm::vec3(0.0f);
+    bool      pivotInitialized_ = false;
+
+    // Spring strength for the camera pivot.  Higher = tighter follow.
+    // At 60 fps (dt≈0.016 s): alpha = 1 − exp(−15 × 0.016) ≈ 0.21.
+    // Normal walking speed ≈7 u/s → steady-state lag < 0.5 u (imperceptible).
+    // Auto-walk LERP jumps of 2–3 u are smoothed over ~150 ms.
+    static constexpr float kPivotSmoothing = 15.0f;
+
 
 };
 
