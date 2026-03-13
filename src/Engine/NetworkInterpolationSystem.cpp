@@ -90,11 +90,20 @@ void NetworkInterpolationSystem::update(float deltaTime) {
             // Interpolate position
             tc.position = glm::mix(s0.position, s1.position, t);
 
-            // Interpolate rotation (SLERP)
             const glm::quat q0 = glm::quat(glm::radians(s0.rotation));
             const glm::quat q1 = glm::quat(glm::radians(s1.rotation));
             const glm::quat qi = glm::slerp(q0, q1, t);
             tc.rotation        = glm::degrees(glm::eulerAngles(qi));
+            
+            // --- NEW: FLAWLESS STABLE ANIMATION VELOCITY ---
+            if (span > 0.001f) {
+                glm::vec3 diff = s1.position - s0.position;
+                diff.y = 0.0f; 
+                nsd.currentSpeed = glm::length(diff) / span;
+            } else {
+                nsd.currentSpeed = 0.0f;
+            }
+            // -----------------------------------------------
             
             // --- NEW: SAFE BUFFER PRUNING ---
             // Discard packets that we have completely passed, BUT ALWAYS KEEP
@@ -105,26 +114,6 @@ void NetworkInterpolationSystem::update(float deltaTime) {
             }
         }
 
-        // Compute XZ movement speed for animation-state decisions (Walk/Run/Idle).
-        {
-            const glm::vec3 cur = tc.position;
-            if (!nsd.previousPositionInitialized) {
-                nsd.previousPosition            = cur;
-                nsd.previousPositionInitialized = true;
-                nsd.currentSpeed                = 0.0f;
-            } else {
-                const glm::vec3 d        = cur - nsd.previousPosition;
-                const float     dist     = std::sqrt(d.x * d.x + d.z * d.z);
-                const float     rawSpeed = (deltaTime > 0.0f) ? dist / deltaTime : 0.0f;
-                // Exponential moving average: smooths frame-to-frame noise so that
-                // brief starvation frames (zero movement) don't immediately flip the
-                // animation state to Idle.  Alpha=0.4 balances noise rejection
-                // (prevents single-frame flicker) with fast response to NPC stops
-                // (Walk→Idle transition completes within ~150 ms rather than 400 ms+).
-                constexpr float kSpeedSmoothingAlpha = 0.4f;
-                nsd.currentSpeed = glm::mix(nsd.currentSpeed, rawSpeed, kSpeedSmoothingAlpha);
-            }
-            nsd.previousPosition = cur;
-        }
+        
     }
 }

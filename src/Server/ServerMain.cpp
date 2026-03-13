@@ -1251,7 +1251,7 @@ int main() {
                                     // Assign PathfindingComponent for auto-steering.
                                     registry.emplace_or_replace<PathfindingComponent>(
                                         playerEntity,
-                                        PathfindingComponent{path, 0, 1.5f, true});
+                                        PathfindingComponent{path, 0, 0.1f, true});
                                 }
                             }
                         }
@@ -1502,17 +1502,7 @@ int main() {
                                 // after physicsSystem.update() each tick) owns the direction
                                 // for these entities; a zero-displacement idle input must
                                 // not cancel the direction it sets each tick.
-                                const bool isPathfinding =
-                                    registry.all_of<PathfindingComponent>(entity);
-                                const bool hasMovement =
-                                    inp.moveForward || inp.moveBackward ||
-                                    inp.moveLeft    || inp.moveRight;
-
-                                if (!isPathfinding || hasMovement) {
-                                    // Only XZ displacement passed; Bullet owns vertical.
-                                    physicsSystem.setEntityWalkDirection(entity,
-                                        glm::vec3(disp.x, 0.0f, disp.z));
-                                }
+                                physicsSystem.setEntityWalkDirection(entity, glm::vec3(disp.x, 0.0f, disp.z));
 
                                 // Trigger a jump impulse when requested and grounded.
                                 if (inp.jump && !lastJumpState[nidComp.id]) {
@@ -1543,8 +1533,7 @@ int main() {
                     // their walk direction (set later in pathfindingSystem.update) is
                     // not immediately zeroed before physicsSystem.update() runs.
                     for (auto entity : inputView) {
-                        if (physicsSystem.hasCharacterController(entity) &&
-                            !registry.all_of<PathfindingComponent>(entity)) {
+                        if (physicsSystem.hasCharacterController(entity)) {
                             physicsSystem.setEntityWalkDirection(entity, glm::vec3(0.0f));
                             lastJumpState[inputView.get<NetworkIdComponent>(entity).id] = false;
                         }
