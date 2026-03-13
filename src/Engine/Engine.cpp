@@ -368,6 +368,7 @@ void Engine::loadScene() {
     if (player) {
         auto& isc     = registry.emplace_or_replace<InputStateComponent>(player->getHandle());
         isc.terrain       = primaryTerrain;
+        isc.allTerrains   = &allTerrains;
         // [Phase 3.3] Leave physicsSystem null so PlayerMovementSystem uses the
         // legacy direct-math path instead of the Bullet physics path.  This keeps
         // client movement mathematically identical to SharedMovement::applyInput().
