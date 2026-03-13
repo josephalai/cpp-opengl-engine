@@ -13,6 +13,7 @@
 
 #include "NetworkSystem.h"
 #include "../Entities/Player.h"
+#include "../Entities/PlayerCamera.h"
 #include "../Physics/PhysicsSystem.h"
 #include "../Network/SharedMovement.h"
 #include "../Events/EventBus.h"
@@ -159,15 +160,19 @@ void NetworkSystem::update(float deltaTime) {
         input.sequenceNumber = ++inputSequenceNumber_;
 
         input.deltaTime      = deltaTime;
-        input.cameraYaw      = localPlayer_->getRotation().y;
+        // Camera-relative movement: use the camera's independent orbit yaw,
+        // not the player model's rotation.y.  The player model's rotation is
+        // now a visual snap driven by movement direction and is not the authority
+        // on where the player is "looking" for purposes of movement.
+        input.cameraYaw      = playerCamera_ ? playerCamera_->getOrbitYaw()
+                                             : localPlayer_->getRotation().y;
         input.moveForward    = InputMaster::isActionDown("MoveForward");
         input.moveBackward   = InputMaster::isActionDown("MoveBackward");
-        // [Phase 3.3] A/D are TURN keys on the client (they increment rotation.y
-        // in PlayerMovementSystem). Their effect is already captured in cameraYaw.
-        // Sending them as strafe flags caused the server to add a perpendicular
-        // displacement that the client never applied → per-frame desync.
-        input.moveLeft       = false;
-        input.moveRight      = false;
+        // A/D are now strafe keys (camera-relative).  SharedMovement::applyInput
+        // uses cameraYaw as the forward reference and moveLeft/moveRight as
+        // perpendicular strafe flags — so client and server stay in sync.
+        input.moveLeft       = InputMaster::isActionDown("MoveLeft");
+        input.moveRight      = InputMaster::isActionDown("MoveRight");
         input.jump           = InputMaster::isActionDown("Jump");
 
         auto buf = Network::serialise(Network::PacketType::PlayerInput,

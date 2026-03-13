@@ -506,17 +506,31 @@ void Engine::initFramebuffersAndPickers() {
     // Create the entity picker for Ray-AABB picking (Part 1: Client-Side Object Picking).
     entityPicker_ = new EntityPicker(registry);
 
-    // Wire keyboard-driven animation transitions for every local-player character.
+    // Wire movement-driven animation transitions for every local-player character.
     // setupDefaultTransitions is safe to call when not all clip states exist —
     // the controller silently ignores transitions to unregistered states.
+    //
+    // The walk/run conditions capture the entity handle and registry pointer so
+    // they can read AnimatedModelComponent::isMoving, which AnimationSystem sets
+    // each frame based on any directional key OR a non-zero position delta
+    // (click-to-walk / server-authoritative auto-walk).  This ensures the Walk
+    // animation fires for A, D, S, diagonals, and auto-walk — not only W.
     {
         auto animView = registry.view<AnimatedModelComponent>();
         for (auto e : animView) {
             auto& amc = animView.get<AnimatedModelComponent>(e);
             if (amc.controller && amc.isLocalPlayer) {
+                entt::entity handle = e;
+                entt::registry* regPtr = &registry;
                 amc.controller->setupDefaultTransitions(
-                    []() { return InputMaster::isActionDown("MoveForward") && !InputMaster::isKeyDown(LeftShift); },
-                    []() { return InputMaster::isActionDown("MoveForward") &&  InputMaster::isKeyDown(LeftShift); },
+                    [handle, regPtr]() {
+                        auto* p = regPtr->try_get<AnimatedModelComponent>(handle);
+                        return p && p->isMoving && !InputMaster::isKeyDown(LeftShift);
+                    },
+                    [handle, regPtr]() {
+                        auto* p = regPtr->try_get<AnimatedModelComponent>(handle);
+                        return p && p->isMoving && InputMaster::isKeyDown(LeftShift);
+                    },
                     []() { return InputMaster::isActionDown("Jump"); });
             }
         }
@@ -837,6 +851,7 @@ void Engine::buildSystems() {
         );
 
         netSys->setPhysicsSystem(physicsSystem);
+        if (playerCamera) netSys->setPlayerCamera(playerCamera);
 
         netSys->init();
 

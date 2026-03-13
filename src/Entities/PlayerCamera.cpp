@@ -5,6 +5,7 @@
 #include "../Config/ConfigManager.h"
 #include "../RenderEngine/DisplayManager.h"
 #include <cmath>
+#include <algorithm>
 
 /**
  * @brief move (MAIN LOOP), modifies the actual camera vectors based on the
@@ -13,6 +14,8 @@
  * @param terrain
  */
 void PlayerCamera::move(Terrain *terrain) {
+    const float deltaTime = DisplayManager::getFrameTimeSeconds();
+
     this->processInput(DisplayManager::window);
     DisplayManager::uniformMovement();
     updateCameraVectors();
@@ -20,16 +23,19 @@ void PlayerCamera::move(Terrain *terrain) {
     calculateAngleAroundPlayer();
     player->move(terrain);
 
-    // Smoothly advance the orbit pivot toward the player's actual position.
-    // This prevents the camera from rigidly snapping with the player during
-    // server-authoritative auto-walk (reconcile LERP) while remaining
-    // imperceptibly tight during normal keyboard-driven movement.
-    const float deltaTime      = DisplayManager::getFrameTimeSeconds();
+    // Initialise orbit yaw and pivot on the first frame so the camera
+    // starts directly behind the player.
     const glm::vec3 playerPosition = player->getPosition();
     if (!pivotInitialized_) {
+        orbitYaw_         = player->getRotation().y;
+        orbitYawInitialized_ = true;
         pivotPosition_    = playerPosition;
         pivotInitialized_ = true;
     } else {
+        // Smoothly advance the orbit pivot toward the player's actual position.
+        // This prevents the camera from rigidly snapping with the player during
+        // server-authoritative auto-walk (reconcile LERP) while remaining
+        // imperceptibly tight during normal keyboard-driven movement.
         const float alpha = 1.0f - std::exp(-kPivotSmoothing * deltaTime);
         pivotPosition_    = glm::mix(pivotPosition_, playerPosition, alpha);
     }
@@ -40,7 +46,11 @@ void PlayerCamera::move(Terrain *terrain) {
 }
 
 void PlayerCamera::calculateCameraPosition(float horizDistance, float verticDistance) const {
-    float theta = player->getRotation().y + angleAroundPlayer;
+    // Use the camera's own orbit yaw directly — it never reads player->getRotation().y.
+    // This is the core of camera-relative movement: the camera angle is fully
+    // independent of which direction the player model is facing.
+    const float theta = orbitYaw_;
+
     float offsetX = horizDistance * sin(glm::radians(theta));
     float offsetZ = horizDistance * cos(glm::radians(theta));
     // Orbit around the smoothed pivot, not the raw player position, so the
@@ -49,9 +59,10 @@ void PlayerCamera::calculateCameraPosition(float horizDistance, float verticDist
     Position.z = pivotPosition_.z - offsetZ;
     Position.y = pivotPosition_.y - verticDistance + kOrbitPivotY;
 
-    if (glfwGetMouseButton(DisplayManager::window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS || cursorInvisible) {
-        Yaw = static_cast<int>(180 - player->getRotation().y + angleAroundPlayer - 90) % 360;
-    }
+    // Keep Camera::Yaw equal to orbitYaw_ so that InputDispatcher,
+    // PlayerMovementSystem, and NetworkSystem can read the camera direction
+    // via the globally accessible Camera::Yaw without a direct PlayerCamera ptr.
+    Yaw = orbitYaw_;
 }
 
 // returns the view matrix calculated using Euler Angles and the LookAt Matrix
@@ -62,10 +73,6 @@ glm::mat4 PlayerCamera::getViewMatrix() {
     if (Camera::godMode) {
         return glm::lookAt(Camera::Position, Camera::Position + Camera::Front, Camera::Up);
     }
-    glm::vec3 front;
-    front.x = cos(glm::radians(Yaw)) * cos(glm::radians(Pitch));
-    front.y = sin(glm::radians(Pitch));
-    front.z = sin(glm::radians(Yaw)) * cos(glm::radians(Pitch));
     return glm::lookAt(PlayerCamera::Position, pivotPosition_ + glm::vec3(0, kOrbitPivotY, 0), PlayerCamera::Up);
 }
 
@@ -73,7 +80,9 @@ void PlayerCamera::calculateAngleAroundPlayer() {
     if (glfwGetMouseButton(DisplayManager::window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS || cursorInvisible) {
         float angleChange = InputMaster::mouseDx *
             ConfigManager::get().client.camera.mouseSensitivity;
-        angleAroundPlayer -= angleChange;
+        // orbitYaw_ is the single source of truth for the camera's world angle.
+        // Mouse drag rotates it directly — no rate-limiter, no detach/attach logic.
+        orbitYaw_ -= angleChange;
     }
 }
 

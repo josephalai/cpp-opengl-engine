@@ -13,7 +13,6 @@ public:
     Player *player;
 
     float distanceFromPlayer = 55.0f;
-    float angleAroundPlayer = 0.0f;
 
     // Vertical offset of the orbit pivot above the player's origin.
     // Must be consistent between calculateCameraPosition() and getViewMatrix().
@@ -27,7 +26,7 @@ public:
      *        vectors and matrices in Camera, which ultimately, later is retrieved by:
      *        getViewMatrix(), loaded into a shader, and rendered on the screen.
      *
-     *        When the player modifies the vectors (transformations), by the keyboad and mouse,
+     *        When the player modifies the vectors (transformations), by the keyboard and mouse,
      *        the camera actually modifies itself based on those movements. Again, this is all
      *        just manipulation of vectors. Nothing is being rendered yet.
      *
@@ -45,6 +44,12 @@ public:
     glm::mat4 getViewMatrix() override;
 
     void calculateAngleAroundPlayer();
+
+    /// Returns the camera's absolute world-space orbit yaw (degrees).
+    /// Used by NetworkSystem to send the correct movement direction and by
+    /// PlayerMovementSystem for camera-relative strafe.
+    /// Camera::Yaw is also kept equal to this value each frame.
+    float getOrbitYaw() const { return orbitYaw_; }
 
 private:
     float calculateHorizontalDistance() const;
@@ -68,7 +73,19 @@ private:
     // Auto-walk LERP jumps of 2–3 u are smoothed over ~150 ms.
     static constexpr float kPivotSmoothing = 15.0f;
 
-
+    // -----------------------------------------------------------------------
+    // Camera-relative movement: single absolute world-space orbit angle.
+    //
+    // orbitYaw_ is the only rotation state the camera owns.  It is modified
+    // exclusively by mouse drag (calculateAngleAroundPlayer).  The player's
+    // rotation.y is never read for camera positioning — this prevents the
+    // "whip" when auto-walk or pathfinding changes the player's facing.
+    //
+    // Initialised to player->getRotation().y on the first frame so the camera
+    // starts directly behind the player.
+    // -----------------------------------------------------------------------
+    float orbitYaw_ = 0.0f;
+    bool  orbitYawInitialized_ = false;
 };
 
 #endif //ENGINE_PLAYERCAMERA_H

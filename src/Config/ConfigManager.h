@@ -49,6 +49,21 @@ struct CameraConfig {
     float minZoomDistance   = 5.0f;
     float maxZoomDistance   = 50.0f;
     float pitchOffset      = 4.0f;
+
+    /// Retained for JSON backward-compatibility; no longer drives visual
+    /// speed — all orbit transition speed is controlled by rotation360Time.
+    float transitionSpeed  = 1.5f;
+
+    /// Time in seconds for the camera orbit angle to complete a full 360°
+    /// automatic rotation during mode-change transitions (e.g. when clicking
+    /// an NPC and the re-attach sweep begins).  Does NOT affect mouse-driven
+    /// orbit, which always responds instantly.  Default: 1.35 s / 360°.
+    float rotation360Time  = 1.35f;
+
+    /// Maximum orbit angle (degrees) either side of directly behind the
+    /// player.  Clamped in attached mode so the camera can never wrap
+    /// around to face the player while walking.  150° is full side-view.
+    float maxOrbitAngle    = 150.0f;
 };
 
 struct ClientConfig {
