@@ -72,21 +72,25 @@ void PlayerMovementSystem::update(float deltaTime) {
 
         // --- Compute camera-relative movement vector ---
         //
-        // Convention (matches SharedMovement::applyInput):
-        //   forward component : (sin(camYaw), cos(camYaw))
-        //   strafe left  (A)  : A key → strafeInput = +1 → strafeSpeed_v = -speed
-        //                       dx = strafeSpeed_v * cosY,  dz = -strafeSpeed_v * sinY
+        // Coordinate note: GLM's lookAt computes the view-right vector as
+        //   cross(forward, worldUp)
+        // When the camera faces +Z (orbitYaw=0), that gives world (-1,0,0) as
+        // screen-right.  So the strafe direction that appears on-screen to the
+        // right is world (-cosYaw, 0, sinYaw), and on-screen left is (+cosYaw, 0, -sinYaw).
+        //
+        // Convention:
+        //   strafeInput = +1 (A / MoveLeft)  → screen-left  → (+cosYaw, 0, -sinYaw)
+        //   strafeInput = -1 (D / MoveRight) → screen-right → (-cosYaw, 0, +sinYaw)
         //
         // Combined per-frame displacement (before scaling by deltaTime):
         //   dx = fwdSpeed * sinY + strafeSpeed_v * cosY
         //   dz = fwdSpeed * cosY - strafeSpeed_v * sinY
         //
-        // This is identical to what SharedMovement::applyInput computes on the
-        // server, so client-side prediction stays in sync with the server.
+        // strafeSpeed_v = +strafeInput * speed so that A → positive cosY component
+        // = screen-left.  This matches SharedMovement::applyInput on the server.
         const float speed      = input.runSpeed * input.speedHack;
         const float fwdSpeed   = fwdInput * speed;
-        // A (strafeInput = +1) → move left → SharedMovement: strafeSpeed = -speed
-        const float strafeSpeed_v = -strafeInput * speed;
+        const float strafeSpeed_v = strafeInput * speed;
 
         const float sinY = std::sin(glm::radians(camYaw));
         const float cosY = std::cos(glm::radians(camYaw));
