@@ -13,7 +13,6 @@ public:
     Player *player;
 
     float distanceFromPlayer = 55.0f;
-    float angleAroundPlayer = 0.0f;
 
     // Vertical offset of the orbit pivot above the player's origin.
     // Must be consistent between calculateCameraPosition() and getViewMatrix().
@@ -27,7 +26,7 @@ public:
      *        vectors and matrices in Camera, which ultimately, later is retrieved by:
      *        getViewMatrix(), loaded into a shader, and rendered on the screen.
      *
-     *        When the player modifies the vectors (transformations), by the keyboad and mouse,
+     *        When the player modifies the vectors (transformations), by the keyboard and mouse,
      *        the camera actually modifies itself based on those movements. Again, this is all
      *        just manipulation of vectors. Nothing is being rendered yet.
      *
@@ -46,21 +45,11 @@ public:
 
     void calculateAngleAroundPlayer();
 
-    // -----------------------------------------------------------------------
-    // Detached-rotation camera mode
-    // -----------------------------------------------------------------------
-
-    /// Enable or disable detached rotation mode with a smooth transition.
-    /// In detached mode the camera orbit angle is fixed in world space and
-    /// does not follow changes to player->getRotation().y.
-    void setDetachedRotation(bool detach);
-
-    /// Called by NetworkSystem when server-authoritative auto-walk starts
-    /// or stops.  Auto-walk automatically enables detached mode and restores
-    /// the previous mode (with smooth transition) when it ends.
-    void setAutoWalkActive(bool active);
-
-    bool isDetachedRotation() const { return detachedRotation_; }
+    /// Returns the camera's absolute world-space orbit yaw (degrees).
+    /// Used by NetworkSystem to send the correct movement direction and by
+    /// PlayerMovementSystem for camera-relative strafe.
+    /// Camera::Yaw is also kept equal to this value each frame.
+    float getOrbitYaw() const { return orbitYaw_; }
 
 private:
     float calculateHorizontalDistance() const;
@@ -85,57 +74,18 @@ private:
     static constexpr float kPivotSmoothing = 15.0f;
 
     // -----------------------------------------------------------------------
-    // Detached-rotation state
+    // Camera-relative movement: single absolute world-space orbit angle.
+    //
+    // orbitYaw_ is the only rotation state the camera owns.  It is modified
+    // exclusively by mouse drag (calculateAngleAroundPlayer).  The player's
+    // rotation.y is never read for camera positioning — this prevents the
+    // "whip" when auto-walk or pathfinding changes the player's facing.
+    //
+    // Initialised to player->getRotation().y on the first frame so the camera
+    // starts directly behind the player.
     // -----------------------------------------------------------------------
-
-    /// True = camera orbit is fixed in world space (doesn't follow player yaw).
-    bool  detachedRotation_    = false;
-
-    /// Absolute world-space orbit angle used while in detached mode.
-    float worldAngle_          = 0.0f;
-
-    /// Blend fraction: kept for compatibility; always snapped to 0 (detached)
-    /// or 1 (attached) — the visual smoothing is handled by currentOrbitAngle_.
-    float transitionFraction_ = 1.0f;
-
-    /// The actual rendered orbit angle.  Chases effectiveOrbitAngle() at a
-    /// configurable angular speed (rotation_360_time in client_settings.json)
-    /// so automatic mode-change transitions never "blast" the camera.
-    /// Mouse-driven orbit bypasses the limiter and updates this directly.
-    float currentOrbitAngle_   = 0.0f;
-    bool  orbitAngleInitialized_ = false;
-
-    /// Saved detached state captured before auto-walk began, restored on end.
-    bool  autoWalkWasDetached_ = false;
-
-    /// True while server-authoritative auto-walk is active.
-    bool  autoWalkActive_      = false;
-
-    /// Previous-frame ESC state used for single-press edge detection.
-    bool  prevEscDown_         = false;
-
-    /// Set to true when the ESC key is consumed by the detach toggle so that
-    /// the inherited processInput() skips the cursor-style toggle on the same
-    /// frame, preventing the mouse from controlling the camera without a click.
-    bool  escConsumedByDetach_ = false;
-
-    /// Returns the logical target orbit angle for the current mode:
-    /// worldAngle_ when detached, player-yaw + angleAroundPlayer when attached.
-    /// Visual smoothing is applied separately via currentOrbitAngle_ in move().
-    float effectiveOrbitAngle() const;
-
-    /// Wraps an angle difference to the range [-180, +180) so that
-    /// interpolation always takes the shortest arc.
-    static float wrapAngle(float a);
-
-    /// Clamps angle to [-maxOrbitAngle, +maxOrbitAngle] from config,
-    /// preventing the camera from orbiting in front of the player.
-    static float clampOrbitAngle(float a);
-
-    /// Overrides CameraInput::processInput to suppress the ESC cursor-style
-    /// toggle when ESC was already consumed by the detach toggle this frame.
-    void processInput(GLFWwindow *window);
-
+    float orbitYaw_ = 0.0f;
+    bool  orbitYawInitialized_ = false;
 };
 
 #endif //ENGINE_PLAYERCAMERA_H

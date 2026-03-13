@@ -103,7 +103,6 @@ void NetworkSystem::update(float deltaTime) {
             localPlayer_->setPosition(target);
             if (physicsSystem_) physicsSystem_->warpPlayer(target);
             hasReconcileTarget_ = false;
-            if (playerCamera_) playerCamera_->setAutoWalkActive(false);
 
             // Stop animation — tell AnimationSystem we are no longer moving.
             // if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
@@ -161,15 +160,19 @@ void NetworkSystem::update(float deltaTime) {
         input.sequenceNumber = ++inputSequenceNumber_;
 
         input.deltaTime      = deltaTime;
-        input.cameraYaw      = localPlayer_->getRotation().y;
+        // Camera-relative movement: use the camera's independent orbit yaw,
+        // not the player model's rotation.y.  The player model's rotation is
+        // now a visual snap driven by movement direction and is not the authority
+        // on where the player is "looking" for purposes of movement.
+        input.cameraYaw      = playerCamera_ ? playerCamera_->getOrbitYaw()
+                                             : localPlayer_->getRotation().y;
         input.moveForward    = InputMaster::isActionDown("MoveForward");
         input.moveBackward   = InputMaster::isActionDown("MoveBackward");
-        // [Phase 3.3] A/D are TURN keys on the client (they increment rotation.y
-        // in PlayerMovementSystem). Their effect is already captured in cameraYaw.
-        // Sending them as strafe flags caused the server to add a perpendicular
-        // displacement that the client never applied → per-frame desync.
-        input.moveLeft       = false;
-        input.moveRight      = false;
+        // A/D are now strafe keys (camera-relative).  SharedMovement::applyInput
+        // uses cameraYaw as the forward reference and moveLeft/moveRight as
+        // perpendicular strafe flags — so client and server stay in sync.
+        input.moveLeft       = InputMaster::isActionDown("MoveLeft");
+        input.moveRight      = InputMaster::isActionDown("MoveRight");
         input.jump           = InputMaster::isActionDown("Jump");
 
         auto buf = Network::serialise(Network::PacketType::PlayerInput,
@@ -237,7 +240,6 @@ void NetworkSystem::update(float deltaTime) {
                         if (localPlayer_) {
                             localPlayer_->setPosition(sp.position);
                             hasReconcileTarget_ = false;
-                            if (playerCamera_) playerCamera_->setAutoWalkActive(false);
                             localHistory_.clear();
                             if (physicsSystem_) physicsSystem_->warpPlayer(sp.position);
                         }
@@ -248,7 +250,6 @@ void NetworkSystem::update(float deltaTime) {
                         // first TransformSnapshot, triggering an unwanted LERP walk.
                         localHistory_.clear();
                         hasReconcileTarget_ = false;
-                        if (playerCamera_) playerCamera_->setAutoWalkActive(false);
 
                         // Already registered via WelcomePacket handling.
                         if (networkEntities_.find(localPlayerId_) ==
@@ -371,7 +372,6 @@ void NetworkSystem::update(float deltaTime) {
                                         reconcileTarget_    = serverPos;
                                         reconcileTargetYaw_ = snapshot.rotation.y;
                                         hasReconcileTarget_ = true;
-                                        if (playerCamera_) playerCamera_->setAutoWalkActive(true);
                                         localHistory_.clear();
                                     } else {
                                         // 3. Genuine prediction error: apply the mathematical

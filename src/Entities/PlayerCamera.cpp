@@ -16,24 +16,6 @@
 void PlayerCamera::move(Terrain *terrain) {
     const float deltaTime = DisplayManager::getFrameTimeSeconds();
 
-    // Edge-detect ESC to toggle detached rotation (single press, not held).
-    // Set escConsumedByDetach_ so our processInput() override skips the
-    // cursor-style toggle on the same frame, preventing double-consumption.
-    {
-        bool escNow = InputMaster::isKeyDown(Escape);
-        if (escNow && !prevEscDown_) {
-            setDetachedRotation(!detachedRotation_);
-            escConsumedByDetach_ = true;
-        }
-        prevEscDown_ = escNow;
-    }
-
-    // Keep worldAngle_ in sync with the attached orbit angle so that when
-    // detached mode is entered, worldAngle_ is already at the correct value.
-    if (!detachedRotation_) {
-        worldAngle_ = player->getRotation().y + angleAroundPlayer;
-    }
-
     this->processInput(DisplayManager::window);
     DisplayManager::uniformMovement();
     updateCameraVectors();
@@ -41,43 +23,21 @@ void PlayerCamera::move(Terrain *terrain) {
     calculateAngleAroundPlayer();
     player->move(terrain);
 
-    // Smoothly advance the orbit pivot toward the player's actual position.
-    // This prevents the camera from rigidly snapping with the player during
-    // server-authoritative auto-walk (reconcile LERP) while remaining
-    // imperceptibly tight during normal keyboard-driven movement.
+    // Initialise orbit yaw and pivot on the first frame so the camera
+    // starts directly behind the player.
     const glm::vec3 playerPosition = player->getPosition();
     if (!pivotInitialized_) {
+        orbitYaw_         = player->getRotation().y;
+        orbitYawInitialized_ = true;
         pivotPosition_    = playerPosition;
         pivotInitialized_ = true;
     } else {
+        // Smoothly advance the orbit pivot toward the player's actual position.
+        // This prevents the camera from rigidly snapping with the player during
+        // server-authoritative auto-walk (reconcile LERP) while remaining
+        // imperceptibly tight during normal keyboard-driven movement.
         const float alpha = 1.0f - std::exp(-kPivotSmoothing * deltaTime);
         pivotPosition_    = glm::mix(pivotPosition_, playerPosition, alpha);
-    }
-
-    // Rate-limit the rendered orbit angle (currentOrbitAngle_) toward the
-    // logical target (effectiveOrbitAngle()).  This is what prevents the
-    // camera from "blasting" during automatic mode changes: no matter how
-    // abruptly the target changes, the camera only ever moves at most
-    // 360° / rotation_360_time degrees per second.
-    //
-    // Mouse-driven orbit (see calculateAngleAroundPlayer) updates
-    // currentOrbitAngle_ directly so there is no lag during manual control.
-    {
-        const float targetAngle = effectiveOrbitAngle();
-        if (!orbitAngleInitialized_) {
-            currentOrbitAngle_    = targetAngle;
-            orbitAngleInitialized_ = true;
-        } else {
-            const float degsPerSec = 360.0f /
-                std::max(0.01f, ConfigManager::get().client.camera.rotation360Time);
-            const float maxDeg = degsPerSec * deltaTime;
-            const float diff   = wrapAngle(targetAngle - currentOrbitAngle_);
-            if (std::abs(diff) <= maxDeg) {
-                currentOrbitAngle_ = targetAngle;
-            } else {
-                currentOrbitAngle_ += (diff > 0.0f ? maxDeg : -maxDeg);
-            }
-        }
     }
 
     float horizontalDistance = calculateHorizontalDistance();
@@ -86,9 +46,10 @@ void PlayerCamera::move(Terrain *terrain) {
 }
 
 void PlayerCamera::calculateCameraPosition(float horizDistance, float verticDistance) const {
-    // Use the rate-limited rendered orbit angle so the camera never blasts
-    // to a new position — it sweeps there at the configured angular speed.
-    const float theta = currentOrbitAngle_;
+    // Use the camera's own orbit yaw directly — it never reads player->getRotation().y.
+    // This is the core of camera-relative movement: the camera angle is fully
+    // independent of which direction the player model is facing.
+    const float theta = orbitYaw_;
 
     float offsetX = horizDistance * sin(glm::radians(theta));
     float offsetZ = horizDistance * cos(glm::radians(theta));
@@ -98,12 +59,10 @@ void PlayerCamera::calculateCameraPosition(float horizDistance, float verticDist
     Position.z = pivotPosition_.z - offsetZ;
     Position.y = pivotPosition_.y - verticDistance + kOrbitPivotY;
 
-    if (glfwGetMouseButton(DisplayManager::window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS || cursorInvisible) {
-        // Keep Camera::Yaw in sync with the effective orbit angle so tools
-        // like terrain pickers and god-mode restore have a consistent value.
-        // Use the double-modulo form to guarantee a non-negative result in [0, 360).
-        Yaw = ((static_cast<int>(90 - theta) % 360) + 360) % 360;
-    }
+    // Keep Camera::Yaw equal to orbitYaw_ so that InputDispatcher,
+    // PlayerMovementSystem, and NetworkSystem can read the camera direction
+    // via the globally accessible Camera::Yaw without a direct PlayerCamera ptr.
+    Yaw = orbitYaw_;
 }
 
 // returns the view matrix calculated using Euler Angles and the LookAt Matrix
@@ -114,10 +73,6 @@ glm::mat4 PlayerCamera::getViewMatrix() {
     if (Camera::godMode) {
         return glm::lookAt(Camera::Position, Camera::Position + Camera::Front, Camera::Up);
     }
-    glm::vec3 front;
-    front.x = cos(glm::radians(Yaw)) * cos(glm::radians(Pitch));
-    front.y = sin(glm::radians(Pitch));
-    front.z = sin(glm::radians(Yaw)) * cos(glm::radians(Pitch));
     return glm::lookAt(PlayerCamera::Position, pivotPosition_ + glm::vec3(0, kOrbitPivotY, 0), PlayerCamera::Up);
 }
 
@@ -125,125 +80,9 @@ void PlayerCamera::calculateAngleAroundPlayer() {
     if (glfwGetMouseButton(DisplayManager::window, GLFW_MOUSE_BUTTON_1) == GLFW_PRESS || cursorInvisible) {
         float angleChange = InputMaster::mouseDx *
             ConfigManager::get().client.camera.mouseSensitivity;
-        if (detachedRotation_) {
-            // Detached: orbit around the fixed world angle — only worldAngle_
-            // advances, player->getRotation().y is not involved.
-            worldAngle_        -= angleChange;
-            // Snap currentOrbitAngle_ to the exact new worldAngle_ so the
-            // rate-limiter in move() sees zero diff and doesn't re-smooth
-            // manual mouse input (instant response).
-            currentOrbitAngle_  = worldAngle_;
-        } else {
-            // Attached: orbit relative to the player's facing direction.
-            angleAroundPlayer  -= angleChange;
-            currentOrbitAngle_ -= angleChange;  // instant response — no rate-limit for mouse
-        }
-    }
-
-    // Clamp the RELATIVE orbit angle so the camera can never wrap around to
-    // face the player from the front.  currentOrbitAngle_ is an absolute
-    // world-space angle and must NOT be clamped here — doing so would create
-    // a per-frame oscillation whenever player.y is outside [-150°, 150°].
-    if (!detachedRotation_) {
-        angleAroundPlayer = clampOrbitAngle(angleAroundPlayer);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// setDetachedRotation
-// ---------------------------------------------------------------------------
-
-void PlayerCamera::setDetachedRotation(bool detach) {
-    if (detach == detachedRotation_) return;
-
-    // Use the visual camera position (currentOrbitAngle_) as the anchor so
-    // that toggling mid-transition never causes a visible jump.  If the
-    // camera hasn't started rendering yet, fall back to the logical angle.
-    float currentTheta = orbitAngleInitialized_ ? currentOrbitAngle_ : effectiveOrbitAngle();
-
-    if (detach) {
-        // Entering detached: anchor worldAngle_ exactly where the camera
-        // visually is right now.  Setting transitionFraction_ = 0 immediately
-        // prevents the "blast" — even if the player yaw jumps in the same
-        // frame (e.g. pathfinding faces the NPC), effectiveOrbitAngle()
-        // returns worldAngle_ and currentOrbitAngle_ does not chase it.
-        worldAngle_         = wrapAngle(currentTheta);
-        transitionFraction_ = 0.0f;
-    } else {
-        // Returning to attached: compute angleAroundPlayer so that the
-        // attached formula evaluates to the current visual angle right now,
-        // then immediately snap the logical state to fully attached.
-        // currentOrbitAngle_ will smoothly chase the new target (which may
-        // differ if the player has rotated during auto-walk).
-        angleAroundPlayer   = clampOrbitAngle(wrapAngle(currentTheta - player->getRotation().y));
-        worldAngle_         = wrapAngle(currentTheta);
-        transitionFraction_ = 1.0f;
-    }
-
-    detachedRotation_ = detach;
-}
-
-// ---------------------------------------------------------------------------
-// effectiveOrbitAngle — private helper
-// ---------------------------------------------------------------------------
-
-// Wraps an angle difference to [-180, +180) so that interpolation always
-// takes the shortest arc rather than the long way around.
-float PlayerCamera::wrapAngle(float a) {
-    a = fmod(a + 180.0f, 360.0f);
-    if (a < 0.0f) a += 360.0f;
-    return a - 180.0f;
-}
-
-// Clamps an orbit angle to [-maxOrbitAngle, +maxOrbitAngle] as configured
-// in client_settings.json so the camera can never face the player head-on.
-float PlayerCamera::clampOrbitAngle(float a) {
-    const float limit = ConfigManager::get().client.camera.maxOrbitAngle;
-    return std::max(-limit, std::min(limit, a));
-}
-
-float PlayerCamera::effectiveOrbitAngle() const {
-    // Return the logical target angle for the current mode.
-    // Smoothing is handled by currentOrbitAngle_ in move(), not here.
-    if (detachedRotation_) {
-        return worldAngle_;
-    }
-    return player->getRotation().y + angleAroundPlayer;
-}
-
-// ---------------------------------------------------------------------------
-// processInput — override to prevent ESC double-consumption
-// ---------------------------------------------------------------------------
-
-void PlayerCamera::processInput(GLFWwindow *window) {
-    // If the ESC key was consumed by the detach toggle this frame, tell the
-    // parent to skip the cursor-style toggle so cursorInvisible doesn't flip
-    // to true (which would cause all mouse movement to orbit the camera
-    // without any button held down).
-    if (escConsumedByDetach_) {
-        escConsumedByDetach_ = false;
-        skipEscCursorToggle_ = true;
-    }
-    CameraInput::processInput(window);
-}
-
-// ---------------------------------------------------------------------------
-// setAutoWalkActive
-// ---------------------------------------------------------------------------
-
-void PlayerCamera::setAutoWalkActive(bool active) {
-    if (active == autoWalkActive_) return;
-    autoWalkActive_ = active;
-
-    if (active) {
-        // Save the current mode and enter detached so player facing changes
-        // during auto-walk don't swing the camera around.
-        autoWalkWasDetached_ = detachedRotation_;
-        setDetachedRotation(true);
-    } else {
-        // Restore the mode that was active before auto-walk, with a smooth
-        // transition back (prevents the jagged snap when auto-walk ends).
-        setDetachedRotation(autoWalkWasDetached_);
+        // orbitYaw_ is the single source of truth for the camera's world angle.
+        // Mouse drag rotates it directly — no rate-limiter, no detach/attach logic.
+        orbitYaw_ -= angleChange;
     }
 }
 
