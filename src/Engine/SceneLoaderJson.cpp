@@ -394,10 +394,13 @@ bool SceneLoaderJson::load(
                     NetworkIdComponent{staticNetId, alias, false, 0});
 
                 // Attach ColliderComponent AABB so EntityPicker can detect clicks.
+                // Store UNSCALED half-extents; EntityPicker applies tc.scale at pick
+                // time, so pre-scaling here would cause a double-scale and produce
+                // bounding boxes scale² times too large (causing nearby trees to be
+                // picked instead of the one the player clicked on).
                 if (hasPrefabPhys) {
-                    glm::vec3 scaledHalf = physHalfExtents * scale;
                     auto* box = new BoundingBox(nullptr, glm::vec3(1.0f));
-                    box->setAABB(-scaledHalf, scaledHalf);
+                    box->setAABB(-physHalfExtents, physHalfExtents);
                     registry.emplace<ColliderComponent>(ent, ColliderComponent{box});
                 }
             }
@@ -470,10 +473,13 @@ bool SceneLoaderJson::load(
                 NetworkIdComponent{staticNetId, alias, false, 0});
 
             // Attach ColliderComponent AABB so EntityPicker can detect clicks.
+            // Store UNSCALED half-extents; EntityPicker applies tc.scale at pick
+            // time, so pre-scaling here would cause a double-scale and produce
+            // bounding boxes scale² times too large (causing nearby trees to be
+            // picked instead of the one the player clicked on).
             if (hasPrefabPhys) {
-                glm::vec3 scaledHalf = physHalfExtents * scale;
                 auto* box = new BoundingBox(nullptr, glm::vec3(1.0f));
-                box->setAABB(-scaledHalf, scaledHalf);
+                box->setAABB(-physHalfExtents, physHalfExtents);
                 registry.emplace<ColliderComponent>(ent, ColliderComponent{box});
             }
 

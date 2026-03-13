@@ -774,6 +774,9 @@ void Engine::buildSystems() {
                         // Add a ColliderComponent with an AABB derived from the
                         // prefab's physics halfExtents so EntityPicker::pick() can
                         // perform Ray-AABB tests against this entity.
+                        // Store UNSCALED half-extents — EntityPicker multiplies by
+                        // tc.scale at query time. Pre-scaling here would produce a
+                        // double-scale (scale²) and incorrectly inflate the AABB.
                         const auto& prefab = PrefabManager::get().getPrefab(alias);
                         if (!prefab.is_null() && prefab.contains("physics")) {
                             const auto& phys = prefab["physics"];
@@ -784,9 +787,9 @@ void Engine::buildSystems() {
                                 halfExtents = glm::vec3(
                                     phys["halfExtents"][0].get<float>(),
                                     phys["halfExtents"][1].get<float>(),
-                                    phys["halfExtents"][2].get<float>()) * be.scale;
+                                    phys["halfExtents"][2].get<float>());  // unscaled
                             } else if (phys.contains("radius")) {
-                                float r = phys.value("radius", 0.5f) * be.scale;
+                                float r = phys.value("radius", 0.5f);  // unscaled
                                 halfExtents = glm::vec3(r);
                             }
                             // BoundingBox with null RawBoundingBox is safe here:

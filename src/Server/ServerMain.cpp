@@ -340,6 +340,11 @@ static uint32_t generateStaticId(float x, float z) {
     return 0x80000000u | (ux << 15) | uz;
 }
 
+// Extra margin (metres) added around terrain/entity bounds when building or
+// expanding the NavMesh.  Shared between the startup build and the chunk
+// streaming expandBounds() call so both use a consistent value.
+static constexpr float kNavMeshPadding = 50.0f;
+
 static std::unordered_map<std::string, PhysCfg> parsePhysBodies(
         const std::string& jsonPath) {
     std::unordered_map<std::string, PhysCfg> physBodies;
@@ -1079,7 +1084,7 @@ int main() {
         // is free; only the A* search budget (kMaxIterations) matters for
         // cost — and at 1 m resolution that cap handles paths > 2 km.
         {
-            constexpr float kNavPad = 50.0f;  // margin around outermost entity
+            constexpr float kNavPad = kNavMeshPadding;  // margin around outermost entity
             auto entityView = registry.view<TransformComponent, NetworkIdComponent>();
             for (auto entity : entityView) {
                 const auto& tc  = entityView.get<TransformComponent>(entity);
@@ -1601,10 +1606,10 @@ int main() {
                                     auto loadedIt = terrainMgr.loadedCells.find(cell);
                                     if (loadedIt != terrainMgr.loadedCells.end()) {
                                         auto& newTile = terrainMgr.tiles[loadedIt->second];
-                                        navMesh.expandBounds(newTile.originX - 50.0f,
-                                                             newTile.originZ - 50.0f,
-                                                             newTile.originX + newTile.size + 50.0f,
-                                                             newTile.originZ + newTile.size + 50.0f);
+                                        navMesh.expandBounds(newTile.originX - kNavMeshPadding,
+                                                             newTile.originZ - kNavMeshPadding,
+                                                             newTile.originX + newTile.size + kNavMeshPadding,
+                                                             newTile.originZ + newTile.size + kNavMeshPadding);
                                     }
                                 }
                                 bakedChunkEntities[cell] = std::move(spawned);
