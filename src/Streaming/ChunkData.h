@@ -26,6 +26,7 @@ struct BakedEntity {
     float    x, y, z;       ///< Pre-calculated absolute world position
     float    rotationY;     ///< Y-axis rotation in degrees
     float    scale;         ///< Uniform scale factor
+    char     alias[32];     ///< Fallback alias string for prefabs not in the hardcoded enum (v2+)
 };
 
 /// Header written at the start of each chunk .dat file.
@@ -38,7 +39,7 @@ struct BakedChunkHeader {
 };
 
 static constexpr uint32_t kBakedChunkMagic   = 0x4B434842; // 'BCHK'
-static constexpr uint32_t kBakedChunkVersion = 1;
+static constexpr uint32_t kBakedChunkVersion = 2;
 
 // ============================================================================
 // Alias-to-prefabId mapping (shared between Baker and Runtime)
@@ -140,7 +141,8 @@ inline bool readBakedChunk(const std::string& path,
         std::cerr << "[BakedChunk] ERROR: Bad magic in " << path << "\n";
         return false;
     }
-    if (outHeader.version != kBakedChunkVersion) {
+    // Accept v1 (no alias field) and v2+ (with alias field).
+    if (outHeader.version != 1 && outHeader.version != kBakedChunkVersion) {
         std::cerr << "[BakedChunk] ERROR: Unsupported version "
                   << outHeader.version << " in " << path << "\n";
         return false;
@@ -156,8 +158,32 @@ inline bool readBakedChunk(const std::string& path,
 
     outEntities.resize(outHeader.entityCount);
     if (outHeader.entityCount > 0) {
-        file.read(reinterpret_cast<char*>(outEntities.data()),
-                  static_cast<std::streamsize>(outHeader.entityCount * sizeof(BakedEntity)));
+        if (outHeader.version == 1) {
+            // v1 BakedEntity lacks the alias field — read each record individually
+            // and zero-initialise the alias so v2 code paths work safely.
+            // This struct mirrors the v1 on-disk layout exactly (fields must not
+            // be reordered) so that file.read() fills them correctly.
+            struct BakedEntityV1 {
+                uint32_t prefabId;
+                float    x, y, z;
+                float    rotationY;
+                float    scale;
+            };
+            for (uint32_t i = 0; i < outHeader.entityCount; ++i) {
+                BakedEntityV1 v1{};
+                file.read(reinterpret_cast<char*>(&v1), sizeof(v1));
+                outEntities[i].prefabId  = v1.prefabId;
+                outEntities[i].x         = v1.x;
+                outEntities[i].y         = v1.y;
+                outEntities[i].z         = v1.z;
+                outEntities[i].rotationY = v1.rotationY;
+                outEntities[i].scale     = v1.scale;
+                outEntities[i].alias[0]  = '\0';
+            }
+        } else {
+            file.read(reinterpret_cast<char*>(outEntities.data()),
+                      static_cast<std::streamsize>(outHeader.entityCount * sizeof(BakedEntity)));
+        }
     }
     return file.good();
 }

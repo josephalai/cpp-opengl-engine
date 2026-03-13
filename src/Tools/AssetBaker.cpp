@@ -26,6 +26,7 @@
 #include <unordered_map>
 #include <cmath>
 #include <cerrno>
+#include <cstring>
 #include <random>
 #include <algorithm>
 #include <filesystem>
@@ -387,11 +388,11 @@ int main(int argc, char* argv[]) {
             be.z         = z;
             be.rotationY = ry;
             be.scale     = scale;
+            strncpy(be.alias, alias.c_str(), sizeof(be.alias) - 1);
+            be.alias[sizeof(be.alias) - 1] = '\0';
             allEntities.push_back(be);
         }
     }
-
-    // --- Randomly-placed entities (mirrors SceneLoaderJson + ServerMain) ---
     if (root.contains("random") && root["random"].is_array()) {
         unsigned int seed = root.value("random_seed", 1u);
         std::mt19937 rng(seed);
@@ -433,6 +434,8 @@ int main(int argc, char* argv[]) {
                 be.z         = z;
                 be.rotationY = ry;
                 be.scale     = scale;
+                strncpy(be.alias, alias.c_str(), sizeof(be.alias) - 1);
+                be.alias[sizeof(be.alias) - 1] = '\0';
                 allEntities.push_back(be);
             }
         }
@@ -460,6 +463,8 @@ int main(int argc, char* argv[]) {
             be.z         = z;
             be.rotationY = ry;
             be.scale     = scale;
+            strncpy(be.alias, alias.c_str(), sizeof(be.alias) - 1);
+            be.alias[sizeof(be.alias) - 1] = '\0';
             allEntities.push_back(be);
             ++editorCount;
         }
@@ -517,6 +522,11 @@ int main(int argc, char* argv[]) {
                 be.z         = z;
                 be.rotationY = ry;
                 be.scale     = scale;
+                {
+                    std::string scAlias = BakedPrefab::toAlias(sc.prefabId);
+                    strncpy(be.alias, scAlias.c_str(), sizeof(be.alias) - 1);
+                    be.alias[sizeof(be.alias) - 1] = '\0';
+                }
                 allEntities.push_back(be);
             }
         }

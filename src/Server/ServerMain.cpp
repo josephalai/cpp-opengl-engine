@@ -446,6 +446,8 @@ static std::vector<entt::entity> loadBakedChunkEntities(
     spawned.reserve(entities.size());
     for (const auto& be : entities) {
         std::string alias = BakedPrefab::toAlias(be.prefabId);
+        if (alias.empty() && be.alias[0] != '\0')
+            alias = std::string(be.alias);
         if (alias.empty()) continue;
 
         auto entity = spawnSceneBodyFromCfg(
@@ -661,6 +663,20 @@ static void loadHeadlessScene(entt::registry& registry,
             float ry    = e.value("ry",    0.0f);
             float scale = e.value("scale", 1.0f);
             float y     = parseY(e, x, z);
+            auto entity = spawnSceneBody(alias, x, y, z, ry, scale);
+            stampEntity(entity, alias, x, z);
+        }
+    }
+
+    // ---- Editor-placed entities (from World Editor) -----------------------
+    if (root.contains("editor_entities") && root["editor_entities"].is_array()) {
+        for (auto& e : root["editor_entities"]) {
+            std::string alias = e.value("alias", "");
+            float x     = e.value("x",     0.0f);
+            float z     = e.value("z",     0.0f);
+            float ry    = e.value("ry",    0.0f);
+            float scale = e.value("scale", 1.0f);
+            float y     = e.value("y",     0.0f);
             auto entity = spawnSceneBody(alias, x, y, z, ry, scale);
             stampEntity(entity, alias, x, z);
         }
