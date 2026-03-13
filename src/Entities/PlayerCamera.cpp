@@ -17,12 +17,13 @@ void PlayerCamera::move(Terrain *terrain) {
     const float deltaTime = DisplayManager::getFrameTimeSeconds();
 
     // Edge-detect ESC to toggle detached rotation (single press, not held).
-    // CameraInput::processInput() also handles ESC for cursor-style toggling
-    // (which is independent and continues to work as before).
+    // Set escConsumedByDetach_ so our processInput() override skips the
+    // cursor-style toggle on the same frame, preventing double-consumption.
     {
         bool escNow = InputMaster::isKeyDown(Escape);
         if (escNow && !prevEscDown_) {
             setDetachedRotation(!detachedRotation_);
+            escConsumedByDetach_ = true;
         }
         prevEscDown_ = escNow;
     }
@@ -33,6 +34,19 @@ void PlayerCamera::move(Terrain *terrain) {
         transitionFraction_ = std::max(0.0f, transitionFraction_ - kTransitionSpeed * deltaTime);
     } else {
         transitionFraction_ = std::min(1.0f, transitionFraction_ + kTransitionSpeed * deltaTime);
+    }
+
+    // Re-anchor worldAngle_ each frame while transitioning back to attached
+    // mode.  The shrinking (1 - t) fraction then always measures from where
+    // the camera currently IS, preventing overshoot when the player moves.
+    if (!detachedRotation_ && transitionFraction_ < 1.0f) {
+        worldAngle_ = effectiveOrbitAngle();
+    }
+
+    // When the transition fully completes, snap to a clean attached state.
+    if (!detachedRotation_ && transitionFraction_ >= 1.0f) {
+        transitionFraction_ = 1.0f;
+        worldAngle_ = player->getRotation().y + angleAroundPlayer;
     }
 
     this->processInput(DisplayManager::window);
@@ -127,13 +141,15 @@ void PlayerCamera::setDetachedRotation(bool detach) {
     if (detach) {
         // Entering detached: anchor worldAngle_ at the current effective
         // position.  transitionFraction_ will now decrease toward 0.
-        worldAngle_ = currentTheta;
+        // Normalize to prevent unbounded drift over time.
+        worldAngle_ = wrapAngle(currentTheta);
     } else {
         // Returning to attached: adjust angleAroundPlayer so that the
         // attached formula evaluates to currentTheta right now, and
         // update worldAngle_ to the same value so the lerp has no jump.
-        angleAroundPlayer = currentTheta - player->getRotation().y;
-        worldAngle_ = currentTheta;
+        // Normalize both angles to prevent drift.
+        angleAroundPlayer = wrapAngle(currentTheta - player->getRotation().y);
+        worldAngle_ = wrapAngle(currentTheta);
     }
 
     detachedRotation_ = detach;
@@ -143,9 +159,35 @@ void PlayerCamera::setDetachedRotation(bool detach) {
 // effectiveOrbitAngle — private helper
 // ---------------------------------------------------------------------------
 
+// Wraps an angle difference to [-180, +180) so that interpolation always
+// takes the shortest arc rather than the long way around.
+float PlayerCamera::wrapAngle(float a) {
+    a = fmod(a + 180.0f, 360.0f);
+    if (a < 0.0f) a += 360.0f;
+    return a - 180.0f;
+}
+
 float PlayerCamera::effectiveOrbitAngle() const {
     float thetaAttached = player->getRotation().y + angleAroundPlayer;
-    return worldAngle_ + transitionFraction_ * (thetaAttached - worldAngle_);
+    // Use the shortest arc so the camera never sweeps the long way around.
+    float delta = wrapAngle(thetaAttached - worldAngle_);
+    return worldAngle_ + transitionFraction_ * delta;
+}
+
+// ---------------------------------------------------------------------------
+// processInput — override to prevent ESC double-consumption
+// ---------------------------------------------------------------------------
+
+void PlayerCamera::processInput(GLFWwindow *window) {
+    // If the ESC key was consumed by the detach toggle this frame, tell the
+    // parent to skip the cursor-style toggle so cursorInvisible doesn't flip
+    // to true (which would cause all mouse movement to orbit the camera
+    // without any button held down).
+    if (escConsumedByDetach_) {
+        escConsumedByDetach_ = false;
+        skipEscCursorToggle_ = true;
+    }
+    CameraInput::processInput(window);
 }
 
 // ---------------------------------------------------------------------------

@@ -39,9 +39,10 @@ void CameraInput::move() {
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------
 void CameraInput::processInput(GLFWwindow *window) {
-    if (InputMaster::isKeyDown(Escape)) {
+    if (InputMaster::isKeyDown(Escape) && !skipEscCursorToggle_) {
         this->toggleCursorStyle();
     }
+    skipEscCursorToggle_ = false;
     if (InputMaster::isKeyDown(Q)) {
         glfwSetWindowShouldClose(window, true);
     }

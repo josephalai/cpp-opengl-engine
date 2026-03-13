@@ -68,6 +68,12 @@ public:
 
     static bool cursorInvisible;
 
+protected:
+    /// Set to true by a subclass to suppress the ESC cursor-style toggle for
+    /// one call to processInput().  The flag is automatically cleared after
+    /// the check, so callers do not need to reset it manually.
+    bool skipEscCursorToggle_ = false;
+
 };
 
 #endif //ENGINE_CAMERAINPUT_H

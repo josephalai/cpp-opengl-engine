@@ -108,6 +108,11 @@ private:
     /// Previous-frame ESC state used for single-press edge detection.
     bool  prevEscDown_         = false;
 
+    /// Set to true when the ESC key is consumed by the detach toggle so that
+    /// the inherited processInput() skips the cursor-style toggle on the same
+    /// frame, preventing the mouse from controlling the camera without a click.
+    bool  escConsumedByDetach_ = false;
+
     /// Speed at which transitionFraction_ moves (units per second).
     /// Value of 3 → transition completes in ~0.33 s.
     static constexpr float kTransitionSpeed = 3.0f;
@@ -116,6 +121,13 @@ private:
     /// detached world angle and the player-relative attached angle.
     float effectiveOrbitAngle() const;
 
+    /// Wraps an angle difference to the range [-180, +180) so that
+    /// interpolation always takes the shortest arc.
+    static float wrapAngle(float a);
+
+    /// Overrides CameraInput::processInput to suppress the ESC cursor-style
+    /// toggle when ESC was already consumed by the detach toggle this frame.
+    void processInput(GLFWwindow *window);
 
 };
 
