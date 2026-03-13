@@ -27,6 +27,7 @@ void ChunkManager::update(const glm::vec3& playerPos) {
     int pz = static_cast<int>(std::floor(playerPos.z / kTerrainSize));
 
     // Phase 4 Step 4.2.2 — Active radius: load synchronously (already loaded).
+    bool urgentDrainNeeded = false;
     for (int dx = -loadRadius_; dx <= loadRadius_; ++dx) {
         for (int dz = -loadRadius_; dz <= loadRadius_; ++dz) {
             int cx = px + dx;
@@ -43,6 +44,11 @@ void ChunkManager::update(const glm::vec3& playerPos) {
             } else if (it->second->state == StreamingChunk::State::UNLOADED) {
                 it->second->load(loader_, texPack_, blendMap_, heightmapFile_);
                 justLoaded = true;
+            } else if (it->second->state == StreamingChunk::State::LOADING) {
+                // Async load in progress but the player is already within the
+                // active radius.  Flag that the GL upload queue should be
+                // drained urgently so the terrain is ready this frame.
+                urgentDrainNeeded = true;
             }
 
             // GEA Step 5.1 / 5.4 — Spawn baked entities for newly loaded chunks
@@ -54,6 +60,31 @@ void ChunkManager::update(const glm::vec3& playerPos) {
                     && !chunk->bakedSpawned) {
                     fireBakedSpawns(readBakedEntities(cx, cz), cx, cz);
                     chunk->bakedSpawned = true;
+                }
+            }
+        }
+    }
+
+    // If any active-radius chunk is still loading asynchronously, drain the
+    // GL upload queue now (without the usual 2-per-frame cap) so the terrain
+    // is available for terrain-height collision THIS frame rather than next.
+    if (urgentDrainNeeded) {
+        GLUploadQueue::instance().processAll(/*maxPerFrame=*/kUrgentDrainLimit);
+
+        // Re-check baked spawns for any chunks that just finished finalizing.
+        for (int dx = -loadRadius_; dx <= loadRadius_; ++dx) {
+            for (int dz = -loadRadius_; dz <= loadRadius_; ++dz) {
+                int cx = px + dx;
+                int cz = pz + dz;
+                auto key = std::make_pair(cx, cz);
+                auto it = chunks_.find(key);
+                if (it != chunks_.end()) {
+                    auto* chunk = it->second;
+                    if (chunk && chunk->state == StreamingChunk::State::LOADED
+                        && !chunk->bakedSpawned) {
+                        fireBakedSpawns(readBakedEntities(cx, cz), cx, cz);
+                        chunk->bakedSpawned = true;
+                    }
                 }
             }
         }
@@ -108,14 +139,17 @@ void ChunkManager::update(const glm::vec3& playerPos) {
                          baked = std::move(bakedEntities)]() mutable {
                             chunk->finalizeAsync(data, loader_, texPack_, blendMap_);
 
-                            // ---> ADD THIS LOG <---
                             std::cout << "[ChunkManager] STREAMED IN Chunk [" 
                                       << chunk->gridX << ", " << chunk->gridZ << "]\n";
 
-                            // GEA Step 5.1 — Spawn baked entities on the main
                             if (chunk->state == StreamingChunk::State::LOADED) {
                                 fireBakedSpawns(baked, chunk->gridX, chunk->gridZ);
                                 chunk->bakedSpawned = true;
+                                
+                                // ---> NEW CODE: Tell the physics system the ground is ready!
+                                if (terrainLoadCallback_ && chunk->terrain) {
+                                    terrainLoadCallback_(chunk->terrain);
+                                }
                             }
                         });
                 });

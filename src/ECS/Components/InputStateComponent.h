@@ -2,6 +2,7 @@
 #define ECS_INPUTSTATECOMPONENT_H
 
 #include <glm/glm.hpp>
+#include <vector>
 
 class Terrain;
 class PhysicsSystem;
@@ -50,8 +51,9 @@ struct InputStateComponent {
     float cameraYaw    = 0.0f;  ///< Absolute camera yaw (degrees) for movement direction.
 
     // --- Dependencies (non-owning pointers, set during init) ---
-    Terrain*       terrain       = nullptr;
-    PhysicsSystem* physicsSystem = nullptr;
+    Terrain*               terrain       = nullptr;
+    std::vector<Terrain*>* allTerrains   = nullptr; ///< Live list of streamed tiles (Engine::allTerrains).
+    PhysicsSystem*         physicsSystem = nullptr;
 
     // --- EventBus mode flag ---
     bool useEventBus = false;

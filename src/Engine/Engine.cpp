@@ -368,6 +368,7 @@ void Engine::loadScene() {
     if (player) {
         auto& isc     = registry.emplace_or_replace<InputStateComponent>(player->getHandle());
         isc.terrain       = primaryTerrain;
+        isc.allTerrains   = &allTerrains;
         // [Phase 3.3] Leave physicsSystem null so PlayerMovementSystem uses the
         // legacy direct-math path instead of the Bullet physics path.  This keeps
         // client movement mathematically identical to SharedMovement::applyInput().
@@ -689,15 +690,6 @@ void Engine::buildSystems() {
     systems.push_back(std::make_unique<InputSystem>(
         playerCamera, primaryTerrain, picker, sampleModifiedGui, pNameText, &editorState_));
 
-    // PlayerMovementSystem — ECS replacement for InputComponent::update().
-    // Runs after InputSystem (camera) and PhysicsSystem, reads InputStateComponent.
-    // init() subscribes to PlayerMoveCommandEvent on the EventBus.
-    {
-        auto pms = std::make_unique<PlayerMovementSystem>(registry);
-        pms->init();
-        systems.push_back(std::move(pms));
-    }
-
     // Build the chunk manager from the first loaded terrain's texture config.
     // Initial scene entities are registered so they appear inside their chunk.
 
@@ -706,6 +698,12 @@ void Engine::buildSystems() {
                                         primaryTerrain->getTexturePack(),
                                         primaryTerrain->getBlendMap(),
                                         terrainHeightmapFile);
+
+        chunkManager->setTerrainLoadCallback([this](Terrain* newlyLoadedTerrain) {
+            if (this->physicsSystem) {
+                this->physicsSystem->addTerrainCollider(newlyLoadedTerrain);
+            }
+        });
 
         // GEA Phase 5.4 — Wire the ChunkManager's spawn callback.
         // When a chunk streams in, each baked entity is routed here:
@@ -820,6 +818,17 @@ void Engine::buildSystems() {
         }
         systems.push_back(std::make_unique<StreamingSystem>(
             chunkManager, player, allTerrains));
+    }
+
+    // PlayerMovementSystem — ECS replacement for InputComponent::update().
+    // IMPORTANT: must run AFTER StreamingSystem so that allTerrains is
+    // refreshed with newly loaded chunks before terrain-height collision runs.
+    // Runs after InputSystem (camera), PhysicsSystem, and StreamingSystem.
+    // init() subscribes to PlayerMoveCommandEvent on the EventBus.
+    {
+        auto pms = std::make_unique<PlayerMovementSystem>(registry);
+        pms->init();
+        systems.push_back(std::move(pms));
     }
 
     // Phase 4 Step 4.2 — OriginShiftSystem: prevents float-precision jitter

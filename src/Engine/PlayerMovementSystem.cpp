@@ -121,12 +121,32 @@ void PlayerMovementSystem::update(float deltaTime) {
         input.upwardsSpeed += InputStateComponent::kGravity * deltaTime;
         tc.position.y += input.upwardsSpeed * deltaTime;
 
-        if (input.terrain) {
-            float terrainHeight = input.terrain->getHeightOfTerrain(tc.position.x, tc.position.z);
-            if (tc.position.y <= terrainHeight) {
-                input.upwardsSpeed = 0.0f;
-                tc.position.y      = terrainHeight;
-                input.isInAir      = false;
+        if (input.terrain || (input.allTerrains && !input.allTerrains->empty())) {
+            // Search all active terrain tiles to find the one that contains the
+            // player's current position.  This correctly handles dynamically
+            // streamed chunks — input.terrain alone only covers the initial tile.
+            Terrain* activeTerrain = nullptr;
+            if (input.allTerrains) {
+                for (auto* t : *input.allTerrains) {
+                    if (!t) continue;
+                    float tx = tc.position.x - t->getX();
+                    float tz = tc.position.z - t->getZ();
+                    if (tx >= 0.0f && tx < Terrain::kSize &&
+                        tz >= 0.0f && tz < Terrain::kSize) {
+                        activeTerrain = t;
+                        break;
+                    }
+                }
+            }
+            if (!activeTerrain) activeTerrain = input.terrain;
+
+            if (activeTerrain) {
+                float terrainHeight = activeTerrain->getHeightOfTerrain(tc.position.x, tc.position.z);
+                if (tc.position.y <= terrainHeight) {
+                    input.upwardsSpeed = 0.0f;
+                    tc.position.y      = terrainHeight;
+                    input.isInAir      = false;
+                }
             }
         }
     }

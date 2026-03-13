@@ -13,6 +13,7 @@
 #include "ChunkData.h"
 #include "JobQueue.h"
 #include "../Terrain/Terrain.h"
+#include <functional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -65,6 +66,7 @@ public:
     int activeRadius()   const { return loadRadius_; }
     int loadingRadius()  const { return loadingRadius_; }
     int unloadingRadius()const { return unloadRadius_; }
+    void setTerrainLoadCallback(std::function<void(Terrain*)> cb) { terrainLoadCallback_ = cb; }
 
     /// Unload all chunks and release resources.
     void shutdown();
@@ -88,6 +90,10 @@ private:
     int loadingRadius_ = 2;   ///< Loading: trigger background I/O.
     int unloadRadius_  = 3;   ///< Unloading: destroy entities & free buffers.
 
+    /// Maximum number of GL upload tasks to drain per frame when an
+    /// active-radius chunk is still loading asynchronously.
+    static constexpr int kUrgentDrainLimit = 32;
+
     /// Phase 4 Step 4.2.1 — Background thread pool for async chunk I/O.
     JobQueue                                        jobQueue_{2};
     std::mutex                                      pendingMutex_;
@@ -109,6 +115,8 @@ private:
     int64_t chunkKey(int x, int z) const {
         return (static_cast<int64_t>(x) << 32) | static_cast<int64_t>(static_cast<uint32_t>(z));
     }
+
+    std::function<void(Terrain*)> terrainLoadCallback_;
 };
 
 #endif // ENGINE_CHUNKMANAGER_H

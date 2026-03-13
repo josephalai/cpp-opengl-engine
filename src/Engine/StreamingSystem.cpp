@@ -17,12 +17,16 @@ void StreamingSystem::update(float /*deltaTime*/) {
 
     chunkManager_->update(player_->getPosition());
 
-    // Refresh the engine's terrain list with the currently loaded chunks.
-    allTerrains_ = chunkManager_->getActiveTerrains();
-
     // Phase 4 Step 4.2 — Drain pending GL upload tasks from the async
     // chunk loader.  Process up to 2 per frame to keep frame times stable.
+    // IMPORTANT: drain BEFORE refreshing allTerrains so that chunks
+    // finalized this frame (state → LOADED) are included in the list that
+    // PlayerMovementSystem uses for terrain-height collision.
     GLUploadQueue::instance().processAll(/*maxPerFrame=*/2);
+
+    // Refresh the engine's terrain list with the currently loaded chunks.
+    // Must come AFTER processAll so newly finalized chunks are included.
+    allTerrains_ = chunkManager_->getActiveTerrains();
 
     // Phase 4 Step 4.2.3 — Process deferred entity-creation jobs within
     // the per-frame time budget.

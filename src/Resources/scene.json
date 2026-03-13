@@ -1,107 +1,403 @@
 {
   "_comment": "scene.json — JSON equivalent of scene.cfg. Loaded by SceneLoaderJson.",
-  "terrain": {
-    "heightmap": "heightMap",
-    "blendmap": "blendMap"
-  },
-  "terrain_tiles": [
-    { "gridX":  0, "gridZ": -1, "primary": true },
-    { "gridX": -1, "gridZ": -1, "primary": false },
-    { "gridX":  0, "gridZ":  0, "primary": false },
-    { "gridX": -1, "gridZ":  0, "primary": false }
-  ],
-  "lights": [
-    {
-      "type": "directional",
-      "x": 0.0, "y": 1000.0, "z": -7000.0,
-      "r": 0.4, "g": 0.4, "b": 0.4
-    },
-    {
-      "type": "point",
-      "x": 120.0, "y": "terrain+10", "z": -50.0,
-      "r": 0.0, "g": 0.0, "b": 2.0,
-      "dist": 65.0
-    },
-    {
-      "type": "point",
-      "x": 100.0, "y": "terrain+10", "z": -50.0,
-      "r": 2.0, "g": 0.0, "b": 0.0,
-      "dist": 65.0
-    },
-    {
-      "type": "point",
-      "x": 110.0, "y": "terrain+10", "z": -20.0,
-      "r": 0.0, "g": 2.0, "b": 0.0,
-      "dist": 65.0
-    }
-  ],
-  "models": [
-    { "alias": "lamp",       "obj": "lamp",        "texture": "lamp" },
-    { "alias": "fern",       "obj": "fern",        "texture": "fern",         "atlas": 2 },
-    { "alias": "grass",      "obj": "grassModel",  "texture": "grassTexture", "transparent": true, "fakeLighting": true },
-    { "alias": "stall",      "obj": "Stall",       "texture": "stallTexture", "shininess": 2.0, "reflectivity": 2.0 },
-    { "alias": "tree",       "obj": "tree",        "texture": "tree",         "shininess": 2.0, "reflectivity": 2.0 },
-    { "alias": "fluffytree", "obj": "fluffy-tree", "texture": "tree",         "shininess": 2.0, "reflectivity": 2.0 },
-    { "alias": "crate",      "obj": "Stall",       "texture": "stallTexture", "shininess": 1.0, "reflectivity": 0.0 }
-  ],
-  "entities": [
-    { "alias": "lamp",  "x": 120.0, "y": "terrain", "z":  -50.0 },
-    { "alias": "stall", "x":   1.0, "y":      0.0,  "z":  -82.4, "rx": 0.0, "ry": 180.0, "rz": 0.0 },
-    { "alias": "lamp",  "x": 100.0, "y": "terrain", "z":  -50.0 },
-    { "alias": "lamp",  "x": 110.0, "y": "terrain", "z":  -20.0 },
-    { "alias": "crate", "x":   1.0, "y":     20.0,  "z":  -82.4, "rx": 0.0, "ry": 180.0, "rz": 0.0 }
-  ],
-  "random": [
-    { "alias": "grass",      "count": 500, "scaleMin": 0.5, "scaleMax": 1.5 },
-    { "alias": "fluffytree", "count": 500, "scaleMin": 0.5, "scaleMax": 1.5 },
-    { "alias": "tree",       "count": 500, "scaleMin": 0.25, "scaleMax": 1.5 },
-    { "alias": "fern",       "count": 500, "scaleMin": 0.25, "scaleMax": 1.5, "atlas": true }
-  ],
-  "random_seed": 1,
-  "player": {
-    "alias": "stall",
-    "x": 100.0, "y": 3.0, "z": -80.0,
-    "rx": 0.0, "ry": 180.0, "rz": 0.0,
-    "scale": 0.0
-  },
-  "assimp": [
-    { "path": "Backpack/backpack", "random": true, "yOffset": 3.0, "scaleMin": 3.25, "scaleMax": 10.5 }
-  ],
   "animated_characters": [
     {
+      "offset": {
+        "ox": 0.0,
+        "oy": 0.0,
+        "oz": 0.0
+      },
       "path": "Characters/characters.glb",
-      "x": 100.0, "y": "terrain", "z": -80.0,
+      "rot": {
+        "rx": -90.0,
+        "ry": 0.0,
+        "rz": 0.0
+      },
       "scale": 2.5,
-      "rot": { "rx": -90.0, "ry": 0.0, "rz": 0.0 },
-      "offset": { "ox": 0.0, "oy": 0.0, "oz": 0.0 }
+      "x": 100.0,
+      "y": "terrain",
+      "z": -80.0
+    }
+  ],
+  "assimp": [
+    {
+      "path": "Backpack/backpack",
+      "random": true,
+      "scaleMax": 10.5,
+      "scaleMin": 3.25,
+      "yOffset": 3.0
+    }
+  ],
+  "editor_entities": [
+    {
+      "alias": "fluffytree",
+      "ry": 0.0,
+      "scale": 7.309000015258789,
+      "x": -1881.9886474609375,
+      "y": -1.9073486328125e-06,
+      "z": -52.53601837158203
+    },
+    {
+      "alias": "fluffytree",
+      "ry": 0.0,
+      "scale": 1.0,
+      "x": -1897.4317626953125,
+      "y": 0.0,
+      "z": -44.292293548583984
+    }
+  ],
+  "entities": [
+    {
+      "alias": "lamp",
+      "x": 120.0,
+      "y": "terrain",
+      "z": -50.0
+    },
+    {
+      "alias": "stall",
+      "rx": 0.0,
+      "ry": 180.0,
+      "rz": 0.0,
+      "x": 1.0,
+      "y": 0.0,
+      "z": -82.4
+    },
+    {
+      "alias": "lamp",
+      "x": 100.0,
+      "y": "terrain",
+      "z": -50.0
+    },
+    {
+      "alias": "lamp",
+      "x": 110.0,
+      "y": "terrain",
+      "z": -20.0
+    },
+    {
+      "alias": "crate",
+      "rx": 0.0,
+      "ry": 180.0,
+      "rz": 0.0,
+      "x": 1.0,
+      "y": 20.0,
+      "z": -82.4
     }
   ],
   "gui": [
-    { "texture": "gui/lifebar", "x": -0.72, "y": 0.9, "w": 0.290, "h": 0.0900 },
-    { "texture": "gui/green",   "x": -0.70, "y": 0.9, "w": 0.185, "h": 0.0700 },
-    { "texture": "gui/heart",   "x": -0.90, "y": 0.9, "w": 0.075, "h": 0.0750 }
+    {
+      "h": 0.09,
+      "texture": "gui/lifebar",
+      "w": 0.29,
+      "x": -0.72,
+      "y": 0.9
+    },
+    {
+      "h": 0.07,
+      "texture": "gui/green",
+      "w": 0.185,
+      "x": -0.7,
+      "y": 0.9
+    },
+    {
+      "h": 0.075,
+      "texture": "gui/heart",
+      "w": 0.075,
+      "x": -0.9,
+      "y": 0.9
+    }
   ],
-  "text": [
-    { "font": "arial",  "size": 24, "x": -0.95, "y":  0.95, "message": "Score: 0" },
-    { "font": "arial",  "size": 20, "x": -0.95, "y":  0.85, "color": [1.0, 0.84, 0.0], "message": "Collect all coins to win!" },
-    { "font": "noodle", "size": 36, "x": -0.95, "y":  0.72, "color": [1.0, 1.0, 1.0], "maxWidth": 0.5, "message": "Gold Rush" }
+  "lights": [
+    {
+      "b": 0.4,
+      "g": 0.4,
+      "r": 0.4,
+      "type": "directional",
+      "x": 0.0,
+      "y": 1000.0,
+      "z": -7000.0
+    },
+    {
+      "b": 2.0,
+      "dist": 65.0,
+      "g": 0.0,
+      "r": 0.0,
+      "type": "point",
+      "x": 120.0,
+      "y": "terrain+10",
+      "z": -50.0
+    },
+    {
+      "b": 0.0,
+      "dist": 65.0,
+      "g": 0.0,
+      "r": 2.0,
+      "type": "point",
+      "x": 100.0,
+      "y": "terrain+10",
+      "z": -50.0
+    },
+    {
+      "b": 0.0,
+      "dist": 65.0,
+      "g": 2.0,
+      "r": 0.0,
+      "type": "point",
+      "x": 110.0,
+      "y": "terrain+10",
+      "z": -20.0
+    }
   ],
-  "water": [
-    { "x":  75.0, "height": -1.0, "z":  -75.0 },
-    { "x": 135.0, "height": -1.0, "z":  -75.0 },
-    { "x": 195.0, "height": -1.0, "z":  -75.0 },
-    { "x":  75.0, "height": -1.0, "z": -135.0 },
-    { "x": 135.0, "height": -1.0, "z": -135.0 },
-    { "x": 195.0, "height": -1.0, "z": -135.0 },
-    { "x":  75.0, "height": -1.0, "z": -195.0 },
-    { "x": 135.0, "height": -1.0, "z": -195.0 },
-    { "x": 195.0, "height": -1.0, "z": -195.0 }
+  "models": [
+    {
+      "alias": "lamp",
+      "obj": "lamp",
+      "texture": "lamp"
+    },
+    {
+      "alias": "fern",
+      "atlas": 2,
+      "obj": "fern",
+      "texture": "fern"
+    },
+    {
+      "alias": "grass",
+      "fakeLighting": true,
+      "obj": "grassModel",
+      "texture": "grassTexture",
+      "transparent": true
+    },
+    {
+      "alias": "stall",
+      "obj": "Stall",
+      "reflectivity": 2.0,
+      "shininess": 2.0,
+      "texture": "stallTexture"
+    },
+    {
+      "alias": "tree",
+      "obj": "tree",
+      "reflectivity": 2.0,
+      "shininess": 2.0,
+      "texture": "tree"
+    },
+    {
+      "alias": "fluffytree",
+      "obj": "fluffy-tree",
+      "reflectivity": 2.0,
+      "shininess": 2.0,
+      "texture": "tree"
+    },
+    {
+      "alias": "crate",
+      "obj": "Stall",
+      "reflectivity": 0.0,
+      "shininess": 1.0,
+      "texture": "stallTexture"
+    }
   ],
   "physics_bodies": [
-    { "alias": "stall",     "type": "static",  "shape": "box", "halfExtents": [3.0, 3.0, 3.0],     "friction": 0.8 },
-    { "alias": "lamp",      "type": "static",  "shape": "box", "halfExtents": [0.3, 2.5, 0.3],     "friction": 0.8 },
-    { "alias": "tree",      "type": "static",  "shape": "box", "halfExtents": [0.5, 5.0, 0.5],     "friction": 0.9 },
-    { "alias": "fluffytree","type": "static",  "shape": "box", "halfExtents": [0.5, 5.0, 0.5],     "friction": 0.9 },
-    { "alias": "crate",     "type": "dynamic", "shape": "box", "halfExtents": [2.0, 2.0, 2.0],     "mass": 5.0, "friction": 0.5, "restitution": 0.2 }
+    {
+      "alias": "stall",
+      "friction": 0.8,
+      "halfExtents": [
+        3.0,
+        3.0,
+        3.0
+      ],
+      "shape": "box",
+      "type": "static"
+    },
+    {
+      "alias": "lamp",
+      "friction": 0.8,
+      "halfExtents": [
+        0.3,
+        2.5,
+        0.3
+      ],
+      "shape": "box",
+      "type": "static"
+    },
+    {
+      "alias": "tree",
+      "friction": 0.9,
+      "halfExtents": [
+        0.5,
+        5.0,
+        0.5
+      ],
+      "shape": "box",
+      "type": "static"
+    },
+    {
+      "alias": "fluffytree",
+      "friction": 0.9,
+      "halfExtents": [
+        0.5,
+        5.0,
+        0.5
+      ],
+      "shape": "box",
+      "type": "static"
+    },
+    {
+      "alias": "crate",
+      "friction": 0.5,
+      "halfExtents": [
+        2.0,
+        2.0,
+        2.0
+      ],
+      "mass": 5.0,
+      "restitution": 0.2,
+      "shape": "box",
+      "type": "dynamic"
+    }
+  ],
+  "player": {
+    "alias": "stall",
+    "rx": 0.0,
+    "ry": 180.0,
+    "rz": 0.0,
+    "scale": 0.0,
+    "x": 100.0,
+    "y": 3.0,
+    "z": -80.0
+  },
+  "random": [
+    {
+      "alias": "grass",
+      "count": 500,
+      "scaleMax": 1.5,
+      "scaleMin": 0.5
+    },
+    {
+      "alias": "fluffytree",
+      "count": 500,
+      "scaleMax": 1.5,
+      "scaleMin": 0.5
+    },
+    {
+      "alias": "tree",
+      "count": 500,
+      "scaleMax": 1.5,
+      "scaleMin": 0.25
+    },
+    {
+      "alias": "fern",
+      "atlas": true,
+      "count": 500,
+      "scaleMax": 1.5,
+      "scaleMin": 0.25
+    }
+  ],
+  "random_seed": 1,
+  "terrain": {
+    "blendmap": "blendMap",
+    "heightmap": "heightMap"
+  },
+  "terrain_tiles": [
+    {
+      "gridX": 0,
+      "gridZ": -1,
+      "primary": true
+    },
+    {
+      "gridX": -1,
+      "gridZ": -1,
+      "primary": false
+    },
+    {
+      "gridX": 0,
+      "gridZ": 0,
+      "primary": false
+    },
+    {
+      "gridX": -1,
+      "gridZ": 0,
+      "primary": false
+    }
+  ],
+  "text": [
+    {
+      "font": "arial",
+      "message": "Score: 0",
+      "size": 24,
+      "x": -0.95,
+      "y": 0.95
+    },
+    {
+      "color": [
+        1.0,
+        0.84,
+        0.0
+      ],
+      "font": "arial",
+      "message": "Collect all coins to win!",
+      "size": 20,
+      "x": -0.95,
+      "y": 0.85
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "font": "noodle",
+      "maxWidth": 0.5,
+      "message": "Gold Rush",
+      "size": 36,
+      "x": -0.95,
+      "y": 0.72
+    }
+  ],
+  "water": [
+    {
+      "height": -1.0,
+      "x": 75.0,
+      "z": -75.0
+    },
+    {
+      "height": -1.0,
+      "x": 135.0,
+      "z": -75.0
+    },
+    {
+      "height": -1.0,
+      "x": 195.0,
+      "z": -75.0
+    },
+    {
+      "height": -1.0,
+      "x": 75.0,
+      "z": -135.0
+    },
+    {
+      "height": -1.0,
+      "x": 135.0,
+      "z": -135.0
+    },
+    {
+      "height": -1.0,
+      "x": 195.0,
+      "z": -135.0
+    },
+    {
+      "height": -1.0,
+      "x": 75.0,
+      "z": -195.0
+    },
+    {
+      "height": -1.0,
+      "x": 135.0,
+      "z": -195.0
+    },
+    {
+      "height": -1.0,
+      "x": 195.0,
+      "z": -195.0
+    }
   ]
 }
