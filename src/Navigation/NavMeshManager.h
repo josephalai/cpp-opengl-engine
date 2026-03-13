@@ -39,6 +39,8 @@ public:
         }
         minX_ = worldMinX;
         minZ_ = worldMinZ;
+        maxX_ = worldMaxX;
+        maxZ_ = worldMaxZ;
         float rawW = (worldMaxX - worldMinX) / gridRes_;
         float rawH = (worldMaxZ - worldMinZ) / gridRes_;
         // Cap grid dimensions to prevent unbounded memory allocation.
@@ -109,6 +111,22 @@ public:
         // explicit tile rebuilds after geometry changes.
     }
 
+    /// Extend the walkable area to cover an additional region.
+    /// Useful when new terrain tiles stream in at runtime.
+    /// The grid is rebuilt with the expanded extents; obstacle state is preserved.
+    void expandBounds(float addMinX, float addMinZ,
+                      float addMaxX, float addMaxZ) {
+        if (!built_) {
+            build(addMinX, addMinZ, addMaxX, addMaxZ);
+            return;
+        }
+        float newMinX = std::min(minX_, addMinX);
+        float newMinZ = std::min(minZ_, addMinZ);
+        float newMaxX = std::max(maxX_, addMaxX);
+        float newMaxZ = std::max(maxZ_, addMaxZ);
+        build(newMinX, newMinZ, newMaxX, newMaxZ);
+    }
+
     /// Find a path from start to goal using A* on the walkability grid.
     /// Returns an empty vector if no path exists or the mesh hasn't been built.
     std::vector<glm::vec3> findPath(const glm::vec3& start,
@@ -163,10 +181,14 @@ public:
         const int dz8[] = {-1,-1,-1,  0, 0,  1, 1, 1};
         const float cost8[] = {1.414f,1.0f,1.414f, 1.0f,1.0f, 1.414f,1.0f,1.414f};
 
-        // Limit iterations to prevent runaway searches.  At 1 m grid resolution,
-        // 10,000 iterations covers paths up to ~100 m in a crowded environment.
-        // Increase for larger worlds or lower grid resolutions.
-        constexpr int kMaxIterations = 10000;
+        // Limit iterations to prevent runaway searches.  At 1 m grid resolution
+        // this budget covers straight-line paths of ~2000 m (e.g. player at the
+        // main terrain origin walks to an editor-placed entity outside the tile).
+        // Diagonal detours multiply the expansion count by at most √2, so the
+        // cap must exceed (max_expected_path_m × √2) ≈ 2828 with comfortable
+        // headroom.  50 000 keeps overhead negligible while supporting worlds
+        // several kilometres across.
+        constexpr int kMaxIterations = 50000;
         int iterations = 0;
 
         while (!open.empty() && iterations < kMaxIterations) {
@@ -212,6 +234,7 @@ public:
 private:
     float gridRes_;
     float minX_ = 0.0f, minZ_ = 0.0f;
+    float maxX_ = 0.0f, maxZ_ = 0.0f;  ///< Stored so expandBounds() can union correctly.
     int   gridW_ = 0, gridH_ = 0;
     bool  built_ = false;
     uint32_t nextObstacleId_ = 1;

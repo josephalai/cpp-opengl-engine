@@ -1072,6 +1072,27 @@ int main() {
             worldMaxX = std::max(worldMaxX, tile.originX + tile.size);
             worldMaxZ = std::max(worldMaxZ, tile.originZ + tile.size);
         }
+
+        // Expand to cover every static entity (trees, stalls, lamps, and
+        // editor-placed prefabs that can be anywhere in the world).
+        // NavMeshManager uses no backing grid array, so widening the bounds
+        // is free; only the A* search budget (kMaxIterations) matters for
+        // cost — and at 1 m resolution that cap handles paths > 2 km.
+        {
+            constexpr float kNavPad = 50.0f;  // margin around outermost entity
+            auto entityView = registry.view<TransformComponent, NetworkIdComponent>();
+            for (auto entity : entityView) {
+                const auto& tc  = entityView.get<TransformComponent>(entity);
+                const auto& nid = entityView.get<NetworkIdComponent>(entity);
+                if (nid.id & 0x80000000u) {  // static entity (high bit = generateStaticId)
+                    worldMinX = std::min(worldMinX, tc.position.x - kNavPad);
+                    worldMinZ = std::min(worldMinZ, tc.position.z - kNavPad);
+                    worldMaxX = std::max(worldMaxX, tc.position.x + kNavPad);
+                    worldMaxZ = std::max(worldMaxZ, tc.position.z + kNavPad);
+                }
+            }
+        }
+
         navMesh.build(worldMinX, worldMinZ, worldMaxX, worldMaxZ);
         std::cout << "[Server] NavMesh built — walkable area ("
                   << worldMinX << "," << worldMinZ << ") to ("
@@ -1561,6 +1582,9 @@ int main() {
                             if (!spawned.empty()) {
                                 // Register baked entities in the spatial grid and
                                 // network ID map so ActionRequest packets can find them.
+                                // Also expand the NavMesh so pathfinding covers the
+                                // newly loaded area (entities outside original bounds
+                                // would otherwise clamp to the grid edge).
                                 for (auto entity : spawned) {
                                     if (registry.valid(entity)) {
                                         auto& tc = registry.get<TransformComponent>(entity);
@@ -1568,6 +1592,19 @@ int main() {
                                         if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
                                             networkIdToEntity[nid->id] = entity;
                                         }
+                                    }
+                                }
+                                // Rebuild the NavMesh to include the tile that just
+                                // streamed in.  The grid holds no per-cell data so
+                                // a full rebuild is cheap (just resets bounding box).
+                                {
+                                    auto loadedIt = terrainMgr.loadedCells.find(cell);
+                                    if (loadedIt != terrainMgr.loadedCells.end()) {
+                                        auto& newTile = terrainMgr.tiles[loadedIt->second];
+                                        navMesh.expandBounds(newTile.originX - 50.0f,
+                                                             newTile.originZ - 50.0f,
+                                                             newTile.originX + newTile.size + 50.0f,
+                                                             newTile.originZ + newTile.size + 50.0f);
                                     }
                                 }
                                 bakedChunkEntities[cell] = std::move(spawned);
