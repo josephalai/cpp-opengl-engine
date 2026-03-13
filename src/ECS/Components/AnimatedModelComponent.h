@@ -43,6 +43,12 @@ struct AnimatedModelComponent {
     glm::mat4            modelRotationMat = glm::mat4(1.0f);
     float                autoWalkYaw = 0.0f;
     bool                 useAutoWalkYaw = false;
+    /// True when the entity is actually moving (any keyboard direction OR
+    /// auto-walk via click-to-walk).  Set each frame by AnimationSystem.
+    /// The AnimationController walk-condition lambda reads this flag so that
+    /// the Walk animation fires for all directions and click-to-walk, not
+    /// just when W is held.
+    bool                 isMoving = false;
     float                scale       = 1.0f;
     /// True only for the local client's own character (marked by Engine after load).
     /// False for remote entities so AnimationSystem does not overwrite their
