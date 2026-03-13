@@ -30,10 +30,13 @@ void PlayerCamera::move(Terrain *terrain) {
 
     // Advance the mode-transition blend fraction each frame.
     // transitionFraction_ == 1 → fully attached; 0 → fully detached.
+    // The speed is read from client_settings.json ("transition_speed") so
+    // it can be tuned without recompiling.
+    const float transitionSpeed = ConfigManager::get().client.camera.transitionSpeed;
     if (detachedRotation_) {
-        transitionFraction_ = std::max(0.0f, transitionFraction_ - kTransitionSpeed * deltaTime);
+        transitionFraction_ = std::max(0.0f, transitionFraction_ - transitionSpeed * deltaTime);
     } else {
-        transitionFraction_ = std::min(1.0f, transitionFraction_ + kTransitionSpeed * deltaTime);
+        transitionFraction_ = std::min(1.0f, transitionFraction_ + transitionSpeed * deltaTime);
     }
 
     // Re-anchor worldAngle_ each frame while transitioning back to attached
@@ -125,6 +128,12 @@ void PlayerCamera::calculateAngleAroundPlayer() {
             angleAroundPlayer -= angleChange;
         }
     }
+
+    // In attached mode, clamp the orbit angle so the camera can never wrap
+    // around to face the player from the front.
+    if (!detachedRotation_) {
+        angleAroundPlayer = clampOrbitAngle(angleAroundPlayer);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -147,8 +156,9 @@ void PlayerCamera::setDetachedRotation(bool detach) {
         // Returning to attached: adjust angleAroundPlayer so that the
         // attached formula evaluates to currentTheta right now, and
         // update worldAngle_ to the same value so the lerp has no jump.
-        // Normalize both angles to prevent drift.
-        angleAroundPlayer = wrapAngle(currentTheta - player->getRotation().y);
+        // Normalize both angles to prevent drift, then clamp so the
+        // re-attached camera always starts from behind the player.
+        angleAroundPlayer = clampOrbitAngle(wrapAngle(currentTheta - player->getRotation().y));
         worldAngle_ = wrapAngle(currentTheta);
     }
 
@@ -165,6 +175,13 @@ float PlayerCamera::wrapAngle(float a) {
     a = fmod(a + 180.0f, 360.0f);
     if (a < 0.0f) a += 360.0f;
     return a - 180.0f;
+}
+
+// Clamps an orbit angle to [-maxOrbitAngle, +maxOrbitAngle] as configured
+// in client_settings.json so the camera can never face the player head-on.
+float PlayerCamera::clampOrbitAngle(float a) {
+    const float limit = ConfigManager::get().client.camera.maxOrbitAngle;
+    return std::max(-limit, std::min(limit, a));
 }
 
 float PlayerCamera::effectiveOrbitAngle() const {

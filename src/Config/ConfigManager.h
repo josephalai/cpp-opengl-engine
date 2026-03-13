@@ -49,6 +49,16 @@ struct CameraConfig {
     float minZoomDistance   = 5.0f;
     float maxZoomDistance   = 50.0f;
     float pitchOffset      = 4.0f;
+
+    /// Speed (units/second) at which the detach→attach transition blend
+    /// fraction moves.  Lower values = slower, smoother transition.
+    /// 1.5 → ~0.67 s transition; 3.0 → ~0.33 s (old hardcoded value).
+    float transitionSpeed  = 1.5f;
+
+    /// Maximum orbit angle (degrees) either side of directly behind the
+    /// player.  Clamped in attached mode so the camera can never wrap
+    /// around to face the player while walking.  150° is full side-view.
+    float maxOrbitAngle    = 150.0f;
 };
 
 struct ClientConfig {

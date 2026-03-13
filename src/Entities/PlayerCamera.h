@@ -113,10 +113,6 @@ private:
     /// frame, preventing the mouse from controlling the camera without a click.
     bool  escConsumedByDetach_ = false;
 
-    /// Speed at which transitionFraction_ moves (units per second).
-    /// Value of 3 → transition completes in ~0.33 s.
-    static constexpr float kTransitionSpeed = 3.0f;
-
     /// Returns the current effective orbit angle, blending between the
     /// detached world angle and the player-relative attached angle.
     float effectiveOrbitAngle() const;
@@ -124,6 +120,10 @@ private:
     /// Wraps an angle difference to the range [-180, +180) so that
     /// interpolation always takes the shortest arc.
     static float wrapAngle(float a);
+
+    /// Clamps angle to [-maxOrbitAngle, +maxOrbitAngle] from config,
+    /// preventing the camera from orbiting in front of the player.
+    static float clampOrbitAngle(float a);
 
     /// Overrides CameraInput::processInput to suppress the ESC cursor-style
     /// toggle when ESC was already consumed by the detach toggle this frame.

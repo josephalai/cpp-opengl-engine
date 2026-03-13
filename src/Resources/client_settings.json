@@ -13,6 +13,8 @@
     "zoom_sensitivity": 0.03,
     "min_zoom": 5,
     "max_zoom": 50,
-    "pitch_offset": 4
+    "pitch_offset": 4,
+    "transition_speed": 1.5,
+    "max_orbit_angle": 150.0
   }
 }
