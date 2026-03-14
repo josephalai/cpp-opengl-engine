@@ -59,6 +59,7 @@
 #include <thread>
 #include <fstream>
 #include <algorithm>
+#include <unordered_set>
 
 // ImGui
 #include <imgui.h>
@@ -715,17 +716,37 @@ void Engine::buildSystems() {
             // Deterministic static ID: same algorithm as the server so both sides
             // independently generate matching IDs for each world-space object.
             // The high bit is set to avoid collision with dynamic (player/NPC) IDs.
-            // Offset of 2000000 accommodates coordinates in [-200000, ~128000] world units.
-            // Note: two entities at the same (X, Z) but different Y levels share an ID —
-            // not an issue for baked terrain entities which are never vertically stacked.
+            // A shared usedIds set (across all chunks) ensures cross-chunk
+            // collisions are also resolved in the same order as the server.
             auto generateStaticId = [](float x, float z) -> uint32_t {
                 uint32_t ux = static_cast<uint32_t>(std::round(x * 10.0f) + 2000000.0f) & 0x7FFF;
                 uint32_t uz = static_cast<uint32_t>(std::round(z * 10.0f) + 2000000.0f) & 0x7FFF;
                 return 0x80000000u | (ux << 15) | uz;
             };
 
+            // Shared set persists for the lifetime of the Engine so collisions
+            // are resolved globally, matching the server's single usedIds set.
+            auto chunkUsedIds = std::make_shared<std::unordered_set<uint32_t>>();
+
+            auto resolveStaticIdChunk = [](uint32_t candidate,
+                                           std::unordered_set<uint32_t>& usedIds,
+                                           float x, float z) -> uint32_t {
+                if (usedIds.count(candidate)) {
+                    uint32_t original = candidate;
+                    do {
+                        candidate = 0x80000000u | (((candidate & 0x7FFFFFFFu) + 1u) & 0x7FFFFFFFu);
+                    } while (usedIds.count(candidate));
+                    std::cerr << "[Engine] WARNING: Static ID collision at ("
+                              << x << ", " << z << ") — 0x" << std::hex << original
+                              << " -> 0x" << candidate << std::dec << "\n";
+                }
+                usedIds.insert(candidate);
+                return candidate;
+            };
+
             chunkManager->setEntityCallback(
-                [this, generateStaticId](const BakedEntity& be, int cx, int cz) {
+                [this, generateStaticId, chunkUsedIds, resolveStaticIdChunk]
+                (const BakedEntity& be, int cx, int cz) {
                     // Use the well-known BakedPrefab mapping (ChunkData.h)
                     std::string alias = BakedPrefab::toAlias(be.prefabId);
                     if (alias.empty()) {
@@ -743,9 +764,10 @@ void Engine::buildSystems() {
                     entt::entity e = EntityFactory::spawn(registry, alias, pos, nullptr, rot, be.scale);
 
                     if (e != entt::null) {
-                        // Assign the deterministic static network ID so InputDispatcher
-                        // can publish EntityClickedEvent with the correct ID.
-                        uint32_t staticNetId = generateStaticId(be.x, be.z);
+                        // Assign the deterministic static network ID with collision
+                        // resolution so the client matches the server's assigned IDs.
+                        uint32_t staticNetId = resolveStaticIdChunk(
+                            generateStaticId(be.x, be.z), *chunkUsedIds, be.x, be.z);
                         if (auto* nid = registry.try_get<NetworkIdComponent>(e)) {
                             nid->id    = staticNetId;
                             nid->isNPC = false;
