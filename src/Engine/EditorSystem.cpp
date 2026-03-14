@@ -73,16 +73,19 @@ void EditorSystem::handleGhostPreview() {
     if (picker_) {
         glm::vec3 pt = picker_->getCurrentTerrainPoint();
         if (pt != glm::vec3(0.0f)) {
-            // --- Tile snapping ---
+            // --- Compute footprint before snapping (snap is AABB-aware) ---
+            glm::vec2 fp = ghostFootprint();
+            editorState_.ghostHalfExtents = fp;
+
+            // --- Tile snapping (aligns footprint edges to tile boundaries) ---
             if (editorState_.snapToGrid) {
-                pt = TileGrid::snapToTile(pt, editorState_.tileSize);
+                pt = TileGrid::snapToGrid(pt, editorState_.tileSize, fp.x, fp.y);
             }
 
             editorState_.ghostPosition  = pt;
             editorState_.hasGhostEntity = true;
 
             // --- Overlap check ---
-            glm::vec2 fp = ghostFootprint();
             editorState_.placementBlocked = !TileGrid::isPlacementValid(
                 registry_,
                 editorState_.ghostPosition,

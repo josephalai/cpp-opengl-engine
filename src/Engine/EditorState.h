@@ -32,10 +32,11 @@ struct EditorState {
     bool prevTildeDown = false;
 
     // --- Tile placement grid ---
-    float tileSize         = 4.0f;  ///< World-space side length of each tile cell (metres).
-    bool  snapToGrid       = true;  ///< Snap ghost position to the nearest tile centre.
-    bool  showTileGrid     = true;  ///< Render tile grid overlay while in editor mode.
-    bool  placementBlocked = false; ///< True when the ghost position would cause an AABB overlap.
+    float     tileSize         = 4.0f;   ///< World-space side length of each tile cell (metres).
+    bool      snapToGrid       = true;   ///< Snap ghost position to the nearest tile boundary.
+    bool      showTileGrid     = true;   ///< Render tile grid overlay while in editor mode.
+    bool      placementBlocked = false;  ///< True when the ghost position would cause an AABB overlap.
+    glm::vec2 ghostHalfExtents {0.5f, 0.5f}; ///< XZ half-extents of the ghost entity footprint (× ghostScale). Updated every frame by EditorSystem so TileGridRenderer can highlight the full multi-tile footprint.
 };
 
 #endif // ENGINE_EDITOR_STATE_H

@@ -76,19 +76,61 @@ public:
         return { centre.x, worldPos.y, centre.y };
     }
 
+    /// Snap a world position to the nearest tile boundary that keeps the entity
+    /// AABB aligned to the grid.
+    ///
+    /// • Entities whose footprint spans an *odd* number of tiles along an axis
+    ///   have their centre snapped to the nearest tile centre (same as snapToTile).
+    /// • Entities whose footprint spans an *even* number of tiles along an axis
+    ///   have their centre snapped to the nearest tile junction (the boundary
+    ///   between two adjacent tiles) so that the AABB edges fall on tile lines.
+    ///
+    /// @param halfX  XZ half-extent along X (already multiplied by scale).
+    /// @param halfZ  XZ half-extent along Z (already multiplied by scale).
+    static glm::vec3 snapToGrid(const glm::vec3& worldPos,
+                                float tileSize,
+                                float halfX, float halfZ) {
+        // Helper: snap a single axis value.
+        auto snapAxis = [](float v, float ts, float half) -> float {
+            // Number of full tile widths the footprint spans.
+            int nTiles = static_cast<int>(std::ceil(2.0f * half / ts));
+            if (nTiles % 2 == 1) {
+                // Odd — centre must land on a tile centre.
+                return std::floor(v / ts + 0.5f) * ts;
+            } else {
+                // Even — centre must land on a tile junction (boundary).
+                // Tile junctions are at (k + 0.5)*ts; nearest junction:
+                //   floor((v - ts/2) / ts + 0.5) * ts + ts/2
+                return std::floor((v - ts * 0.5f) / ts + 0.5f) * ts + ts * 0.5f;
+            }
+        };
+        return {
+            snapAxis(worldPos.x, tileSize, halfX),
+            worldPos.y,
+            snapAxis(worldPos.z, tileSize, halfZ)
+        };
+    }
+
     // -----------------------------------------------------------------------
     // Footprint helpers
     // -----------------------------------------------------------------------
 
     /// Return the set of tile cells that overlap with the XZ AABB:
     ///   [cx - halfX, cx + halfX] × [cz - halfZ, cz + halfZ]
+    ///
+    /// A small epsilon is subtracted from the corners so that an AABB edge
+    /// that falls exactly on a tile boundary does not bleed into the tile on
+    /// the far side.  This keeps the tile count consistent with the intuitive
+    /// footprint width and matches the epsilon used in isPlacementValid().
     static TileSet footprintTiles(float cx, float cz,
                                   float halfX, float halfZ,
                                   float tileSize) {
         TileSet tiles;
-        // Expand from min-corner to max-corner in tile steps.
-        TileCoord minTile = worldToTile(cx - halfX, cz - halfZ, tileSize);
-        TileCoord maxTile = worldToTile(cx + halfX, cz + halfZ, tileSize);
+        constexpr float kEps = 1e-4f;
+        // Shrink corners slightly so an AABB edge exactly on a tile boundary
+        // is not mapped to the tile on the other side of that boundary.
+        TileCoord minTile = worldToTile(cx - halfX + kEps, cz - halfZ + kEps, tileSize);
+        TileCoord maxTile = worldToTile(cx + halfX - kEps, cz + halfZ - kEps, tileSize);
         for (int tx = minTile.x; tx <= maxTile.x; ++tx) {
             for (int tz = minTile.z; tz <= maxTile.z; ++tz) {
                 tiles.insert({tx, tz});

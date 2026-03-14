@@ -3,9 +3,15 @@
 //
 // The grid is centred on the current ghost position and shows a window of
 // (2*radius + 1) × (2*radius + 1) tile cells.  Tile cells that contain an
-// existing EditorPlacedComponent entity are drawn in red; the tile cell under
-// the ghost preview is drawn in green (placement allowed) or red (blocked).
-// Empty cells are drawn in a dim white/grey.
+// existing EditorPlacedComponent entity are drawn in orange-red; the tile cells
+// covered by the ghost entity's AABB footprint are drawn in green (placement
+// allowed) or red (blocked / overlapping an existing entity).
+// Empty cells are drawn in a dim grey.
+//
+// Multi-tile entities: the number of highlighted green/red cells equals the
+// number of tiles that the entity's XZ AABB footprint covers (read from
+// EditorState::ghostHalfExtents, which EditorSystem updates every frame from
+// the selected prefab's physics halfExtents × ghostScale).
 //
 // The renderer reuses the existing DebugLineShader so no new GLSL is required.
 

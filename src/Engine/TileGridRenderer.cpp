@@ -78,7 +78,13 @@ void TileGridRenderer::render(const EditorState&    es,
     // --- Build occupancy set ---
     TileSet occupied = TileGrid::buildOccupancy(registry, ts);
 
-    // --- Centre the grid on the ghost tile ---
+    // --- Build ghost footprint tile set ---
+    TileSet ghostTiles = TileGrid::footprintTiles(
+        es.ghostPosition.x, es.ghostPosition.z,
+        es.ghostHalfExtents.x, es.ghostHalfExtents.y,
+        ts);
+
+    // --- Centre the grid view on the ghost tile ---
     TileCoord ghostTile = TileGrid::worldToTile(
         es.ghostPosition.x, es.ghostPosition.z, ts);
 
@@ -95,12 +101,12 @@ void TileGridRenderer::render(const EditorState&    es,
             float z1 = centre.y + ts * 0.5f;
 
             TileCoord cell{tx, tz};
-            bool isCentreCell = (tx == ghostTile.x && tz == ghostTile.z);
-            bool isOccupied   = (occupied.count(cell) > 0);
+            bool isGhostCell = (ghostTiles.count(cell) > 0);
+            bool isOccupied  = (occupied.count(cell) > 0);
 
             float r, g, b;
-            if (isCentreCell) {
-                // Ghost tile: green = OK, red = blocked
+            if (isGhostCell) {
+                // Ghost footprint: green = OK, red = blocked or overlapping
                 if (es.placementBlocked || isOccupied) {
                     r = 1.0f; g = 0.2f; b = 0.2f;   // red
                 } else {
