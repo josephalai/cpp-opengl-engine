@@ -30,6 +30,12 @@ struct EditorState {
 
     // --- Internal: tilde edge-detection ---
     bool prevTildeDown = false;
+
+    // --- Tile placement grid ---
+    float tileSize         = 4.0f;  ///< World-space side length of each tile cell (metres).
+    bool  snapToGrid       = true;  ///< Snap ghost position to the nearest tile centre.
+    bool  showTileGrid     = true;  ///< Render tile grid overlay while in editor mode.
+    bool  placementBlocked = false; ///< True when the ghost position would cause an AABB overlap.
 };
 
 #endif // ENGINE_EDITOR_STATE_H
