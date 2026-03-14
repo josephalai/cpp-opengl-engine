@@ -3,9 +3,6 @@
 #include "TileGridRenderer.h"
 
 #include "../Physics/DebugLineShader.h"
-#include "../ECS/Components/EditorPlacedComponent.h"
-#include "../ECS/Components/TransformComponent.h"
-#include "../Config/PrefabManager.h"
 
 #include <cmath>
 
