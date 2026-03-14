@@ -17,6 +17,7 @@
 #include <backends/imgui_impl_opengl3.h>
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 
 // ---------------------------------------------------------------------------
 
@@ -227,6 +228,23 @@ void EditorSystem::renderEditorWindow() {
         }
     } else {
         ImGui::TextDisabled("No terrain intersection");
+    }
+
+    // Show entity tile footprint dimensions when a prefab is selected.
+    if (!editorState_.selectedPrefab.empty()) {
+        glm::vec2 fp = ghostFootprint();
+        int tilesX = std::max(1, static_cast<int>(std::ceil(2.0f * fp.x / editorState_.tileSize)));
+        int tilesZ = std::max(1, static_cast<int>(std::ceil(2.0f * fp.y / editorState_.tileSize)));
+        ImGui::Text("Footprint: %d x %d tiles", tilesX, tilesZ);
+        ImGui::Text("Half-extents: (%.2f, %.2f) m", fp.x, fp.y);
+    }
+
+    // Show mouse tile coordinate when ghost is active.
+    if (editorState_.hasGhostEntity) {
+        TileCoord mouseTile = TileGrid::worldToTile(
+            editorState_.ghostPosition.x, editorState_.ghostPosition.z,
+            editorState_.tileSize);
+        ImGui::Text("Mouse tile: (%d, %d)", mouseTile.x, mouseTile.z);
     }
 
     // Count editor-placed entities.
