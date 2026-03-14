@@ -1,7 +1,0 @@
-{
-  "alias": "backpack",
-  "model_type": "backpack",
-  "render_mode": "instanced",
-  "model": { "obj": "Backpack/backpack", "texture": "Backpack/diffuse" },
-  "physics": { "type": "static", "shape": "box", "halfExtents": [0.5, 0.8, 0.3] }
-}

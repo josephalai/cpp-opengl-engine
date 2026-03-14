@@ -204,41 +204,6 @@
       "alias": "dragon",
       "obj": "dragon",
       "texture": "dragon"
-    },
-    {
-      "alias": "box",
-      "obj": "box",
-      "texture": "box"
-    },
-    {
-      "alias": "bunny",
-      "obj": "bunny",
-      "texture": "bunny"
-    },
-    {
-      "alias": "drone",
-      "obj": "drone",
-      "texture": "drone"
-    },
-    {
-      "alias": "backpack",
-      "obj": "Backpack/backpack",
-      "texture": "Backpack/diffuse"
-    },
-    {
-      "alias": "lowPolyTree",
-      "obj": "lowPolyTree",
-      "texture": "tree"
-    },
-    {
-      "alias": "tree2",
-      "obj": "tree2",
-      "texture": "tree"
-    },
-    {
-      "alias": "tree3",
-      "obj": "tree3",
-      "texture": "tree"
     }
   ],
   "physics_bodies": [

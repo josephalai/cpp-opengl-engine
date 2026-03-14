@@ -3,7 +3,7 @@
   "alias": "boulder",
   "model_type": "boulder",
   "render_mode": "instanced",
-  "_comment": "Uses Box model as placeholder until boulder-specific 3D assets are created.",
-  "model": { "obj": "box", "texture": "box" },
+  "_comment": "Uses Stall model as placeholder until boulder-specific 3D assets are created.",
+  "model": { "obj": "stall", "texture": "stallTexture" },
   "physics": { "type": "static", "shape": "sphere", "radius": 2.0 }
 }

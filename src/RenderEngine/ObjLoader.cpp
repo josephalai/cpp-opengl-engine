@@ -173,18 +173,35 @@ ModelData OBJLoader::loadObjModel(const std::string &filename) {
 
             if (matches != 9) {
                 printf("File can't be read by our simple parser : ( Try exporting with other options\n");
+                // Drain the rest of the malformed line so the parser stays in sync.
+                // Do NOT call processVertex — vertexIndex/uvIndex/normalIndex hold
+                // uninitialized stack values that would produce bogus indices and
+                // eventually crash convertDataToArrays via an out-of-bounds vector access.
+                // Use a character-by-character drain so lines of any length are handled.
+                int ch;
+                while ((ch = fgetc(file)) != '\n' && ch != EOF) {}
+            } else {
+                processVertex(static_cast<float>(vertexIndex[0]), static_cast<float>(uvIndex[0]),
+                              static_cast<float>(normalIndex[0]), &vertices, &indices);
+                processVertex(static_cast<float>(vertexIndex[1]), static_cast<float>(uvIndex[1]),
+                              static_cast<float>(normalIndex[1]), &vertices, &indices);
+                processVertex(static_cast<float>(vertexIndex[2]), static_cast<float>(uvIndex[2]),
+                              static_cast<float>(normalIndex[2]), &vertices, &indices);
             }
-            processVertex(static_cast<float>(vertexIndex[0]), static_cast<float>(uvIndex[0]),
-                          static_cast<float>(normalIndex[0]), &vertices, &indices);
-            processVertex(static_cast<float>(vertexIndex[1]), static_cast<float>(uvIndex[1]),
-                          static_cast<float>(normalIndex[1]), &vertices, &indices);
-            processVertex(static_cast<float>(vertexIndex[2]), static_cast<float>(uvIndex[2]),
-                          static_cast<float>(normalIndex[2]), &vertices, &indices);
         }
     }
     std::fclose(file);
 
     removeUnusedVertices(&vertices);
+
+    // If the OBJ has no texture-coordinate or normal lines the vectors are empty.
+    // Calling convertDataToArrays in that state would crash (textures[0] / normals[0]
+    // on empty vectors).  Return an empty ModelData so the caller can detect failure.
+    if (textures.empty() || normals.empty() || vertices.empty() || indices.empty()) {
+        for (auto* v : vertices) delete v;
+        printf("OBJLoader: '%s' is missing vt/vn data — skipping model.\n", fullPath.c_str());
+        return ModelData{};
+    }
 
     vector<float> verticesArray(vertices.size() * 3);
     verticesArray.reserve(vertices.size() * 3);
@@ -197,6 +214,7 @@ ModelData OBJLoader::loadObjModel(const std::string &filename) {
     convertDataToArrays(vertices, textures, normals, &verticesArray, &texturesArray, &normalsArray);
 
     ModelData data(verticesArray, texturesArray, normalsArray, indices, vMin, vMax);
+    for (auto* v : vertices) delete v;
     return data;
 }
 

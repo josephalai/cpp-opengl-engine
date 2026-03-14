@@ -1,7 +1,0 @@
-{
-  "alias": "lowPolyTree",
-  "model_type": "lowPolyTree",
-  "render_mode": "instanced",
-  "model": { "obj": "lowPolyTree", "texture": "tree" },
-  "physics": { "type": "static", "shape": "box", "halfExtents": [0.5, 3.0, 0.5] }
-}
