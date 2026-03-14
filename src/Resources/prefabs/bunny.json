@@ -1,0 +1,7 @@
+{
+  "alias": "bunny",
+  "model_type": "bunny",
+  "render_mode": "instanced",
+  "model": { "obj": "bunny", "texture": "bunny" },
+  "physics": { "type": "static", "shape": "box", "halfExtents": [0.5, 1.0, 0.5] }
+}

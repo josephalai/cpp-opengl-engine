@@ -1,0 +1,7 @@
+{
+  "alias": "drone",
+  "model_type": "drone",
+  "render_mode": "instanced",
+  "model": { "obj": "drone", "texture": "drone" },
+  "physics": { "type": "static", "shape": "box", "halfExtents": [1.0, 0.5, 1.0] }
+}

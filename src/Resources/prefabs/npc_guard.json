@@ -4,7 +4,7 @@
   "model_type": "npc_guard",
   "render_mode": "instanced",
   "animated": true,
-  "mesh": "models/walkrun_and_idle.glb",
+  "mesh": "Characters/characters.glb",
   "model": { "obj": "person", "texture": "playerTexture" },
   "physics": {
     "type": "kinematic_character",

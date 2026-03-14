@@ -72,6 +72,17 @@ void NetworkInterpolationSystem::update(float deltaTime) {
             nsd.renderTime += deltaTime * playbackRate;
         }
 
+        // Guard against stale renderTime after buffer starvation.
+        // When the buffer drains to <2 (NPC frozen / AI turn phase) and then
+        // refills, renderTime was accumulated during the hold-at-s1 phase and
+        // could be orders of magnitude larger than the new segment's span.
+        // Dividing by a small new span would give t >> 1, immediately snapping
+        // the entity to the new s1 position ("slingshot" bug).  Reset to 0 so
+        // interpolation starts fresh from s0 → s1 on recovery.
+        if (span > 0.0001f && nsd.renderTime > span * 2.0f) {
+            nsd.renderTime = 0.0f;
+        }
+
         float t = (span > 0.0001f) ? glm::clamp(nsd.renderTime / span, 0.0f, 1.0f) : 1.0f;
 
         // Interpolate position and rotation.

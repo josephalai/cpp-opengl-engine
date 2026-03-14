@@ -1,0 +1,7 @@
+{
+  "alias": "tree3",
+  "model_type": "tree3",
+  "render_mode": "instanced",
+  "model": { "obj": "tree3", "texture": "tree" },
+  "physics": { "type": "static", "shape": "box", "halfExtents": [0.5, 5.0, 0.5] }
+}
