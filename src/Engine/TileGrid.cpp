@@ -66,6 +66,12 @@ bool TileGrid::isPlacementValid(const entt::registry& registry,
                                  const glm::vec3& ghostPos,
                                  float halfX, float halfZ,
                                  entt::entity excludeEntity) {
+    // Guard against non-finite half-extents.
+    if (!std::isfinite(halfX) || !std::isfinite(halfZ) ||
+        halfX <= 0.0f || halfZ <= 0.0f) {
+        return false; // Degenerate footprint — block placement.
+    }
+
     // Use a small epsilon to avoid exact-edge false positives.
     constexpr float kEps = 0.01f;
 

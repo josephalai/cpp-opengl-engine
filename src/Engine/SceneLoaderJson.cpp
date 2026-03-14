@@ -284,15 +284,32 @@ bool SceneLoaderJson::load(
         modelMap[StringId(me.alias)] = lm;
 
         // Cache the full mesh AABB for the editor tile footprint.
-        // Use the raw OBJ vertex min/max — the AABB must represent the full
-        // visual bounds of the model (including canopy, leaves, etc.) so
-        // that the tile grid accurately reflects how much space the entity
-        // occupies.
+        // The OBJLoader stores Z with an inverted convention (vMin.z tracks
+        // the most-positive Z value, vMax.z tracks the most-negative), and
+        // the Z sentinel initialisation is also inverted, so getMin().z and
+        // getMax().z always contain FLT_MAX / -FLT_MAX respectively.  We
+        // therefore compute the XZ extents directly from the raw vertex buffer
+        // (which is correctly interleaved as [x, y, z, x, y, z, …]) and only
+        // use getMin().y / getMax().y (which work correctly) for the Y axis.
         {
-            const glm::vec3& meshMin = rawLoads[i].data.getMin();
-            const glm::vec3& meshMax = rawLoads[i].data.getMax();
-            if (meshMin != meshMax) {
-                PrefabManager::get().setMeshAABB(me.alias, meshMin, meshMax);
+            const auto& verts = rawLoads[i].data.getVertices();
+            const size_t nVerts = verts.size() / 3;
+            if (nVerts > 0) {
+                float xMin = verts[0], xMax = verts[0];
+                float zMin = verts[2], zMax = verts[2];
+                for (size_t vi = 0; vi < nVerts; ++vi) {
+                    const float x = verts[vi * 3];
+                    const float z = verts[vi * 3 + 2];
+                    if (x < xMin) xMin = x;
+                    if (x > xMax) xMax = x;
+                    if (z < zMin) zMin = z;
+                    if (z > zMax) zMax = z;
+                }
+                if (xMin != xMax || zMin != zMax) {
+                    const glm::vec3 meshMin(xMin, rawLoads[i].data.getMin().y, zMin);
+                    const glm::vec3 meshMax(xMax, rawLoads[i].data.getMax().y, zMax);
+                    PrefabManager::get().setMeshAABB(me.alias, meshMin, meshMax);
+                }
             }
         }
     }
