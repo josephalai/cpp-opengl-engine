@@ -1458,7 +1458,7 @@ int main() {
                         if (bakedChunkEntities.find(cell) == bakedChunkEntities.end()) {
                             auto spawned = loadBakedChunkEntities(
                                 registry, physicsSystem, physBodiesCfg,
-                                cell.first, cell.second);
+                                cell.first, cell.second, bakedUsedIds);
                             if (!spawned.empty()) {
                                 // Register baked entities in the spatial grid and
                                 // network ID map so ActionRequest packets can find them.
