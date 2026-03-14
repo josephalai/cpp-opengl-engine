@@ -1,6 +1,7 @@
 // src/Engine/RenderSystem.cpp
 
 #include "RenderSystem.h"
+#include "TileGridRenderer.h"
 #include "../RenderEngine/MasterRenderer.h"
 #include "../RenderEngine/FrameBuffers.h"
 #include "../RenderEngine/InstancedModelManager.h"
@@ -35,7 +36,9 @@ RenderSystem::RenderSystem(MasterRenderer*            renderer,
     , projectionMatrix_(projectionMatrix)
     , instancedModelMgr_(instancedModelMgr)
     , editorState_(editorState)
-{}
+{
+    tileGridRenderer_.init();
+}
 
 void RenderSystem::update(float /*deltaTime*/) {
     // --- Shadow pass — uses registry + Player ---
@@ -113,4 +116,11 @@ void RenderSystem::update(float /*deltaTime*/) {
 
     // Water rendering — must run after opaque geometry
     renderer_->renderWater(camera_, lights_.empty() ? nullptr : lights_[0]);
+
+    // Tile grid overlay — rendered last so it appears on top of the scene.
+    if (editorState_ && editorState_->isEditorMode && camera_) {
+        Terrain* activeTerrain = terrains_.empty() ? nullptr : terrains_[0];
+        tileGridRenderer_.render(*editorState_, activeTerrain,
+                                 camera_->getViewMatrix(), projectionMatrix_);
+    }
 }

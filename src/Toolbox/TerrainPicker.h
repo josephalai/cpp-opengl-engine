@@ -21,6 +21,9 @@ public:
     glm::vec3 getCurrentTerrainPoint();
     void update();
 
+    /// Return the terrain used for height queries (may be nullptr).
+    Terrain* getTerrain() const { return terrain; }
+
 private:
     Terrain *getTerrain(int x, int y);
 

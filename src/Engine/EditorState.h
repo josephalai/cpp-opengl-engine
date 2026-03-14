@@ -6,6 +6,8 @@
 #define ENGINE_EDITOR_STATE_H
 
 #include <string>
+#include <set>
+#include <utility>
 #include <glm/glm.hpp>
 #include <entt/entt.hpp>
 
@@ -30,6 +32,22 @@ struct EditorState {
 
     // --- Internal: tilde edge-detection ---
     bool prevTildeDown = false;
+
+    // --- Tile placement grid ---
+    /// World-space width/depth of each placement tile in meters.
+    /// Objects are snapped to tile centres; only one object per tile is allowed.
+    float tileSize = 4.0f;
+
+    /// Integer tile coordinates of the tile currently under the ghost preview.
+    int ghostTileX = 0;
+    int ghostTileZ = 0;
+
+    /// True when the ghost preview sits on a tile that is already occupied.
+    /// When true placement is blocked and the tile grid shows it in red.
+    bool ghostOnOccupiedTile = false;
+
+    /// Set of (tileX, tileZ) pairs that are occupied by a placed entity.
+    std::set<std::pair<int,int>> occupiedTiles;
 };
 
 #endif // ENGINE_EDITOR_STATE_H

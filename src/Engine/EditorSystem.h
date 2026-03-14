@@ -54,6 +54,9 @@ private:
     void renderEntityList();
     void renderTransformEditor();
     void handleEntityDeletion();
+
+    /// Rebuild the occupiedTiles set by scanning all EditorPlacedComponent entities.
+    void rebuildOccupiedTiles();
 };
 
 #endif // ENGINE_EDITOR_SYSTEM_H

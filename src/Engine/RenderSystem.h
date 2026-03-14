@@ -8,6 +8,7 @@
 
 #include "ISystem.h"
 #include "EditorState.h"
+#include "TileGridRenderer.h"
 #include "../Culling/FrustumCuller.h"
 #include <vector>
 #include <glm/glm.hpp>
@@ -52,6 +53,7 @@ private:
     FrustumCuller          culler_;
     InstancedModelManager* instancedModelMgr_;
     EditorState*           editorState_;
+    TileGridRenderer       tileGridRenderer_;
 };
 
 #endif // ENGINE_RENDERSYSTEM_H
