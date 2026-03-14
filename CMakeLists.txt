@@ -111,7 +111,7 @@ endif()
 # =============================================================================
 # Source file collection — Three-way split (GEA Build Wall)
 # =============================================================================
-file(GLOB_RECURSE COMMON_SOURCES
+file(GLOB_RECURSE COMMON_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/src/ECS/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Physics/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/Toolbox/*.cpp"
@@ -137,12 +137,12 @@ list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/InteractiveModel\\.cpp$")
 list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/MockServer\\.cpp$")
 
 # --- SERVER: headless entry point and NPC support ---
-file(GLOB_RECURSE SERVER_SOURCES
+file(GLOB_RECURSE SERVER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/src/Server/*.cpp"
 )
 
 # --- CLIENT: full engine source tree (rendering pipeline + COMMON dirs) ---
-file(GLOB_RECURSE ALL_SOURCES
+file(GLOB_RECURSE ALL_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/src/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/*.h"
 )
@@ -275,7 +275,7 @@ target_link_libraries(headless_server PRIVATE
 # Reads scene.json + heightmaps, pre-calculates entity positions, and writes
 # binary chunk_X_Z.dat files for instantaneous runtime loading.
 # =============================================================================
-file(GLOB_RECURSE TOOL_SOURCES "${CMAKE_SOURCE_DIR}/src/Tools/*.cpp")
+file(GLOB_RECURSE TOOL_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/Tools/*.cpp")
 
 # We include COMMON_SOURCES so the baker can use ConfigManager, Maths, and FileSystem.
 add_executable(asset_baker ${TOOL_SOURCES} ${COMMON_SOURCES})
