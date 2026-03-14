@@ -3,6 +3,7 @@
 #include "PlayerMovementSystem.h"
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/InputStateComponent.h"
+#include "../ECS/Components/AnimatedModelComponent.h"
 #include "../Events/EventBus.h"
 #include "../Input/InputMaster.h"
 #include "../Config/ConfigManager.h"
@@ -103,6 +104,11 @@ void PlayerMovementSystem::update(float deltaTime) {
         // the direction of travel (camera-relative "Action RPG" feel).
         if (totalDx * totalDx + totalDz * totalDz > 1e-4f) {
             tc.rotation.y = glm::degrees(std::atan2(totalDx, totalDz));
+            // Store the input-driven yaw so AnimationSystem can use it across
+            // snap-backs and not derive a wrong direction from position delta.
+            if (auto* amc = registry_.try_get<AnimatedModelComponent>(entity)) {
+                amc->lastInputYaw = tc.rotation.y;
+            }
         }
 
         // --- Physics path ---

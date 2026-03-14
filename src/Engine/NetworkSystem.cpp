@@ -20,6 +20,7 @@
 #include "../Events/EntityClickedEvent.h"
 #include "../ECS/Components/NetworkIdComponent.h"
 #include "../ECS/Components/InputStateComponent.h"
+#include "../ECS/Components/AnimatedModelComponent.h"
 #include <iostream>
 #include <cstring>
 #include <cmath>
@@ -383,6 +384,14 @@ void NetworkSystem::update(float deltaTime) {
 
                                         if (physicsSystem_) {
                                             physicsSystem_->warpPlayer(correctedPos);
+                                        }
+
+                                        // Flag the AnimatedModelComponent so AnimationSystem
+                                        // knows to discard the snap-back position delta and
+                                        // not let it battle the input-driven facing direction.
+                                        if (auto* amc = registry_.try_get<AnimatedModelComponent>(
+                                                localPlayer_->getHandle())) {
+                                            amc->wasSnappedBack = true;
                                         }
 
                                         std::cout << "[NetworkSystem] Real Reconcile Triggered.\n"

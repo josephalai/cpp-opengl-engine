@@ -47,6 +47,24 @@ void AnimationSystem::update(float deltaTime) {
                               InputMaster::isActionDown("MoveLeft")     ||
                               InputMaster::isActionDown("MoveRight");
 
+            // If a server reconciliation warp just occurred and the player is
+            // still holding a movement key, the position delta points in the
+            // wrong direction (back toward where we were snapped from).  Reset
+            // lastPosition so the next frame's delta is clean, restore the
+            // input-driven yaw, and clear the flag.
+            if (amc.wasSnappedBack && anyKeyDown) {
+                amc.lastPosition   = tc.position;
+                tc.rotation.y      = amc.lastInputYaw;
+                amc.wasSnappedBack = false;
+                // Recompute delta after the reset — it will be zero this frame.
+                deltaPos = glm::vec3(0.0f);
+                deltaSq  = 0.0f;
+            } else if (amc.wasSnappedBack) {
+                // No keys held; snap-back with no input — just clear the flag
+                // so the delta-derived direction is used from next frame.
+                amc.wasSnappedBack = false;
+            }
+
             // isMoving drives the Walk animation condition in the lambda wired
             // in Engine::loadScene (via setupDefaultTransitions).  It is true
             // whenever a movement key is held OR the character is actually

@@ -2,5 +2,6 @@
   "alias": "fern",
   "model_type": "fern",
   "render_mode": "instanced",
-  "model": { "obj": "fern", "texture": "fern" }
+  "model": { "obj": "fern", "texture": "fern" },
+  "physics": { "type": "static", "shape": "box", "halfExtents": [0.5, 0.5, 0.5] }
 }

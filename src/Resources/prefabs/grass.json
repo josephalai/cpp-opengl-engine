@@ -2,5 +2,6 @@
   "alias": "grass",
   "model_type": "grass",
   "render_mode": "instanced",
-  "model": { "obj": "grassModel", "texture": "grassTexture" }
+  "model": { "obj": "grassModel", "texture": "grassTexture" },
+  "physics": { "type": "static", "shape": "box", "halfExtents": [0.3, 0.3, 0.3] }
 }

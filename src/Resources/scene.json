@@ -169,7 +169,7 @@
     },
     {
       "alias": "stall",
-      "obj": "Stall",
+      "obj": "stall",
       "reflectivity": 2.0,
       "shininess": 2.0,
       "texture": "stallTexture"
@@ -190,10 +190,20 @@
     },
     {
       "alias": "crate",
-      "obj": "Stall",
+      "obj": "stall",
       "reflectivity": 0.0,
       "shininess": 1.0,
       "texture": "stallTexture"
+    },
+    {
+      "alias": "person",
+      "obj": "person",
+      "texture": "playerTexture"
+    },
+    {
+      "alias": "dragon",
+      "obj": "dragon",
+      "texture": "dragon"
     }
   ],
   "physics_bodies": [
