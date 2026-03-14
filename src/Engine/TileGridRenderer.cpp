@@ -70,7 +70,7 @@ void TileGridRenderer::render(const EditorState&    es,
                                int                   gridRadius) {
     init();  // no-op after first call
 
-    if (!es.isEditorMode || !es.showTileGrid || !es.hasGhostEntity) return;
+    if (!es.isEditorMode || !es.showTileGrid) return;
 
     const float ts   = es.tileSize;
     const float yRef = es.ghostPosition.y; // grid sits on the terrain surface
@@ -78,15 +78,18 @@ void TileGridRenderer::render(const EditorState&    es,
     // --- Build occupancy set ---
     TileSet occupied = TileGrid::buildOccupancy(registry, ts);
 
-    // --- Build ghost footprint tile set ---
-    TileSet ghostTiles = TileGrid::footprintTiles(
-        es.ghostPosition.x, es.ghostPosition.z,
-        es.ghostHalfExtents.x, es.ghostHalfExtents.y,
-        ts);
+    // --- Build ghost footprint tile set (only when a ghost is active) ---
+    TileSet ghostTiles;
+    if (es.hasGhostEntity) {
+        ghostTiles = TileGrid::footprintTiles(
+            es.ghostPosition.x, es.ghostPosition.z,
+            es.ghostHalfExtents.x, es.ghostHalfExtents.y,
+            ts);
+    }
 
-    // --- Centre the grid view on the ghost tile ---
-    TileCoord ghostTile = TileGrid::worldToTile(
-        es.ghostPosition.x, es.ghostPosition.z, ts);
+    // --- Centre the grid view on ghost tile (or world origin when no ghost) ---
+    glm::vec3 gridCenter = es.ghostPosition; // retains last valid position
+    TileCoord ghostTile = TileGrid::worldToTile(gridCenter.x, gridCenter.z, ts);
 
     // --- Draw tile cells ---
     for (int dx = -gridRadius; dx <= gridRadius; ++dx) {
@@ -101,7 +104,7 @@ void TileGridRenderer::render(const EditorState&    es,
             float z1 = centre.y + ts * 0.5f;
 
             TileCoord cell{tx, tz};
-            bool isGhostCell = (ghostTiles.count(cell) > 0);
+            bool isGhostCell = es.hasGhostEntity && (ghostTiles.count(cell) > 0);
             bool isOccupied  = (occupied.count(cell) > 0);
 
             float r, g, b;

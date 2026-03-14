@@ -126,6 +126,11 @@ public:
                                   float halfX, float halfZ,
                                   float tileSize) {
         TileSet tiles;
+        // Guard against non-finite half-extents (e.g. from a broken AABB).
+        if (!std::isfinite(halfX) || !std::isfinite(halfZ) ||
+            halfX <= 0.0f || halfZ <= 0.0f) {
+            return tiles;
+        }
         constexpr float kEps = 1e-4f;
         // Shrink corners slightly so an AABB edge exactly on a tile boundary
         // is not mapped to the tile on the other side of that boundary.

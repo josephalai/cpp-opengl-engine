@@ -17,6 +17,7 @@
 #include <backends/imgui_impl_opengl3.h>
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 
 // ---------------------------------------------------------------------------
 
@@ -229,6 +230,23 @@ void EditorSystem::renderEditorWindow() {
         ImGui::TextDisabled("No terrain intersection");
     }
 
+    // Show entity tile footprint dimensions when a prefab is selected.
+    if (!editorState_.selectedPrefab.empty()) {
+        glm::vec2 fp = ghostFootprint();
+        int tilesX = std::max(1, static_cast<int>(std::ceil(2.0f * fp.x / editorState_.tileSize)));
+        int tilesZ = std::max(1, static_cast<int>(std::ceil(2.0f * fp.y / editorState_.tileSize)));
+        ImGui::Text("Footprint: %d x %d tiles", tilesX, tilesZ);
+        ImGui::Text("Half-extents: (%.2f, %.2f) m", fp.x, fp.y);
+    }
+
+    // Show mouse tile coordinate when ghost is active.
+    if (editorState_.hasGhostEntity) {
+        TileCoord mouseTile = TileGrid::worldToTile(
+            editorState_.ghostPosition.x, editorState_.ghostPosition.z,
+            editorState_.tileSize);
+        ImGui::Text("Mouse tile: (%d, %d)", mouseTile.x, mouseTile.z);
+    }
+
     // Count editor-placed entities.
     int placedCount = 0;
     {
@@ -314,6 +332,13 @@ glm::vec2 EditorSystem::ghostFootprint() const {
     if (editorState_.selectedPrefab.empty()) {
         return { editorState_.ghostScale * 0.5f,
                  editorState_.ghostScale * 0.5f };
+    }
+
+    // Prefer mesh AABB (full visual bounds including canopy/leaves).
+    glm::vec2 meshHE = PrefabManager::get().getMeshHalfExtentsXZ(
+        editorState_.selectedPrefab, editorState_.ghostScale);
+    if (meshHE.x > 0.0f && meshHE.y > 0.0f) {
+        return meshHE;
     }
 
     const auto& j = PrefabManager::get().getPrefab(editorState_.selectedPrefab);

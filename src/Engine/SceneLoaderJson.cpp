@@ -36,6 +36,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <map>
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
@@ -281,6 +282,36 @@ bool SceneLoaderJson::load(
         if (me.atlasRows > 1) tex->setNumberOfRows(me.atlasRows);
         lm.model = new TexturedModel(loader->loadToVAO(rawLoads[i].data), tex);
         modelMap[StringId(me.alias)] = lm;
+
+        // Cache the full mesh AABB for the editor tile footprint.
+        // The OBJLoader stores Z with an inverted convention (vMin.z tracks
+        // the most-positive Z value, vMax.z tracks the most-negative), and
+        // the Z sentinel initialisation is also inverted, so getMin().z and
+        // getMax().z always contain FLT_MAX / -FLT_MAX respectively.  We
+        // therefore compute the XZ extents directly from the raw vertex buffer
+        // (which is correctly interleaved as [x, y, z, x, y, z, …]) and only
+        // use getMin().y / getMax().y (which work correctly) for the Y axis.
+        {
+            const auto& verts = rawLoads[i].data.getVertices();
+            const size_t nVerts = verts.size() / 3;
+            if (nVerts > 0) {
+                float xMin = verts[0], xMax = verts[0];
+                float zMin = verts[2], zMax = verts[2];
+                for (size_t vi = 0; vi < nVerts; ++vi) {
+                    const float x = verts[vi * 3];
+                    const float z = verts[vi * 3 + 2];
+                    if (x < xMin) xMin = x;
+                    if (x > xMax) xMax = x;
+                    if (z < zMin) zMin = z;
+                    if (z > zMax) zMax = z;
+                }
+                if (xMin != xMax || zMin != zMax) {
+                    const glm::vec3 meshMin(xMin, rawLoads[i].data.getMin().y, zMin);
+                    const glm::vec3 meshMax(xMax, rawLoads[i].data.getMax().y, zMax);
+                    PrefabManager::get().setMeshAABB(me.alias, meshMin, meshMax);
+                }
+            }
+        }
     }
 
     // -----------------------------------------------------------------------

@@ -12,6 +12,7 @@
 #define ENGINE_PREFAB_MANAGER_H
 
 #include <nlohmann/json.hpp>
+#include <glm/glm.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -39,12 +40,28 @@ public:
     /// Return all loaded prefab IDs (for debugging / iteration).
     std::vector<std::string> allIds() const;
 
+    /// Store the full mesh AABB (from OBJLoader vertex min/max) for a prefab.
+    /// Called once per alias at model load time in SceneLoaderJson.
+    void setMeshAABB(const std::string& id, const glm::vec3& min, const glm::vec3& max);
+
+    /// Return the XZ half-extents derived from the cached mesh AABB, scaled by
+    /// @p scale.  Returns {-1, -1} if no AABB has been cached for this id
+    /// (caller should fall back to physics.halfExtents).
+    glm::vec2 getMeshHalfExtentsXZ(const std::string& id, float scale) const;
+
 private:
     PrefabManager() = default;
     PrefabManager(const PrefabManager&) = delete;
     PrefabManager& operator=(const PrefabManager&) = delete;
 
     std::unordered_map<std::string, nlohmann::json> prefabs_;
+
+    struct MeshAABB {
+        glm::vec3 min{0.0f};
+        glm::vec3 max{0.0f};
+        bool valid = false;
+    };
+    std::unordered_map<std::string, MeshAABB> meshAABBs_;
 };
 
 #endif // ENGINE_PREFAB_MANAGER_H
