@@ -7,6 +7,7 @@
 #include "../Config/PrefabManager.h"
 #include "../Toolbox/Maths.h"
 
+#include <algorithm>
 #include <iostream>
 
 // ---------------------------------------------------------------------------
@@ -72,6 +73,36 @@ void InstancedModelManager::init(Loader* loader) {
         // Use the prefab alias as the bucket key.
         std::string alias = prefab.value("alias", id);
         buckets_[alias].model = im;
+
+        // Cache a trimmed mesh AABB for the editor tile footprint.
+        // Skip if SceneLoaderJson already set it (only set if not yet present).
+        if (PrefabManager::get().getMeshHalfExtentsXZ(alias, 1.0f).x <= 0.0f) {
+            const auto& verts = meshData.getVertices(); // [x, y, z, …]
+            const size_t nVerts = verts.size() / 3;
+            if (nVerts >= 10) {
+                std::vector<float> xs, zs;
+                xs.reserve(nVerts);
+                zs.reserve(nVerts);
+                for (size_t vi = 0; vi < nVerts; ++vi) {
+                    xs.push_back(verts[vi * 3]);
+                    zs.push_back(verts[vi * 3 + 2]);
+                }
+                std::sort(xs.begin(), xs.end());
+                std::sort(zs.begin(), zs.end());
+
+                const size_t trim = nVerts / 10;
+                const float xMin = xs[trim],     xMax = xs[nVerts - 1 - trim];
+                const float zMin = zs[trim],     zMax = zs[nVerts - 1 - trim];
+                const float hx = (xMax - xMin) * 0.5f;
+                const float hz = (zMax - zMin) * 0.5f;
+
+                if (hx > 0.0f && hz > 0.0f) {
+                    PrefabManager::get().setMeshAABB(alias,
+                        glm::vec3(-hx, meshData.getMin().y,  hz),
+                        glm::vec3( hx, meshData.getMax().y, -hz));
+                }
+            }
+        }
     }
 
 }

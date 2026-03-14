@@ -11,7 +11,9 @@
 
 #include "ISystem.h"
 #include "EditorState.h"
+#include "TileGrid.h"
 #include <entt/entt.hpp>
+#include <glm/glm.hpp>
 #include <string>
 #include <vector>
 
@@ -54,6 +56,10 @@ private:
     void renderEntityList();
     void renderTransformEditor();
     void handleEntityDeletion();
+
+    // --- Tile grid helpers ---
+    /// Return the XZ half-extents of the selected prefab multiplied by ghostScale.
+    glm::vec2 ghostFootprint() const;
 };
 
 #endif // ENGINE_EDITOR_SYSTEM_H

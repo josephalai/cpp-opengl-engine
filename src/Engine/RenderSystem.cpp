@@ -111,6 +111,15 @@ void RenderSystem::update(float /*deltaTime*/) {
         renderer_->renderInstanced(lights_);
     }
 
+    // Tile grid overlay — drawn after opaque geometry so it sits on top.
+    if (editorState_ && camera_) {
+        tileGridRenderer_.render(
+            *editorState_,
+            registry_,
+            camera_->getViewMatrix(),
+            projectionMatrix_);
+    }
+
     // Water rendering — must run after opaque geometry
     renderer_->renderWater(camera_, lights_.empty() ? nullptr : lights_[0]);
 }

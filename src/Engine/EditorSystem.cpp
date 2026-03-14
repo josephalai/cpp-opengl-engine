@@ -17,6 +17,7 @@
 #include <backends/imgui_impl_opengl3.h>
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 
 // ---------------------------------------------------------------------------
 
@@ -65,17 +66,34 @@ void EditorSystem::update(float /*deltaTime*/) {
 // ---------------------------------------------------------------------------
 void EditorSystem::handleGhostPreview() {
     if (editorState_.selectedPrefab.empty()) {
-        editorState_.hasGhostEntity = false;
+        editorState_.hasGhostEntity   = false;
+        editorState_.placementBlocked = false;
         return;
     }
 
     if (picker_) {
         glm::vec3 pt = picker_->getCurrentTerrainPoint();
         if (pt != glm::vec3(0.0f)) {
+            // --- Compute footprint before snapping (snap is AABB-aware) ---
+            glm::vec2 fp = ghostFootprint();
+            editorState_.ghostHalfExtents = fp;
+
+            // --- Tile snapping (aligns footprint edges to tile boundaries) ---
+            if (editorState_.snapToGrid) {
+                pt = TileGrid::snapToGrid(pt, editorState_.tileSize, fp.x, fp.y);
+            }
+
             editorState_.ghostPosition  = pt;
             editorState_.hasGhostEntity = true;
+
+            // --- Overlap check ---
+            editorState_.placementBlocked = !TileGrid::isPlacementValid(
+                registry_,
+                editorState_.ghostPosition,
+                fp.x, fp.y);
         } else {
-            editorState_.hasGhostEntity = false;
+            editorState_.hasGhostEntity   = false;
+            editorState_.placementBlocked = false;
         }
     }
 }
@@ -97,6 +115,12 @@ void EditorSystem::handlePlacement() {
     if (!risingEdge) return;
     if (editorState_.selectedPrefab.empty()) return;
     if (!editorState_.hasGhostEntity) return;
+
+    // --- Tile overlap guard ---
+    if (editorState_.placementBlocked) {
+        std::cout << "[Editor] Placement blocked — AABB would overlap an existing entity.\n";
+        return;
+    }
 
     glm::vec3 pos = editorState_.ghostPosition;
     // Pass nullptr for physics — editor-placed entities are pure static data
@@ -183,6 +207,13 @@ void EditorSystem::renderEditorWindow() {
     ImGui::SliderFloat("Scale##ghost",    &editorState_.ghostScale,     0.1f, 10.0f);
     ImGui::SliderFloat("Rotation Y##ghost", &editorState_.ghostRotationY, 0.0f, 360.0f);
 
+    // --- Tile Grid ---
+    ImGui::SeparatorText("Tile Grid (~ shows grid)");
+    ImGui::Checkbox("Snap to Grid",  &editorState_.snapToGrid);
+    ImGui::SameLine();
+    ImGui::Checkbox("Show Grid",     &editorState_.showTileGrid);
+    ImGui::SliderFloat("Tile Size##tile", &editorState_.tileSize, 1.0f, 32.0f, "%.1f m");
+
     // --- Placement info ---
     ImGui::SeparatorText("Placement Info");
     if (editorState_.hasGhostEntity) {
@@ -190,8 +221,30 @@ void EditorSystem::renderEditorWindow() {
             editorState_.ghostPosition.x,
             editorState_.ghostPosition.y,
             editorState_.ghostPosition.z);
+        if (editorState_.placementBlocked) {
+            ImGui::TextColored(ImVec4(1,0.3f,0.3f,1), "BLOCKED — entity would overlap");
+        } else {
+            ImGui::TextColored(ImVec4(0.3f,1,0.3f,1), "OK — tile is free");
+        }
     } else {
         ImGui::TextDisabled("No terrain intersection");
+    }
+
+    // Show entity tile footprint dimensions when a prefab is selected.
+    if (!editorState_.selectedPrefab.empty()) {
+        glm::vec2 fp = ghostFootprint();
+        int tilesX = std::max(1, static_cast<int>(std::ceil(2.0f * fp.x / editorState_.tileSize)));
+        int tilesZ = std::max(1, static_cast<int>(std::ceil(2.0f * fp.y / editorState_.tileSize)));
+        ImGui::Text("Footprint: %d x %d tiles", tilesX, tilesZ);
+        ImGui::Text("Half-extents: (%.2f, %.2f) m", fp.x, fp.y);
+    }
+
+    // Show mouse tile coordinate when ghost is active.
+    if (editorState_.hasGhostEntity) {
+        TileCoord mouseTile = TileGrid::worldToTile(
+            editorState_.ghostPosition.x, editorState_.ghostPosition.z,
+            editorState_.tileSize);
+        ImGui::Text("Mouse tile: (%d, %d)", mouseTile.x, mouseTile.z);
     }
 
     // Count editor-placed entities.
@@ -270,4 +323,34 @@ void EditorSystem::renderTransformEditor() {
         registry_.destroy(editorState_.selectedEntity);
         editorState_.selectedEntity = entt::null;
     }
+}
+
+// ---------------------------------------------------------------------------
+// ghostFootprint — XZ half-extents of the selected prefab × ghostScale.
+// ---------------------------------------------------------------------------
+glm::vec2 EditorSystem::ghostFootprint() const {
+    if (editorState_.selectedPrefab.empty()) {
+        return { editorState_.ghostScale * 0.5f,
+                 editorState_.ghostScale * 0.5f };
+    }
+
+    // Prefer mesh AABB (full visual bounds including canopy/leaves).
+    glm::vec2 meshHE = PrefabManager::get().getMeshHalfExtentsXZ(
+        editorState_.selectedPrefab, editorState_.ghostScale);
+    if (meshHE.x > 0.0f && meshHE.y > 0.0f) {
+        return meshHE;
+    }
+
+    const auto& j = PrefabManager::get().getPrefab(editorState_.selectedPrefab);
+    if (!j.is_null() && j.contains("physics") &&
+        j["physics"].contains("halfExtents")) {
+        const auto& he = j["physics"]["halfExtents"];
+        if (he.is_array() && he.size() >= 3) {
+            float hx = he[0].get<float>() * editorState_.ghostScale;
+            float hz = he[2].get<float>() * editorState_.ghostScale;
+            return { hx, hz };
+        }
+    }
+    return { editorState_.ghostScale * 0.5f,
+             editorState_.ghostScale * 0.5f };
 }
