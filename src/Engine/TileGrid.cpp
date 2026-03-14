@@ -14,6 +14,12 @@
 // from a prefab's physics definition.  Returns {0,0} if none is found.
 // ---------------------------------------------------------------------------
 static glm::vec2 prefabFootprint(const std::string& alias, float scale) {
+    // Prefer mesh AABB (full visual bounds including canopy/leaves).
+    glm::vec2 meshHE = PrefabManager::get().getMeshHalfExtentsXZ(alias, scale);
+    if (meshHE.x > 0.0f && meshHE.y > 0.0f) {
+        return meshHE;
+    }
+
     const auto& j = PrefabManager::get().getPrefab(alias);
     if (j.is_null()) return {0.0f, 0.0f};
 

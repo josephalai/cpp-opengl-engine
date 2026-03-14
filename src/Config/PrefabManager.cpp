@@ -6,6 +6,7 @@
 
 #include <iostream>
 #include <filesystem>
+#include <cmath>
 
 namespace fs = std::filesystem;
 
@@ -100,4 +101,25 @@ std::vector<std::string> PrefabManager::allIds() const {
     ids.reserve(prefabs_.size());
     for (const auto& [k, _] : prefabs_) ids.push_back(k);
     return ids;
+}
+
+// -------------------------------------------------------------------------
+// setMeshAABB / getMeshHalfExtentsXZ
+// -------------------------------------------------------------------------
+
+void PrefabManager::setMeshAABB(const std::string& id,
+                                 const glm::vec3& min,
+                                 const glm::vec3& max) {
+    meshAABBs_[id] = { min, max, true };
+}
+
+glm::vec2 PrefabManager::getMeshHalfExtentsXZ(const std::string& id, float scale) const {
+    auto it = meshAABBs_.find(id);
+    if (it != meshAABBs_.end() && it->second.valid) {
+        const auto& aabb = it->second;
+        float hx = std::abs(aabb.max.x - aabb.min.x) * 0.5f * scale;
+        float hz = std::abs(aabb.max.z - aabb.min.z) * 0.5f * scale;
+        return { hx, hz };
+    }
+    return { -1.0f, -1.0f };
 }

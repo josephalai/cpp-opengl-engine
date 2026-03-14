@@ -281,6 +281,10 @@ bool SceneLoaderJson::load(
         if (me.atlasRows > 1) tex->setNumberOfRows(me.atlasRows);
         lm.model = new TexturedModel(loader->loadToVAO(rawLoads[i].data), tex);
         modelMap[StringId(me.alias)] = lm;
+        // Cache mesh AABB for editor tile footprint (full visual bounds).
+        PrefabManager::get().setMeshAABB(me.alias,
+                                         rawLoads[i].data.getMin(),
+                                         rawLoads[i].data.getMax());
     }
 
     // -----------------------------------------------------------------------

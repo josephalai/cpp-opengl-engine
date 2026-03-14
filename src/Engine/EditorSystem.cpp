@@ -316,6 +316,13 @@ glm::vec2 EditorSystem::ghostFootprint() const {
                  editorState_.ghostScale * 0.5f };
     }
 
+    // Prefer mesh AABB (full visual bounds including canopy/leaves).
+    glm::vec2 meshHE = PrefabManager::get().getMeshHalfExtentsXZ(
+        editorState_.selectedPrefab, editorState_.ghostScale);
+    if (meshHE.x > 0.0f && meshHE.y > 0.0f) {
+        return meshHE;
+    }
+
     const auto& j = PrefabManager::get().getPrefab(editorState_.selectedPrefab);
     if (!j.is_null() && j.contains("physics") &&
         j["physics"].contains("halfExtents")) {
