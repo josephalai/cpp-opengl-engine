@@ -283,46 +283,34 @@ bool SceneLoaderJson::load(
         lm.model = new TexturedModel(loader->loadToVAO(rawLoads[i].data), tex);
         modelMap[StringId(me.alias)] = lm;
 
-        // Cache a trimmed mesh AABB for the editor tile footprint.
-        // Raw min/max spans ALL vertices, including sparse outliers (leaf tips,
-        // stray branches) that inflate the footprint far beyond the model's
-        // visual bulk.  Sorting the XZ positions and discarding the outer 10 %
-        // on each side gives a half-extent that represents the "core" of the
-        // mesh, producing a footprint that matches what the user sees.
+        // Cache the full mesh AABB for the editor tile footprint.
+        // The OBJLoader stores Z with an inverted convention (vMin.z tracks
+        // the most-positive Z value, vMax.z tracks the most-negative), and
+        // the Z sentinel initialisation is also inverted, so getMin().z and
+        // getMax().z always contain FLT_MAX / -FLT_MAX respectively.  We
+        // therefore compute the XZ extents directly from the raw vertex buffer
+        // (which is correctly interleaved as [x, y, z, x, y, z, …]) and only
+        // use getMin().y / getMax().y (which work correctly) for the Y axis.
         {
-            const auto& verts = rawLoads[i].data.getVertices(); // [x,y,z,…]
+            const auto& verts = rawLoads[i].data.getVertices();
             const size_t nVerts = verts.size() / 3;
-            if (nVerts >= 10) {
-                std::vector<float> xs, zs;
-                xs.reserve(nVerts);
-                zs.reserve(nVerts);
+            if (nVerts > 0) {
+                float xMin = verts[0], xMax = verts[0];
+                float zMin = verts[2], zMax = verts[2];
                 for (size_t vi = 0; vi < nVerts; ++vi) {
-                    xs.push_back(verts[vi * 3]);
-                    zs.push_back(verts[vi * 3 + 2]);
+                    const float x = verts[vi * 3];
+                    const float z = verts[vi * 3 + 2];
+                    if (x < xMin) xMin = x;
+                    if (x > xMax) xMax = x;
+                    if (z < zMin) zMin = z;
+                    if (z > zMax) zMax = z;
                 }
-                std::sort(xs.begin(), xs.end());
-                std::sort(zs.begin(), zs.end());
-
-                // Discard the outermost 10 % on each side to drop outlier vertices.
-                const size_t trim = nVerts / 10;
-                const float xMin = xs[trim],           xMax = xs[nVerts - 1 - trim];
-                const float zMin = zs[trim],           zMax = zs[nVerts - 1 - trim];
-
-                // Half-extent = half of the trimmed span (symmetric around centroid).
-                const float hx = (xMax - xMin) * 0.5f;
-                const float hz = (zMax - zMin) * 0.5f;
-
-                if (hx > 0.0f && hz > 0.0f) {
-                    // Maintain the OBJ Z-axis sign convention used throughout the
-                    // engine: min.z stores the +Z extreme, max.z stores the −Z extreme.
-                    PrefabManager::get().setMeshAABB(me.alias,
-                        glm::vec3(-hx, rawLoads[i].data.getMin().y,  hz),
-                        glm::vec3( hx, rawLoads[i].data.getMax().y, -hz));
+                if (xMin != xMax || zMin != zMax) {
+                    const glm::vec3 meshMin(xMin, rawLoads[i].data.getMin().y, zMin);
+                    const glm::vec3 meshMax(xMax, rawLoads[i].data.getMax().y, zMax);
+                    PrefabManager::get().setMeshAABB(me.alias, meshMin, meshMax);
                 }
-                // If hx or hz is zero (degenerate/empty model) the AABB is not
-                // set and ghostFootprint() falls through to physics half-extents.
             }
-            // Models with < 10 vertices also fall through to physics half-extents.
         }
     }
 
