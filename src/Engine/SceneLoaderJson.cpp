@@ -34,6 +34,7 @@
 #include <iostream>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <map>
 #include <cstdlib>
 #include <cstring>
@@ -74,6 +75,24 @@ inline uint32_t generateStaticId(float x, float z) {
     uint32_t ux = static_cast<uint32_t>(std::round(x * 10.0f) + 2000000.0f) & 0x7FFF;
     uint32_t uz = static_cast<uint32_t>(std::round(z * 10.0f) + 2000000.0f) & 0x7FFF;
     return 0x80000000u | (ux << 15) | uz;
+}
+
+/// Resolve a static ID collision: increment (keeping the high bit set) until
+/// a free slot is found, then mark it as used.  Mirrors ServerMain::resolveStaticId.
+inline uint32_t resolveStaticId(uint32_t candidate,
+                                std::unordered_set<uint32_t>& usedIds,
+                                float x, float z) {
+    if (usedIds.count(candidate)) {
+        uint32_t original = candidate;
+        do {
+            candidate = 0x80000000u | (((candidate & 0x7FFFFFFFu) + 1u) & 0x7FFFFFFFu);
+        } while (usedIds.count(candidate));
+        std::cerr << "[SceneLoaderJson] WARNING: Static ID collision at ("
+                  << x << ", " << z << ") — 0x" << std::hex << original
+                  << " -> 0x" << candidate << std::dec << "\n";
+    }
+    usedIds.insert(candidate);
+    return candidate;
 }
 
 // Parse a JSON y-value: either a float or a string like "terrain" / "terrain+3".
@@ -310,12 +329,17 @@ bool SceneLoaderJson::load(
     // (ServerMain::loadHeadlessScene uses the same seed and draw order).
     //
     // Each entity with a "physics" block in its prefab also receives:
-    //   - NetworkIdComponent  (deterministic ID = generateStaticId(x, z))
+    //   - NetworkIdComponent  (deterministic ID = resolveStaticId(generateStaticId(x,z)))
     //   - ColliderComponent   (AABB from prefab physics halfExtents)
     // These are required for EntityPicker to detect right-clicks on trees,
     // and for InputDispatcher/NetworkSystem to send the correct network ID
     // in an ActionRequestPacket.
+    //
+    // A usedIds set is shared across random and editor_entities sections so
+    // that collision resolution matches the server's order.
     // -----------------------------------------------------------------------
+    std::unordered_set<uint32_t> staticUsedIds;
+
     if (root.contains("random") && root["random"].is_array()) {
         unsigned int seed = root.value("random_seed", 1u);
         std::mt19937 rng(seed);
@@ -388,8 +412,11 @@ bool SceneLoaderJson::load(
                     smc.textureIndex = 0;
                 }
 
-                // Assign deterministic network ID (matches server + EntityPicker).
-                uint32_t staticNetId = generateStaticId(x, z);
+                // Assign deterministic network ID with collision resolution so
+                // this entity and the editor_entities below all get distinct IDs,
+                // matching the server's assignment order.
+                uint32_t staticNetId = resolveStaticId(
+                    generateStaticId(x, z), staticUsedIds, x, z);
                 registry.emplace<NetworkIdComponent>(ent,
                     NetworkIdComponent{staticNetId, alias, false, 0});
 
@@ -401,6 +428,76 @@ bool SceneLoaderJson::load(
                     registry.emplace<ColliderComponent>(ent, ColliderComponent{box});
                 }
             }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Editor-placed entities — written by EditorSerializer::saveToJson.
+    // Loaded after random entities so collision resolution against staticUsedIds
+    // matches the baked chunk ordering (random first, then editor).
+    // -----------------------------------------------------------------------
+    if (root.contains("editor_entities") && root["editor_entities"].is_array()) {
+        for (auto& e : root["editor_entities"]) {
+            std::string alias = e.value("alias", "");
+            if (alias.empty()) continue;
+
+            float x     = e.value("x",     0.0f);
+            float z     = e.value("z",     0.0f);
+            float ry    = e.value("ry",    0.0f);
+            float scale = e.value("scale", 1.0f);
+            float y     = e.value("y",     0.0f);
+            if (primaryTerrain && y == 0.0f)
+                y = primaryTerrain->getHeightOfTerrain(x, z);
+
+            auto ent = registry.create();
+            auto& tc = registry.emplace<TransformComponent>(ent);
+            tc.position = glm::vec3(x, y, z);
+            tc.rotation = glm::vec3(0.0f, ry, 0.0f);
+            tc.scale    = scale;
+
+            // Visual mesh — look up the model by alias.
+            StringId aliasId(alias);
+            auto mit = modelMap.find(aliasId);
+            if (mit != modelMap.end()) {
+                auto& lm = mit->second;
+                auto& smc       = registry.emplace<StaticModelComponent>(ent);
+                smc.model       = lm.model;
+                smc.boundingBox = new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId());
+                smc.textureIndex = 0;
+            }
+
+            // Deterministic network ID with collision resolution.
+            uint32_t staticNetId = resolveStaticId(
+                generateStaticId(x, z), staticUsedIds, x, z);
+            registry.emplace<NetworkIdComponent>(ent,
+                NetworkIdComponent{staticNetId, alias, false, 0});
+
+            // ColliderComponent AABB from prefab physics for EntityPicker.
+            const auto& prefab = PrefabManager::get().getPrefab(alias);
+            if (!prefab.is_null() && prefab.contains("physics")) {
+                const auto& phys = prefab["physics"];
+                glm::vec3 physHalfExtents(0.5f);
+                bool hasPrefabPhys = false;
+                if (phys.contains("halfExtents") && phys["halfExtents"].is_array()
+                        && phys["halfExtents"].size() >= 3) {
+                    physHalfExtents = glm::vec3(
+                        phys["halfExtents"][0].get<float>(),
+                        phys["halfExtents"][1].get<float>(),
+                        phys["halfExtents"][2].get<float>());
+                    hasPrefabPhys = true;
+                } else if (phys.contains("radius")) {
+                    physHalfExtents = glm::vec3(phys.value("radius", 0.5f));
+                    hasPrefabPhys = true;
+                }
+                if (hasPrefabPhys) {
+                    glm::vec3 scaledHalf = physHalfExtents * scale;
+                    auto* box = new BoundingBox(nullptr, glm::vec3(1.0f));
+                    box->setAABB(-scaledHalf, scaledHalf);
+                    registry.emplace<ColliderComponent>(ent, ColliderComponent{box});
+                }
+            }
+
+            entityAliasByHandle[aliasId].push_back(ent);
         }
     }
 

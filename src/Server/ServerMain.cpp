@@ -55,6 +55,7 @@
 #include <csignal>
 #include <atomic>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <algorithm>
 #include <random>
@@ -328,15 +329,35 @@ struct PhysCfg {
 // The high bit (0x80000000) is set to guarantee no collision with dynamic
 // entity IDs (players/NPCs are assigned sequential IDs < 0x80000000).
 //
-// The offset of 2000000 accommodates world-space coordinates in the range
-// [-200000, ~128000] units before the low 15 bits wrap.  Note: two entities
-// at the same (X, Z) but different Y levels share an ID — this is intentional
-// and safe because baked terrain entities are never vertically stacked.
+// The 15-bit mask per axis can produce hash collisions when the world
+// contains many scattered entities.  All callers must pass a usedIds set and
+// call resolveStaticId() to increment the candidate until a free slot is
+// found.  Both client and server apply the same resolution algorithm in the
+// same iteration order, so they arrive at identical IDs independently.
 // ---------------------------------------------------------------------------
 static uint32_t generateStaticId(float x, float z) {
     uint32_t ux = static_cast<uint32_t>(std::round(x * 10.0f) + 2000000.0f) & 0x7FFF;
     uint32_t uz = static_cast<uint32_t>(std::round(z * 10.0f) + 2000000.0f) & 0x7FFF;
     return 0x80000000u | (ux << 15) | uz;
+}
+
+/// Resolve a static network ID collision: increment the candidate (keeping the
+/// high bit set) until a free slot is found, then mark it as used.
+/// Logs a warning if a collision was detected.
+static uint32_t resolveStaticId(uint32_t candidate,
+                                std::unordered_set<uint32_t>& usedIds,
+                                float x, float z) {
+    if (usedIds.count(candidate)) {
+        uint32_t original = candidate;
+        do {
+            candidate = 0x80000000u | (((candidate & 0x7FFFFFFFu) + 1u) & 0x7FFFFFFFu);
+        } while (usedIds.count(candidate));
+        std::cerr << "[Server] WARNING: Static ID collision at ("
+                  << x << ", " << z << ") — 0x" << std::hex << original
+                  << " -> 0x" << candidate << std::dec << "\n";
+    }
+    usedIds.insert(candidate);
+    return candidate;
 }
 
 static std::unordered_map<std::string, PhysCfg> parsePhysBodies(
@@ -429,7 +450,8 @@ static std::vector<entt::entity> loadBakedChunkEntities(
         entt::registry& registry,
         PhysicsSystem& physics,
         const std::unordered_map<std::string, PhysCfg>& physBodies,
-        int gridX, int gridZ) {
+        int gridX, int gridZ,
+        std::unordered_set<uint32_t>& usedIds) {
     std::vector<entt::entity> spawned;
 
     std::string filename = "chunk_" + std::to_string(gridX)
@@ -452,9 +474,12 @@ static std::vector<entt::entity> loadBakedChunkEntities(
             registry, physics, physBodies,
             alias, be.x, be.y, be.z, be.rotationY, be.scale);
         if (entity != entt::null) {
-            // Assign a deterministic network ID so the ActionRequest handler can
-            // look up this entity when the client right-clicks it.
-            uint32_t staticNetId = generateStaticId(be.x, be.z);
+            // Assign a deterministic network ID, resolving any hash collisions
+            // by incrementing until a free slot is found.  The client chunk
+            // callback applies the same algorithm in the same order so both
+            // sides independently arrive at matching IDs.
+            uint32_t staticNetId = resolveStaticId(
+                generateStaticId(be.x, be.z), usedIds, be.x, be.z);
             if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
                 nid->id    = staticNetId;
                 nid->isNPC = false;
@@ -623,12 +648,18 @@ static void loadHeadlessScene(entt::registry& registry,
         return entity;
     };
 
+    // Shared set to track all static network IDs assigned in this load call.
+    // Every stampEntity call resolves collisions against this set so that
+    // entities, random, and editor_entities all occupy distinct IDs.
+    std::unordered_set<uint32_t> usedIds;
+
     // Helper: after spawning any scene entity, wire up NetworkIdComponent and
     // InteractableComponent so ActionRequest can find and interact with it.
     auto stampEntity = [&](entt::entity entity, const std::string& alias,
                            float x, float z) {
         if (entity == entt::null) return;
-        uint32_t staticNetId = generateStaticId(x, z);
+        uint32_t staticNetId = resolveStaticId(
+            generateStaticId(x, z), usedIds, x, z);
         if (auto* nid = registry.try_get<NetworkIdComponent>(entity)) {
             nid->id    = staticNetId;
             nid->isNPC = false;
@@ -709,6 +740,29 @@ static void loadHeadlessScene(entt::registry& registry,
                 }
             }
         }
+    }
+
+    // ---- Editor-placed entities -------------------------------------------
+    // Loaded after random entities so collisions are resolved against the
+    // already-assigned random IDs, matching the baked chunk ordering (random
+    // entities precede editor entities in the .dat files written by AssetBaker).
+    if (root.contains("editor_entities") && root["editor_entities"].is_array()) {
+        int editorCount = 0;
+        for (auto& e : root["editor_entities"]) {
+            std::string alias = e.value("alias", "");
+            if (alias.empty()) continue;
+            float x     = e.value("x",     0.0f);
+            float z     = e.value("z",     0.0f);
+            float ry    = e.value("ry",    0.0f);
+            float scale = e.value("scale", 1.0f);
+            float y     = e.value("y",     0.0f);
+            auto entity = spawnSceneBody(alias, x, y, z, ry, scale);
+            stampEntity(entity, alias, x, z);
+            if (entity != entt::null) ++editorCount;
+        }
+        if (editorCount > 0)
+            std::cout << "[Server] Loaded " << editorCount
+                      << " editor-placed entities from scene.json.\n";
     }
 
     std::cout << "[Server] Headless scene loaded from " << jsonPath
@@ -851,10 +905,15 @@ int main() {
         bakedChunkEntities;
 
     // Load baked chunk entities for all initially loaded terrain tiles.
+    // A single usedIds set spans all chunks so cross-chunk ID collisions
+    // are also resolved deterministically (server and client process the
+    // same .dat files in the same order, so they independently agree).
     size_t totalBakedEntities = 0;
+    std::unordered_set<uint32_t> bakedUsedIds;
     for (const auto& [cell, idx] : terrainMgr.loadedCells) {
         auto spawned = loadBakedChunkEntities(
-            registry, physicsSystem, physBodiesCfg, cell.first, cell.second);
+            registry, physicsSystem, physBodiesCfg, cell.first, cell.second,
+            bakedUsedIds);
         if (!spawned.empty()) {
             totalBakedEntities += spawned.size();
             bakedChunkEntities[cell] = std::move(spawned);
@@ -1048,12 +1107,20 @@ int main() {
     // Populate networkIdToEntity for all static world objects (trees, stalls, lamps)
     // that were loaded from baked chunks before this map existed.  Static entities
     // have the high bit set in their NetworkIdComponent::id (see generateStaticId).
+    // Collision resolution was already applied when the IDs were assigned, so
+    // duplicates here indicate a programming error; log a warning if one is found.
     {
         auto staticView = registry.view<NetworkIdComponent>();
         for (auto entity : staticView) {
             const auto& nid = staticView.get<NetworkIdComponent>(entity);
             if (nid.id & 0x80000000u) {
-                networkIdToEntity[nid.id] = entity;
+                auto [it, inserted] = networkIdToEntity.emplace(nid.id, entity);
+                if (!inserted) {
+                    std::cerr << "[Server] WARNING: duplicate static network ID 0x"
+                              << std::hex << nid.id << std::dec
+                              << " — this is an unexpected programming error; collision "
+                                 "resolution during loading should have prevented it.\n";
+                }
             }
         }
     }
