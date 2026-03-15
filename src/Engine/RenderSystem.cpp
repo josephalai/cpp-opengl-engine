@@ -4,11 +4,13 @@
 #include "../RenderEngine/MasterRenderer.h"
 #include "../RenderEngine/FrameBuffers.h"
 #include "../RenderEngine/InstancedModelManager.h"
+#include "../ECS/Components/AnimatedModelComponent.h"
 #include "../ECS/Components/AssimpModelComponent.h"
 #include "../ECS/Components/EditorPlacedComponent.h"
 #include "../ECS/Components/LODComponent.h"
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/StaticModelComponent.h"
+#include "../Config/PrefabManager.h"
 #include "../Entities/Camera.h"
 #include "../Entities/Player.h"
 #include "../Toolbox/Maths.h"
@@ -91,6 +93,12 @@ void RenderSystem::update(float /*deltaTime*/) {
             const auto& epc = editorView.get<EditorPlacedComponent>(e);
             const auto& tc  = editorView.get<TransformComponent>(e);
             if (instancedModelMgr_->hasAlias(epc.prefabAlias)) {
+                // Skip instanced rendering for entities that already have a
+                // mesh-based visual component (AnimatedModelComponent or
+                // AssimpModelComponent).  This prevents double rendering when
+                // a prefab declares both "model" (OBJ) and "mesh" (GLB).
+                if (registry_.any_of<AnimatedModelComponent, AssimpModelComponent>(e))
+                    continue;
                 glm::mat4 matrix = Maths::createTransformationMatrix(
                     tc.position, tc.rotation, tc.scale);
                 instancedModelMgr_->addInstance(epc.prefabAlias, -1, matrix);
@@ -99,11 +107,19 @@ void RenderSystem::update(float /*deltaTime*/) {
 
         if (editorState_ && editorState_->isEditorMode && editorState_->hasGhostEntity) {
             if (instancedModelMgr_->hasAlias(editorState_->selectedPrefab)) {
-                glm::mat4 ghostMatrix = Maths::createTransformationMatrix(
-                    editorState_->ghostPosition,
-                    glm::vec3(0.0f, editorState_->ghostRotationY, 0.0f),
-                    editorState_->ghostScale);
-                instancedModelMgr_->addInstance(editorState_->selectedPrefab, -1, ghostMatrix);
+                // Skip the instanced ghost when the prefab also has a "mesh"
+                // field — the mesh ghost entity (managed by EditorSystem)
+                // handles the preview instead.
+                const auto& prefab = PrefabManager::get().getPrefab(
+                    editorState_->selectedPrefab);
+                if (prefab.is_null() || !prefab.contains("mesh")) {
+                    glm::mat4 ghostMatrix = Maths::createTransformationMatrix(
+                        editorState_->ghostPosition,
+                        glm::vec3(0.0f, editorState_->ghostRotationY, 0.0f),
+                        editorState_->ghostScale);
+                    instancedModelMgr_->addInstance(
+                        editorState_->selectedPrefab, -1, ghostMatrix);
+                }
             }
         }
 
