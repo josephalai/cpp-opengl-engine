@@ -1,6 +1,7 @@
 {
   "alias": "lamp",
   "model_type": "lamp",
+  "render_mode": "instanced",
   "model": { "obj": "lamp", "texture": "lamp" },
   "physics": { "type": "static", "shape": "box", "halfExtents": [0.3, 2.5, 0.3] },
    "InteractableComponent": {

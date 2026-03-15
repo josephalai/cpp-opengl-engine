@@ -1,9 +1,11 @@
 {
   "id": "player",
   "model_type": "player",
+  "render_mode": "instanced",
   "is_npc": false,
   "animated": true,
-  "mesh": "models/walkrun_and_idle.glb",
+  "mesh": "Characters/characters.glb",
+  "model": { "obj": "person", "texture": "playerTexture" },
   "physics": {
     "type": "kinematic_character",
     "radius": 0.5,

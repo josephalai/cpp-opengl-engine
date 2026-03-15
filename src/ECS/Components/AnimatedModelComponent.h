@@ -43,6 +43,14 @@ struct AnimatedModelComponent {
     glm::mat4            modelRotationMat = glm::mat4(1.0f);
     float                autoWalkYaw = 0.0f;
     bool                 useAutoWalkYaw = false;
+    /// Last yaw (degrees) set by keyboard input in PlayerMovementSystem.
+    /// Preserved across server reconciliation snap-backs so AnimationSystem
+    /// does not derive a backward-facing direction from the snap-back delta.
+    float                lastInputYaw = 0.0f;
+    /// Set to true by NetworkSystem whenever a hard reconciliation warp
+    /// occurs.  AnimationSystem clears it after absorbing the event so the
+    /// snap-back position delta is never treated as actual locomotion.
+    bool                 wasSnappedBack = false;
     /// True when the entity is actually moving (any keyboard direction OR
     /// auto-walk via click-to-walk).  Set each frame by AnimationSystem.
     /// The AnimationController walk-condition lambda reads this flag so that
