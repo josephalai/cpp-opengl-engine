@@ -659,7 +659,7 @@ bool SceneLoaderJson::load(
     if (root.contains("animated_characters") && root["animated_characters"].is_array()) {
         for (auto& ac : root["animated_characters"]) {
             std::string relPath = ac.value("path", "");
-            std::string absPath = FileSystem::Path("/src/Resources/Tutorial/" + relPath);
+            std::string absPath = FileSystem::Path("/src/Resources/Models/" + relPath);
             AnimatedModel* animModel = AnimationLoader::load(absPath);
             if (!animModel) {
                 std::cerr << "[SceneLoaderJson] Failed to load animated_character: "
