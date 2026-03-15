@@ -2,8 +2,19 @@
   "alias": "tree",
   "model_type": "tree",
   "render_mode": "instanced",
-  "model": { "obj": "tree", "texture": "tree" },
-  "physics": { "type": "static", "shape": "box", "halfExtents": [0.5, 5.0, 0.5] },
+  "model": {
+    "obj": "Nature/tree",
+    "texture": "tree"
+  },
+  "physics": {
+    "type": "static",
+    "shape": "box",
+    "halfExtents": [
+      0.5,
+      5.0,
+      0.5
+    ]
+  },
   "InteractableComponent": {
     "script": "scripts/skills/woodcutting.lua",
     "interact_range": 1.5

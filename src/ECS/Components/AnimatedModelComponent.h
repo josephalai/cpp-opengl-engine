@@ -51,6 +51,17 @@ struct AnimatedModelComponent {
     /// occurs.  AnimationSystem clears it after absorbing the event so the
     /// snap-back position delta is never treated as actual locomotion.
     bool                 wasSnappedBack = false;
+    /// False on the very first frame so AnimationSystem can initialise
+    /// lastPosition to the actual spawn position instead of (0,0,0).
+    /// Prevents the large one-frame delta artifact at startup.
+    bool                 lastPositionInitialized = false;
+    /// Set to true by NetworkSystem while a smooth server-authoritative LERP
+    /// is in progress (hasReconcileTarget_).  While true AND a movement key is
+    /// held, AnimationSystem treats the player as moving regardless of the
+    /// position delta (which points toward the reconcile target, not the key
+    /// direction), preventing the walk↔idle flip-flop stutter during auto-walk
+    /// and post-spawn reconciliation.
+    bool                 suppressDeltaAnimation = false;
     /// True when the entity is actually moving (any keyboard direction OR
     /// auto-walk via click-to-walk).  Set each frame by AnimationSystem.
     /// The AnimationController walk-condition lambda reads this flag so that

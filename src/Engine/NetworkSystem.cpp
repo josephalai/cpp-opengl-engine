@@ -83,6 +83,13 @@ void NetworkSystem::init() {
 void NetworkSystem::update(float deltaTime) {
     if (!client_) return;
 
+    // Tick the startup grace period so reconciliation is suppressed for
+    // the first ~0.5 s after the local player's spawn position is applied.
+    if (startupGracePeriod_ > 0.0f) {
+        startupGracePeriod_ -= deltaTime;
+        if (startupGracePeriod_ < 0.0f) startupGracePeriod_ = 0.0f;
+    }
+
     // -----------------------------------------------------------------
     // 0. Apply smooth server-authoritative reconciliation each frame.
     //    When the server has moved the player via pathfinding (or any
@@ -105,6 +112,14 @@ void NetworkSystem::update(float deltaTime) {
             if (physicsSystem_) physicsSystem_->warpPlayer(target);
             hasReconcileTarget_ = false;
 
+            // Reconciliation complete — re-enable delta-based animation and
+            // reset the last-position baseline so there is no one-frame spike.
+            if (auto* amc = registry_.try_get<AnimatedModelComponent>(
+                    localPlayer_->getHandle())) {
+                amc->suppressDeltaAnimation = false;
+                amc->lastPosition           = target;
+            }
+
             // Stop animation — tell AnimationSystem we are no longer moving.
             // if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
             //     is->currentSpeed = 0.0f;
@@ -125,12 +140,18 @@ void NetworkSystem::update(float deltaTime) {
             localPlayer_->setPosition(newPos);
             if (physicsSystem_) physicsSystem_->warpPlayer(newPos);
 
-            // Face direction of travel.
-            // Set the ECS TransformComponent rotation — AnimationSystem reads
-            // this for the visual model. localPlayer_->getRotation() (which the
-            // camera orbits) stays untouched.
+            // Face directly toward the target rather than using the stored
+            // reconcileTargetYaw_ (which comes from the server snapshot's
+            // rotation and may point the wrong direction on the first step).
+            // Recompute the yaw every frame from the actual curr→target vector
+            // so the player always faces where it is walking.
             if (auto* tc = registry_.try_get<TransformComponent>(localPlayer_->getHandle())) {
-                tc->rotation.y = reconcileTargetYaw_;
+                glm::vec3 toTarget = target - curr;
+                toTarget.y = 0.0f;
+                if (glm::dot(toTarget, toTarget) > 1e-4f) {
+                    glm::vec3 dir = glm::normalize(toTarget);
+                    tc->rotation.y = glm::degrees(std::atan2(dir.x, dir.z));
+                }
             }
 
             // Report the actual per-frame speed so AnimationSystem plays Run.
@@ -243,6 +264,17 @@ void NetworkSystem::update(float deltaTime) {
                             hasReconcileTarget_ = false;
                             localHistory_.clear();
                             if (physicsSystem_) physicsSystem_->warpPlayer(sp.position);
+
+                            // Reset the animation delta baseline to the spawn position
+                            // so the first frame has zero delta instead of a huge jump
+                            // from the old (0,0,0) default.  Also clear any stale
+                            // reconciliation suppression that may have been active.
+                            if (auto* amc = registry_.try_get<AnimatedModelComponent>(
+                                    localPlayer_->getHandle())) {
+                                amc->lastPosition            = sp.position;
+                                amc->lastPositionInitialized = true;
+                                amc->suppressDeltaAnimation  = false;
+                            }
                         }
                         // Clear any history recorded before the server-authoritative
                         // spawn position was applied.  Stale history entries (recorded
@@ -251,6 +283,11 @@ void NetworkSystem::update(float deltaTime) {
                         // first TransformSnapshot, triggering an unwanted LERP walk.
                         localHistory_.clear();
                         hasReconcileTarget_ = false;
+
+                        // Allow a short grace period before history-based reconciliation
+                        // is active so the physics engine can settle without triggering
+                        // an immediate spurious LERP walk on the first few frames.
+                        startupGracePeriod_ = 0.5f;
 
                         // Already registered via WelcomePacket handling.
                         if (networkEntities_.find(localPlayerId_) ==
@@ -337,6 +374,10 @@ void NetworkSystem::update(float deltaTime) {
                             if (hasReconcileTarget_) {
                                 reconcileTarget_ = serverPos;
                                 localHistory_.clear();
+                            } else if (startupGracePeriod_ > 0.0f) {
+                                // Still inside the post-spawn grace window — skip
+                                // reconciliation so the physics can settle.
+                                localHistory_.clear();
                             } else {
                                 // ---- Normal history-based reconciliation ----
                                 glm::vec3 historicalPos = currentClientPos;
@@ -371,9 +412,30 @@ void NetworkSystem::update(float deltaTime) {
                                     if (clientMovedSq <= kReconcileThreshSq) {
                                         // Server-authoritative movement: begin smooth LERP.
                                         reconcileTarget_    = serverPos;
-                                        reconcileTargetYaw_ = snapshot.rotation.y;
+                                        // Compute yaw from current client position toward target
+                                        // so the first step always faces directly toward the
+                                        // destination, regardless of the server snapshot rotation.
+                                        {
+                                            glm::vec3 toTarget = serverPos - currentClientPos;
+                                            toTarget.y = 0.0f;
+                                            if (glm::dot(toTarget, toTarget) > 1e-4f) {
+                                                glm::vec3 dir = glm::normalize(toTarget);
+                                                reconcileTargetYaw_ = glm::degrees(
+                                                    std::atan2(dir.x, dir.z));
+                                            } else {
+                                                reconcileTargetYaw_ = snapshot.rotation.y;
+                                            }
+                                        }
                                         hasReconcileTarget_ = true;
                                         localHistory_.clear();
+
+                                        // Suppress delta-based animation transitions so the
+                                        // walk/idle flip-flop doesn't occur while the LERP walk
+                                        // carries the player toward the server target.
+                                        if (auto* amc = registry_.try_get<AnimatedModelComponent>(
+                                                localPlayer_->getHandle())) {
+                                            amc->suppressDeltaAnimation = true;
+                                        }
                                     } else {
                                         // 3. Genuine prediction error: apply the mathematical
                                         //    error to our CURRENT position.

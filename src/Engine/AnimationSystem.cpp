@@ -37,6 +37,15 @@ void AnimationSystem::update(float deltaTime) {
             tc.position = player_->getPosition();
             tc.rotation = player_->getRotation();
 
+            // On the very first frame the player position is valid, seed
+            // lastPosition so the delta is zero rather than a huge jump from
+            // (0,0,0) to the spawn point.  Skip all animation logic this frame.
+            if (!amc.lastPositionInitialized) {
+                amc.lastPosition            = tc.position;
+                amc.lastPositionInitialized = true;
+                continue;
+            }
+
             // --- Compute per-frame movement delta (XZ only) ---
             glm::vec3 deltaPos = tc.position - amc.lastPosition;
             deltaPos.y = 0.0f;
@@ -63,6 +72,19 @@ void AnimationSystem::update(float deltaTime) {
                 // No keys held; snap-back with no input — just clear the flag
                 // so the delta-derived direction is used from next frame.
                 amc.wasSnappedBack = false;
+            }
+
+            // While a server-authoritative LERP reconciliation is in progress
+            // AND the player is holding a movement key, treat the entity as
+            // moving regardless of the XZ delta (which points toward the
+            // reconcile target rather than the input direction).  This prevents
+            // the walk↔idle flip-flop during auto-walk and post-spawn settling.
+            if (amc.suppressDeltaAnimation && anyKeyDown) {
+                amc.isMoving     = true;
+                amc.lastPosition = tc.position; // Keep baseline current
+                amc.useAutoWalkYaw = false;     // Keyboard yaw already correct
+                if (amc.controller) amc.controller->requestTransition("Walk");
+                continue; // Skip delta-based direction logic for this frame
             }
 
             // isMoving drives the Walk animation condition in the lambda wired

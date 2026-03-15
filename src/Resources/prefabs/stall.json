@@ -2,6 +2,17 @@
   "alias": "stall",
   "model_type": "stall",
   "render_mode": "instanced",
-  "model": { "obj": "stall", "texture": "stallTexture" },
-  "physics": { "type": "static", "shape": "box", "halfExtents": [3.0, 3.0, 3.0] }
+  "model": {
+    "obj": "Objects/stall",
+    "texture": "stallTexture"
+  },
+  "physics": {
+    "type": "static",
+    "shape": "box",
+    "halfExtents": [
+      3.0,
+      3.0,
+      3.0
+    ]
+  }
 }

@@ -4,6 +4,13 @@
   "model_type": "boulder",
   "render_mode": "instanced",
   "_comment": "Uses Stall model as placeholder until boulder-specific 3D assets are created.",
-  "model": { "obj": "stall", "texture": "stallTexture" },
-  "physics": { "type": "static", "shape": "sphere", "radius": 2.0 }
+  "model": {
+    "obj": "Objects/stall",
+    "texture": "stallTexture"
+  },
+  "physics": {
+    "type": "static",
+    "shape": "sphere",
+    "radius": 2.0
+  }
 }

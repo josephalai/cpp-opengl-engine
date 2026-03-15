@@ -1,5 +1,5 @@
 {
-  "_comment": "scene.json — JSON equivalent of scene.cfg. Loaded by SceneLoaderJson.",
+  "_comment": "scene.json \u2014 JSON equivalent of scene.cfg. Loaded by SceneLoaderJson.",
   "animated_characters": [
     {
       "offset": {
@@ -7,7 +7,7 @@
         "oy": 0.0,
         "oz": 0.0
       },
-      "path": "Characters/characters.glb",
+      "path": "_MISSING_Characters/characters.glb",
       "rot": {
         "rx": -90.0,
         "ry": 0.0,
@@ -151,58 +151,58 @@
   "models": [
     {
       "alias": "lamp",
-      "obj": "lamp",
+      "obj": "Objects/lamp",
       "texture": "lamp"
     },
     {
       "alias": "fern",
       "atlas": 2,
-      "obj": "fern",
+      "obj": "Nature/fern",
       "texture": "fern"
     },
     {
       "alias": "grass",
       "fakeLighting": true,
-      "obj": "grassModel",
+      "obj": "Nature/grassModel",
       "texture": "grassTexture",
       "transparent": true
     },
     {
       "alias": "stall",
-      "obj": "stall",
+      "obj": "Objects/stall",
       "reflectivity": 2.0,
       "shininess": 2.0,
       "texture": "stallTexture"
     },
     {
       "alias": "tree",
-      "obj": "tree",
+      "obj": "Nature/tree",
       "reflectivity": 2.0,
       "shininess": 2.0,
       "texture": "tree"
     },
     {
       "alias": "fluffytree",
-      "obj": "fluffy-tree",
+      "obj": "Nature/fluffy-tree",
       "reflectivity": 2.0,
       "shininess": 2.0,
       "texture": "tree"
     },
     {
       "alias": "crate",
-      "obj": "stall",
+      "obj": "Objects/stall",
       "reflectivity": 0.0,
       "shininess": 1.0,
       "texture": "stallTexture"
     },
     {
       "alias": "person",
-      "obj": "person",
+      "obj": "Characters/person",
       "texture": "playerTexture"
     },
     {
       "alias": "dragon",
-      "obj": "dragon",
+      "obj": "Characters/dragon",
       "texture": "dragon"
     }
   ],
