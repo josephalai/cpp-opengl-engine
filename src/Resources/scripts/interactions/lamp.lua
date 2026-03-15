@@ -1,8 +1,8 @@
--- scripts/interactions/guard.lua
+-- scripts/interactions/lamp.lua
 --
--- Stateful NPC Guard Interaction
+-- Lamp Interaction
 --
--- The guard waits for the player to walk within interact_range (handled by
+-- The lamp waits for the player to walk within interact_range (handled by
 -- the C++ InteractionSystem / WalkTo infrastructure — no Lua needed for that).
 -- Once in range, this script fires and delivers sequential dialogue lines.
 -- Each click advances the player's personal dialogue state independently.
