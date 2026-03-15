@@ -114,10 +114,18 @@ void NetworkSystem::update(float deltaTime) {
 
             // Reconciliation complete — re-enable delta-based animation and
             // reset the last-position baseline so there is no one-frame spike.
-            if (auto* amc = registry_.try_get<AnimatedModelComponent>(
-                    localPlayer_->getHandle())) {
-                amc->suppressDeltaAnimation = false;
-                amc->lastPosition           = target;
+            // AMC lives on a separate render entity (isLocalPlayer=true), NOT
+            // on the Player's own ECS entity, so we must search for it.
+            {
+                auto amcView = registry_.view<AnimatedModelComponent>();
+                for (auto e : amcView) {
+                    auto& amc = amcView.get<AnimatedModelComponent>(e);
+                    if (amc.isLocalPlayer) {
+                        amc.suppressDeltaAnimation = false;
+                        amc.lastPosition           = target;
+                        break;
+                    }
+                }
             }
 
             // Stop animation — tell AnimationSystem we are no longer moving.
@@ -145,12 +153,22 @@ void NetworkSystem::update(float deltaTime) {
             // rotation and may point the wrong direction on the first step).
             // Recompute the yaw every frame from the actual curr→target vector
             // so the player always faces where it is walking.
-            if (auto* tc = registry_.try_get<TransformComponent>(localPlayer_->getHandle())) {
-                glm::vec3 toTarget = target - curr;
-                toTarget.y = 0.0f;
-                if (glm::dot(toTarget, toTarget) > 1e-4f) {
-                    glm::vec3 dir = glm::normalize(toTarget);
-                    tc->rotation.y = glm::degrees(std::atan2(dir.x, dir.z));
+            //
+            // SKIP the rotation override when movement keys are held — the
+            // player should face the input direction (set by PlayerMovementSystem),
+            // not the reconcile direction, to prevent rapid direction twitching.
+            bool anyMoveKeyHeld = InputMaster::isActionDown("MoveForward")  ||
+                                  InputMaster::isActionDown("MoveBackward") ||
+                                  InputMaster::isActionDown("MoveLeft")     ||
+                                  InputMaster::isActionDown("MoveRight");
+            if (!anyMoveKeyHeld) {
+                if (auto* tc = registry_.try_get<TransformComponent>(localPlayer_->getHandle())) {
+                    glm::vec3 toTarget = target - curr;
+                    toTarget.y = 0.0f;
+                    if (glm::dot(toTarget, toTarget) > 1e-4f) {
+                        glm::vec3 dir = glm::normalize(toTarget);
+                        tc->rotation.y = glm::degrees(std::atan2(dir.x, dir.z));
+                    }
                 }
             }
 
@@ -432,9 +450,17 @@ void NetworkSystem::update(float deltaTime) {
                                         // Suppress delta-based animation transitions so the
                                         // walk/idle flip-flop doesn't occur while the LERP walk
                                         // carries the player toward the server target.
-                                        if (auto* amc = registry_.try_get<AnimatedModelComponent>(
-                                                localPlayer_->getHandle())) {
-                                            amc->suppressDeltaAnimation = true;
+                                        // AMC lives on a separate render entity, not on the
+                                        // Player's own entity, so search by isLocalPlayer flag.
+                                        {
+                                            auto amcView = registry_.view<AnimatedModelComponent>();
+                                            for (auto e : amcView) {
+                                                auto& amc = amcView.get<AnimatedModelComponent>(e);
+                                                if (amc.isLocalPlayer) {
+                                                    amc.suppressDeltaAnimation = true;
+                                                    break;
+                                                }
+                                            }
                                         }
                                     } else {
                                         // 3. Genuine prediction error: apply the mathematical
@@ -451,9 +477,17 @@ void NetworkSystem::update(float deltaTime) {
                                         // Flag the AnimatedModelComponent so AnimationSystem
                                         // knows to discard the snap-back position delta and
                                         // not let it battle the input-driven facing direction.
-                                        if (auto* amc = registry_.try_get<AnimatedModelComponent>(
-                                                localPlayer_->getHandle())) {
-                                            amc->wasSnappedBack = true;
+                                        // AMC lives on a separate render entity, not on the
+                                        // Player's own entity, so search by isLocalPlayer flag.
+                                        {
+                                            auto amcView = registry_.view<AnimatedModelComponent>();
+                                            for (auto e : amcView) {
+                                                auto& amc = amcView.get<AnimatedModelComponent>(e);
+                                                if (amc.isLocalPlayer) {
+                                                    amc.wasSnappedBack = true;
+                                                    break;
+                                                }
+                                            }
                                         }
 
                                         std::cout << "[NetworkSystem] Real Reconcile Triggered.\n"
@@ -475,9 +509,16 @@ void NetworkSystem::update(float deltaTime) {
                                     snapshot.sequenceNumber > nsd->buffer.back().sequenceNumber) {
                                     nsd->buffer.push_back(snapshot);
 
-                                    // Clamp buffer to maxBufferSize.
-                                    while (nsd->buffer.size() > nsd->maxBufferSize) {
-                                        nsd->buffer.pop_front();
+                                    // Clamp buffer to maxBufferSize.  If the buffer
+                                    // overflowed (e.g. after a lag spike), drop old
+                                    // snapshots and reset the interpolation clock so
+                                    // the entity starts fresh from the latest data
+                                    // instead of slowly replaying stale positions.
+                                    if (nsd->buffer.size() > nsd->maxBufferSize) {
+                                        while (nsd->buffer.size() > 3) {
+                                            nsd->buffer.pop_front();
+                                        }
+                                        nsd->renderTime = 0.0f;
                                     }
 
                                     // Sync playback clock on 2nd snapshot.
