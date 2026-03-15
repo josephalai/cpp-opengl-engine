@@ -3,8 +3,9 @@
   "model_type": "npc_banker",
   "render_mode": "instanced",
   "is_npc": true,
+  "mesh": "Models/Characters/characters.glb",
   "model": {
-    "obj": "Characters/person",
+    "obj": "Characters/player",
     "texture": "playerTexture"
   },
   "physics": {

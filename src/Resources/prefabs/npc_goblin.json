@@ -3,8 +3,9 @@
   "model_type": "npc_goblin",
   "render_mode": "instanced",
   "is_npc": true,
+  "mesh": "Models/Characters/characters.glb",
   "model": {
-    "obj": "Characters/dragon",
+    "obj": "Characters/player",
     "texture": "dragon"
   },
   "physics": {

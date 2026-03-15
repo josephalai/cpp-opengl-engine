@@ -4,7 +4,7 @@
   "render_mode": "instanced",
   "is_npc": false,
   "animated": true,
-  "mesh": "Characters/characters.glb",
+  "mesh": "Models/Characters/characters.glb",
   "model": {
     "obj": "Characters/person",
     "texture": "playerTexture"

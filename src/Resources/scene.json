@@ -1,5 +1,5 @@
 {
-  "_comment": "scene.json \u2014 JSON equivalent of scene.cfg. Loaded by SceneLoaderJson.",
+  "_comment": "scene.json — JSON equivalent of scene.cfg. Loaded by SceneLoaderJson.",
   "animated_characters": [
     {
       "offset": {
@@ -7,7 +7,7 @@
         "oy": 0.0,
         "oz": 0.0
       },
-      "path": "_MISSING_Characters/characters.glb",
+      "path": "Characters/characters.glb",
       "rot": {
         "rx": -90.0,
         "ry": 0.0,
@@ -30,20 +30,20 @@
   ],
   "editor_entities": [
     {
-      "alias": "fluffytree",
-      "ry": 0.0,
-      "scale": 7.309000015258789,
-      "x": -1881.9886474609375,
-      "y": -1.9073486328125e-06,
-      "z": -52.53601837158203
-    },
-    {
-      "alias": "fluffytree",
+      "alias": "npc_wanderer",
       "ry": 0.0,
       "scale": 1.0,
-      "x": -1897.4317626953125,
+      "x": 68.0,
       "y": 0.0,
-      "z": -44.292293548583984
+      "z": 4.0
+    },
+    {
+      "alias": "npc_banker",
+      "ry": 0.0,
+      "scale": 1.0,
+      "x": 76.0,
+      "y": -3.814697265625e-06,
+      "z": 4.0
     }
   ],
   "entities": [

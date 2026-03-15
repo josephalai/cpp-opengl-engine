@@ -4,7 +4,7 @@
   "model_type": "npc_wanderer",
   "render_mode": "instanced",
   "animated": true,
-  "mesh": "Characters/characters.glb",
+  "mesh": "Models/Characters/characters.glb",
   "model": {
     "obj": "Characters/person",
     "texture": "playerTexture"
