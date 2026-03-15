@@ -466,11 +466,22 @@ bool SceneLoaderJson::load(
     // Editor-placed entities — written by EditorSerializer::saveToJson.
     // Loaded after random entities so collision resolution against staticUsedIds
     // matches the baked chunk ordering (random first, then editor).
+    // NPC prefabs (is_npc=true or ai_script present) are skipped here — they
+    // arrive via SpawnPacket from the server and are created through
+    // EntityFactory in Engine::onNetworkSpawn().  Creating them here would
+    // produce a ghost entity with a different (static) network ID that never
+    // receives server position updates, visible as a frozen duplicate.
     // -----------------------------------------------------------------------
     if (root.contains("editor_entities") && root["editor_entities"].is_array()) {
         for (auto& e : root["editor_entities"]) {
             std::string alias = e.value("alias", "");
             if (alias.empty()) continue;
+
+            // Skip NPC prefabs — handled by the network layer.
+            const auto& prefab = PrefabManager::get().getPrefab(alias);
+            if (!prefab.is_null() &&
+                (prefab.value("is_npc", false) || prefab.contains("ai_script")))
+                continue;
 
             float x     = e.value("x",     0.0f);
             float z     = e.value("z",     0.0f);
@@ -504,7 +515,6 @@ bool SceneLoaderJson::load(
                 NetworkIdComponent{staticNetId, alias, false, 0});
 
             // ColliderComponent AABB from prefab physics for EntityPicker.
-            const auto& prefab = PrefabManager::get().getPrefab(alias);
             if (!prefab.is_null() && prefab.contains("physics")) {
                 const auto& phys = prefab["physics"];
                 glm::vec3 physHalfExtents(0.5f);

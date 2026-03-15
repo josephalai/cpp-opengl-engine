@@ -5,10 +5,6 @@
   "is_npc": false,
   "animated": true,
   "mesh": "Models/Characters/characters.glb",
-  "model": {
-    "obj": "Characters/person",
-    "texture": "playerTexture"
-  },
   "physics": {
     "type": "kinematic_character",
     "radius": 0.5,

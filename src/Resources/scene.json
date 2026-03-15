@@ -1,24 +1,5 @@
 {
-  "_comment": "scene.json — JSON equivalent of scene.cfg. Loaded by SceneLoaderJson.",
-  "animated_characters": [
-    {
-      "offset": {
-        "ox": 0.0,
-        "oy": 0.0,
-        "oz": 0.0
-      },
-      "path": "Characters/characters.glb",
-      "rot": {
-        "rx": -90.0,
-        "ry": 0.0,
-        "rz": 0.0
-      },
-      "scale": 2.5,
-      "x": 100.0,
-      "y": "terrain",
-      "z": -80.0
-    }
-  ],
+  "_comment": "scene.json \u2014 JSON equivalent of scene.cfg. Loaded by SceneLoaderJson.",
   "assimp": [
     {
       "path": "Backpack/backpack",

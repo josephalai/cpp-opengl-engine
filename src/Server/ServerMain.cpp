@@ -1021,6 +1021,10 @@ int main() {
 
     // --- NPC Loading ---
     // Prefer npcs.json (JSON format); fall back to server_npcs.cfg (legacy).
+    // Editor-placed NPCs (scene.json editor_entities whose alias is an NPC prefab
+    // with ai_script or is_npc=true) are appended to the same definition list so
+    // they receive physics capsules, AI scripts, network IDs, and spatial
+    // registration — identical behaviour to npcs.json-defined NPCs.
     ServerNPCManager npcManager;
     {
         std::string jsonPath = FileSystem::Scene("npcs.json");
@@ -1033,6 +1037,53 @@ int main() {
             } else {
                 std::cout << "[Server] npcs.json not found — falling back to server_npcs.cfg\n";
                 defs = npcManager.loadConfig(cfgPath);
+            }
+        }
+
+        // Also spawn any editor-placed entities whose prefab is an NPC (has
+        // "ai_script" or "is_npc": true).  These are stored in scene.json's
+        // "editor_entities" array and were placed via the in-game World Editor.
+        {
+            std::string scenePath = FileSystem::Scene("scene.json");
+            auto sceneBytes = FileSystem::readAllBytes(scenePath);
+            if (!sceneBytes.empty()) {
+                try {
+                    nlohmann::json sceneRoot = nlohmann::json::parse(
+                        sceneBytes.begin(), sceneBytes.end());
+                    if (sceneRoot.contains("editor_entities") &&
+                        sceneRoot["editor_entities"].is_array()) {
+                        for (auto& e : sceneRoot["editor_entities"]) {
+                            std::string alias = e.value("alias", "");
+                            if (alias.empty()) continue;
+                            const auto& prefab = PrefabManager::get().getPrefab(alias);
+                            if (prefab.is_null()) continue;
+                            // Only treat as a live NPC if the prefab declares AI.
+                            if (!prefab.value("is_npc", false) &&
+                                !prefab.contains("ai_script")) continue;
+
+                            NPCDefinition def;
+                            def.prefab     = alias;
+                            def.modelType  = prefab.value("model_type", alias);
+                            def.startPos.x = e.value("x", 0.0f);
+                            def.startPos.y = e.value("y", 0.0f);
+                            def.startPos.z = e.value("z", 0.0f);
+                            // Derive the script name from the AIComponent block.
+                            // Leave scriptType empty for NPCs without ai_script so the
+                            // spawning loop knows not to register them with npcManager.
+                            if (prefab.contains("ai_script") &&
+                                prefab.contains("components") &&
+                                prefab["components"].contains("AIComponent"))
+                                def.scriptType = prefab["components"]["AIComponent"]
+                                                     .value("script", "WanderAI");
+                            else
+                                def.scriptType = "";
+                            defs.push_back(def);
+                        }
+                    }
+                } catch (const std::exception& ex) {
+                    std::cerr << "[Server] Failed to parse scene.json for "
+                                 "editor-placed NPCs: " << ex.what() << "\n";
+                }
             }
         }
 
@@ -1070,7 +1121,12 @@ int main() {
             // EntityFactory::spawn() already called physicsSystem.addCharacterController()
             // via the prefab's "physics" block.  Do NOT call it a second time here.
 
-            npcManager.registerNPC(nid, d.scriptType);
+            // Only register with the AI manager if the NPC has an AI script.
+            // Static NPCs (banker, goblin) have is_npc=true but scriptType is empty
+            // because they were added from editor_entities without ai_script.
+            if (!d.scriptType.empty()) {
+                npcManager.registerNPC(nid, d.scriptType);
+            }
 
             // Phase 4: Register NPC in spatial grid (dynamic entity).
             spatialSystem.registerEntity(entity, pos, /*isStatic=*/false);
@@ -1373,9 +1429,16 @@ int main() {
                                     // Run A* to find a path from player to target.
                                     auto path = navMesh.findPath(playerTC.position, targetTC.position);
                                     if (!path.empty()) {
+                                        // Skip waypoint 0 (start cell centre) — the player is
+                                        // already at or very near their own cell, so the first
+                                        // step should be toward the second waypoint (index 1).
+                                        // If the path has only 1 point the player is adjacent
+                                        // to the target; PathfindingSystem removes the component
+                                        // immediately when currentWaypoint >= waypoints.size().
+                                        int startWp = (path.size() > 1) ? 1 : 0;
                                         registry.emplace_or_replace<PathfindingComponent>(
                                             playerEntity,
-                                            PathfindingComponent{path, 0, 0.1f, true});
+                                            PathfindingComponent{path, startWp, 0.1f, true});
                                     }
                                 }
                             }
