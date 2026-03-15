@@ -4,11 +4,7 @@
   "render_mode": "instanced",
   "is_npc": false,
   "animated": true,
-  "mesh": "Characters/characters.glb",
-  "model": {
-    "obj": "Characters/person",
-    "texture": "playerTexture"
-  },
+  "mesh": "Models/Characters/characters.glb",
   "physics": {
     "type": "kinematic_character",
     "radius": 0.5,

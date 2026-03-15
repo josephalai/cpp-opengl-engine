@@ -73,13 +73,33 @@ void NetworkInterpolationSystem::update(float deltaTime) {
         }
 
         // Guard against stale renderTime after buffer starvation.
-        // When the buffer drains to <2 (NPC frozen / AI turn phase) and then
-        // refills, renderTime was accumulated during the hold-at-s1 phase and
-        // could be orders of magnitude larger than the new segment's span.
-        // Dividing by a small new span would give t >> 1, immediately snapping
-        // the entity to the new s1 position ("slingshot" bug).  Reset to 0 so
-        // interpolation starts fresh from s0 → s1 on recovery.
+        //
+        // During a hold-at-s1 period (buffer.size() == 2, t >= 1), renderTime
+        // keeps accumulating.  When a new snapshot C arrives the buffer becomes
+        // [s0, s1, C].  Without correction, renderTime >> span would compute
+        // t >> 1 → clamp to 1 → entity instantly at s1.  But the REAL problem
+        // is the inverse: the guard previously reset renderTime=0 while s0 was
+        // still the stale pre-hold snapshot.  t=0 snapped the entity BACKWARD
+        // to s0.position (behind s1 where it had been holding), then it crept
+        // forward again — the classic "run in place / slingshot" artefact.
+        //
+        // Correct fix: if we have at least 3 snapshots (s0, s1, C), the stale
+        // s0→s1 segment was already fully played before the hold started.  Skip
+        // it entirely by popping s0 so the new base is s1→C, then reset
+        // renderTime to 0.  The entity stays at s1 for one frame and then
+        // smoothly advances toward C — no backward snap.
+        //
+        // If there are only 2 snapshots left (can't skip), just reset
+        // renderTime so t starts from 0 within the same s0→s1 segment.  The
+        // entity may briefly snap to s0 but that is better than t >> 1.
         if (span > 0.0001f && nsd.renderTime > span * 2.0f) {
+            if (nsd.buffer.size() > 2) {
+                // Skip the stale s0→s1 segment we already played before the hold.
+                nsd.buffer.pop_front();
+                nsd.renderTime = 0.0f;
+                // Re-evaluate this entity next frame with the fresh s0→s1 pair.
+                continue;
+            }
             nsd.renderTime = 0.0f;
         }
 

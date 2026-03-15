@@ -429,7 +429,7 @@ bool SceneLoader::load(
         }
         // ----------------------------------------------------------------
         // animated_character <path> <x> <y|terrain[+N]> <z> [scale=F] [rot=RX,RY,RZ] [offset=OX,OY,OZ]
-        //   path   — file path relative to src/Resources/Tutorial/ (incl. extension)
+        //   path   — file path relative to src/Resources/Models/ (incl. extension)
         //   x y z  — world position (y supports "terrain[+N]" snap)
         //   scale  — optional uniform scale (default 1.0)
         //   rot    — optional Euler rotation in degrees, comma-separated (default 0,0,0)
@@ -843,7 +843,7 @@ bool SceneLoader::load(
     };
 
     for (auto& ac : animCharDefs) {
-        std::string absPath = FileSystem::Path("/src/Resources/Tutorial/" + ac.path);
+        std::string absPath = FileSystem::Path("/src/Resources/Models/" + ac.path);
         AnimatedModel* animModel = AnimationLoader::load(absPath);
         if (!animModel) {
             std::cerr << "[SceneLoader] Failed to load animated_character: " << absPath << "\n";
