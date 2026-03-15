@@ -106,8 +106,17 @@ void PlayerMovementSystem::update(float deltaTime) {
             tc.rotation.y = glm::degrees(std::atan2(totalDx, totalDz));
             // Store the input-driven yaw so AnimationSystem can use it across
             // snap-backs and not derive a wrong direction from position delta.
-            if (auto* amc = registry_.try_get<AnimatedModelComponent>(entity)) {
-                amc->lastInputYaw = tc.rotation.y;
+            // AMC lives on a separate render entity (isLocalPlayer=true), NOT
+            // on the Player's own entity, so we search by flag.
+            {
+                auto amcView = registry_.view<AnimatedModelComponent>();
+                for (auto e : amcView) {
+                    auto& amc = amcView.get<AnimatedModelComponent>(e);
+                    if (amc.isLocalPlayer) {
+                        amc.lastInputYaw = tc.rotation.y;
+                        break;
+                    }
+                }
             }
         }
 
