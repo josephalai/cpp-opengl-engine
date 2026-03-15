@@ -4,8 +4,7 @@
   "render_mode": "instanced",
   "is_npc": false,
   "animated": true,
-  "mesh": "Characters/characters.glb",
-  "model": { "obj": "person", "texture": "playerTexture" },
+  "mesh": "Models/Characters/characters.glb",
   "physics": {
     "type": "kinematic_character",
     "radius": 0.5,
@@ -15,8 +14,16 @@
   "components": {
     "AnimatedModelComponent": {
       "scale": 2.5,
-      "model_rotation": { "x": -90.0, "y": 0.0, "z": 0.0 },
-      "model_offset": { "x": 0.0, "y": 0.0, "z": 0.0 }
+      "model_rotation": {
+        "x": -90.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "model_offset": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      }
     }
   }
 }

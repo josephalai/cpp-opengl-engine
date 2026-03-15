@@ -2,6 +2,17 @@
   "alias": "fluffytree",
   "model_type": "fluffytree",
   "render_mode": "instanced",
-  "model": { "obj": "fluffy-tree", "texture": "tree" },
-  "physics": { "type": "static", "shape": "box", "halfExtents": [0.5, 5.0, 0.5] }
+  "model": {
+    "obj": "Nature/fluffy-tree",
+    "texture": "tree"
+  },
+  "physics": {
+    "type": "static",
+    "shape": "box",
+    "halfExtents": [
+      0.5,
+      5.0,
+      0.5
+    ]
+  }
 }

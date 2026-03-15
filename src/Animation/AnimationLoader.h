@@ -9,7 +9,7 @@
 
 class AnimationLoader {
 public:
-    /// Load a skeletal model from path (absolute or relative to Resources/Tutorial/).
+    /// Load a skeletal model from path (absolute or relative to Resources/Models/).
     /// Returns nullptr on failure.
     static AnimatedModel* load(const std::string& path);
 };

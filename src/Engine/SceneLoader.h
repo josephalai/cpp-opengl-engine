@@ -169,7 +169,7 @@ private:
     };
 
     struct AnimCharDef {
-        std::string path;       ///< Path relative to src/Resources/Tutorial/ (incl. extension)
+        std::string path;       ///< Path relative to src/Resources/Models/ (incl. extension)
         float x = 0, y = 0, z = 0;
         bool  snapY   = false;
         float yOffset = 0.0f;

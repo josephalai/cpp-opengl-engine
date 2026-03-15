@@ -1,12 +1,43 @@
 {
-  "alias": "npc_banker",
+  "id": "npc_banker",
   "model_type": "npc_banker",
   "render_mode": "instanced",
   "is_npc": true,
-  "model": { "obj": "person", "texture": "playerTexture" },
-  "physics": { "type": "static", "shape": "box", "halfExtents": [0.5, 1.8, 0.5] },
-  "InteractableComponent": {
-    "script": "scripts/interactions/banker_dialogue.lua",
-    "interact_range": 2.0
-  }
+  "mesh": "Models/Characters/characters.glb",
+  "physics": {
+    "type": "kinematic_character",
+    "radius": 0.5,
+    "height": 1.8,
+    "mass": 70.0,
+    "step_height": 0.35
+  },
+  "animation_controller": "animations/humanoid.json",
+  "ai_script": "scripts/ai/banker.lua",
+  "components": {
+    "NetworkSyncComponent": {
+      "interpolation_delay": 0.2,
+      "max_buffer_size": 20
+    },
+    "AnimatedModelComponent": {
+      "scale": 3.5,
+      "model_rotation": {
+        "x": -90.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "model_offset": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      }
+    },
+    "AIComponent": {
+      "script": "BankerAI"
+    },
+    "InteractableComponent": {
+      "script": "scripts/interactions/banker_dialogue.lua",
+      "interact_range": 2.5
+    }
+  },
+  "animated": true
 }

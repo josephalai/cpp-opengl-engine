@@ -1,12 +1,21 @@
 {
-  "alias": "npc_goblin",
   "model_type": "npc_goblin",
   "render_mode": "instanced",
   "is_npc": true,
-  "model": { "obj": "dragon", "texture": "dragon" },
-  "physics": { "type": "static", "shape": "box", "halfExtents": [0.5, 1.0, 0.5] },
+  "mesh": "Models/Characters/characters.glb",
+  "physics": {
+    "type": "static",
+    "shape": "box",
+    "halfExtents": [
+      0.5,
+      1.0,
+      0.5
+    ]
+  },
   "InteractableComponent": {
     "script": "scripts/combat/melee_combat.lua",
     "interact_range": 2.0
-  }
+  },
+  "id": "npc_goblin",
+  "animated": true
 }

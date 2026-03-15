@@ -1,22 +1,22 @@
 {
-  "_comment": "scene.json — JSON equivalent of scene.cfg. Loaded by SceneLoaderJson.",
+  "_comment": "scene.json \u2014 JSON equivalent of scene.cfg. Loaded by SceneLoaderJson.",
   "animated_characters": [
     {
-      "offset": {
-        "ox": 0.0,
-        "oy": 0.0,
-        "oz": 0.0
-      },
       "path": "Characters/characters.glb",
+      "scale": 2.5,
+      "x": 100.0,
+      "y": "terrain",
+      "z": -80.0,
       "rot": {
         "rx": -90.0,
         "ry": 0.0,
         "rz": 0.0
       },
-      "scale": 2.5,
-      "x": 100.0,
-      "y": "terrain",
-      "z": -80.0
+      "offset": {
+        "ox": 0.0,
+        "oy": 0.0,
+        "oz": 0.0
+      }
     }
   ],
   "assimp": [
@@ -30,20 +30,20 @@
   ],
   "editor_entities": [
     {
-      "alias": "fluffytree",
-      "ry": 0.0,
-      "scale": 7.309000015258789,
-      "x": -1881.9886474609375,
-      "y": -1.9073486328125e-06,
-      "z": -52.53601837158203
-    },
-    {
-      "alias": "fluffytree",
+      "alias": "npc_wanderer",
       "ry": 0.0,
       "scale": 1.0,
-      "x": -1897.4317626953125,
+      "x": 68.0,
       "y": 0.0,
-      "z": -44.292293548583984
+      "z": 4.0
+    },
+    {
+      "alias": "npc_banker",
+      "ry": 0.0,
+      "scale": 1.0,
+      "x": 76.0,
+      "y": -3.814697265625e-06,
+      "z": 4.0
     }
   ],
   "entities": [
@@ -151,58 +151,58 @@
   "models": [
     {
       "alias": "lamp",
-      "obj": "lamp",
+      "obj": "Objects/lamp",
       "texture": "lamp"
     },
     {
       "alias": "fern",
       "atlas": 2,
-      "obj": "fern",
+      "obj": "Nature/fern",
       "texture": "fern"
     },
     {
       "alias": "grass",
       "fakeLighting": true,
-      "obj": "grassModel",
+      "obj": "Nature/grassModel",
       "texture": "grassTexture",
       "transparent": true
     },
     {
       "alias": "stall",
-      "obj": "stall",
+      "obj": "Objects/stall",
       "reflectivity": 2.0,
       "shininess": 2.0,
       "texture": "stallTexture"
     },
     {
       "alias": "tree",
-      "obj": "tree",
+      "obj": "Nature/tree",
       "reflectivity": 2.0,
       "shininess": 2.0,
       "texture": "tree"
     },
     {
       "alias": "fluffytree",
-      "obj": "fluffy-tree",
+      "obj": "Nature/fluffy-tree",
       "reflectivity": 2.0,
       "shininess": 2.0,
       "texture": "tree"
     },
     {
       "alias": "crate",
-      "obj": "stall",
+      "obj": "Objects/stall",
       "reflectivity": 0.0,
       "shininess": 1.0,
       "texture": "stallTexture"
     },
     {
       "alias": "person",
-      "obj": "person",
+      "obj": "Characters/person",
       "texture": "playerTexture"
     },
     {
       "alias": "dragon",
-      "obj": "dragon",
+      "obj": "Characters/dragon",
       "texture": "dragon"
     }
   ],

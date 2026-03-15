@@ -41,7 +41,7 @@ std::string FileSystem::Font(std::string in) {
 }
 
 std::string FileSystem::Model(std::string in) {
-    return HOME_PATH + "/src/Resources/Tutorial/" + in + ".obj";
+    return HOME_PATH + "/src/Resources/Models/" + in + ".obj";
 }
 
 std::string FileSystem::Texture(std::string in) {

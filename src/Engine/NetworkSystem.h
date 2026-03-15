@@ -123,6 +123,11 @@ private:
     glm::vec3 reconcileTarget_    = {};
     float     reconcileTargetYaw_ = 0.0f;
     bool      hasReconcileTarget_ = false;
+    /// Countdown in seconds after the local player's spawn position is applied.
+    /// While > 0 history-based reconciliation is skipped so the physics engine
+    /// can settle without triggering a spurious LERP walk on the very first
+    /// few frames.
+    float     startupGracePeriod_ = 0.0f;
     PhysicsSystem* physicsSystem_ = nullptr;
     PlayerCamera*  playerCamera_  = nullptr;
 };
