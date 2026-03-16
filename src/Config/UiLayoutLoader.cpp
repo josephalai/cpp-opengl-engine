@@ -21,14 +21,11 @@ using json = nlohmann::json;
 // Helper: build UiConstraints from a JSON "constraints" sub-object.
 // Keys: x, y, width, height (all normalised 0..1 relative to parent).
 // ---------------------------------------------------------------------------
-static UiConstraints* constraintsFromJson(const json& c,
-                                           float parentW = 800.0f,
-                                           float parentH = 600.0f) {
+static UiConstraints* constraintsFromJson(const json& c) {
     float x = c.value("x",      0.0f);
     float y = c.value("y",      0.0f);
     float w = c.value("width",  0.0f);
     float h = c.value("height", 0.0f);
-    (void)parentW; (void)parentH;
     return new UiConstraints(
         new UiNormalizedConstraint(XAxis, x),
         new UiNormalizedConstraint(YAxis, y),

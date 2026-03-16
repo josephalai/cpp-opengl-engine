@@ -1234,12 +1234,17 @@ int main() {
                 // we give every new player a default empty inventory + starter XP.
                 {
                     auto& inv = registry.emplace_or_replace<InventoryComponent>(entity);
-                    // Give a starter item in slot 0 (e.g. bronze axe = item 1337).
-                    inv.addItem(1337, 1);
+                    // Starter item: Bronze Axe (item ID 1337).
+                    // TODO: Replace with database-driven player save when available.
+                    static constexpr uint32_t kBronzeAxeItemId = 1337;
+                    inv.addItem(kBronzeAxeItemId, 1);
 
                     auto& sk = registry.emplace_or_replace<SkillsComponent>(entity);
-                    // Seed Hitpoints to level 10 (1154 XP) so the player is not at 0.
-                    sk.xp[static_cast<int>(SkillId::Hitpoints)] = 1154;
+                    // Seed Hitpoints to level 10 (1154 XP) so the player starts with
+                    // some health rather than the bare minimum level 1 (0 XP).
+                    // TODO: Replace with database-driven player save when available.
+                    static constexpr uint32_t kStarterHitpointsXp = 1154; // level 10
+                    sk.xp[static_cast<int>(SkillId::Hitpoints)] = kStarterHitpointsXp;
                 }
 
                 std::cout << "[Server] Client connected — networkId " << newId

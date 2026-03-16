@@ -74,8 +74,9 @@ void SkillsPanel::render() {
 
         // Skill name.
         const char* name = skillName(i);
-        // Truncate to fit.
-        char nameStr[12];
+        // Truncate to 8 visible characters + null terminator so the label fits
+        // within the block width; the buffer is 9 bytes to accommodate this exactly.
+        char nameStr[9];
         snprintf(nameStr, sizeof(nameStr), "%.8s", name);
         float nameX = x + 3.0f + ImGui::CalcTextSize("999 ").x;
         ImVec2 namePos(nameX, y + 3.0f);

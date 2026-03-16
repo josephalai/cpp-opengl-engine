@@ -99,10 +99,12 @@ void InventoryGrid::render() {
                     if (srcIdx != idx) {
                         std::cout << "[Inventory] Move slot " << srcIdx
                                   << " → " << idx << "\n";
-                        // Optimistic local swap.
+                        // Optimistic local swap: update the display immediately for
+                        // responsiveness.  The server's authoritative InventorySyncPacket
+                        // will be sent back and will correct any discrepancy if the move
+                        // was rejected or if the packet was reordered.
                         std::swap(slots_[srcIdx], slots_[idx]);
                         // Publish move event for NetworkSystem to send InventoryMovePacket.
-                        // We encode src/dst in a dedicated event via EventBus.
                         // (NetworkSystem listens for a future InventoryMoveEvent.)
                     }
                 }
