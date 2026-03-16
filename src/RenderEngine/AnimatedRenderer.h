@@ -50,6 +50,7 @@ struct AnimatedEntity {
 class AnimatedRenderer {
 public:
     explicit AnimatedRenderer(AnimatedShader* shader);
+    ~AnimatedRenderer();
 
     /// Render a list of animated entities.
     void render(const std::vector<AnimatedEntity*>& entities,
@@ -60,6 +61,12 @@ public:
 
 private:
     AnimatedShader* shader;
+
+    /// 1×1 white RGBA texture used as a fallback when a mesh has no texture
+    /// (textureID == 0).  Without this, the fragment shader's alpha-discard
+    /// (`if (texColor.a < 0.5) discard`) receives alpha=0 from an unbound
+    /// sampler and kills every fragment, making the model invisible.
+    GLuint fallbackTextureID_ = 0;
 
     void renderMesh(const AnimatedMesh& mesh,
                     const std::vector<glm::mat4>& boneMatrices);
