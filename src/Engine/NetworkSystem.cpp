@@ -99,69 +99,77 @@ void NetworkSystem::update(float deltaTime) {
     //    and the player never stops mid-path waiting for the next tick.
     // -----------------------------------------------------------------
     if (hasReconcileTarget_ && localPlayer_) {
-        glm::vec3 curr   = localPlayer_->getPosition();
-        glm::vec3 target = reconcileTarget_;
-        target.y = curr.y;  // Physics owns the Y axis
-
-        glm::vec3 diff = target - curr;
-        diff.y = 0.0f;
-        float distSq = glm::dot(diff, diff);
-
-        if (distSq < 0.0025f) {   // within 0.05 m — snap and clear
-            localPlayer_->setPosition(target);
-            if (physicsSystem_) physicsSystem_->warpPlayer(target);
+        // --- WASD override: cancel reconciliation when the player takes
+        //     direct keyboard control.  Without this, PhysicsSystem advances
+        //     the player in the WASD direction each frame, then this code
+        //     warps the player back toward the reconcile target — creating a
+        //     visible per-frame position oscillation (stutter). ---
+        bool anyMoveKeyHeld = InputMaster::isActionDown("MoveForward")  ||
+                              InputMaster::isActionDown("MoveBackward") ||
+                              InputMaster::isActionDown("MoveLeft")     ||
+                              InputMaster::isActionDown("MoveRight");
+        if (anyMoveKeyHeld) {
             hasReconcileTarget_ = false;
+            localHistory_.clear();
 
-            // Reconciliation complete — re-enable delta-based animation and
-            // reset the last-position baseline so there is no one-frame spike.
-            // AMC lives on a separate render entity (isLocalPlayer=true), NOT
-            // on the Player's own ECS entity, so we must search for it.
+            // Re-enable delta-based animation and reset the baseline so
+            // AnimationSystem does not see a stale position delta.
             {
                 auto amcView = registry_.view<AnimatedModelComponent>();
                 for (auto e : amcView) {
                     auto& amc = amcView.get<AnimatedModelComponent>(e);
                     if (amc.isLocalPlayer) {
                         amc.suppressDeltaAnimation = false;
-                        amc.lastPosition           = target;
+                        amc.lastPosition           = localPlayer_->getPosition();
                         break;
                     }
                 }
             }
-
-            // Stop animation — tell AnimationSystem we are no longer moving.
-            // if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
-            //     is->currentSpeed = 0.0f;
-            // }
         } else {
-            // Move at the same constant run speed used by WASD input so the
-            // auto-walk animation and pace exactly match normal player movement.
-            // This replaces the previous exponential LERP (kReconcileLerp = 0.3)
-            // which slowed to a crawl near the target and caused a visible
-            // stop-wait-restart cycle each time a new server tick arrived.
-            const float runSpd  = SharedMovement::runSpeed();
-            const float maxStep = runSpd * deltaTime;
-            const float dist    = std::sqrt(distSq);
-            const float stepFrac = (maxStep >= dist) ? 1.0f : maxStep / dist;
+            glm::vec3 curr   = localPlayer_->getPosition();
+            glm::vec3 target = reconcileTarget_;
+            target.y = curr.y;  // Physics owns the Y axis
 
-            glm::vec3 newPos = glm::mix(curr, target, stepFrac);
-            newPos.y = curr.y;
-            localPlayer_->setPosition(newPos);
-            if (physicsSystem_) physicsSystem_->warpPlayer(newPos);
+            glm::vec3 diff = target - curr;
+            diff.y = 0.0f;
+            float distSq = glm::dot(diff, diff);
 
-            // Face directly toward the target rather than using the stored
-            // reconcileTargetYaw_ (which comes from the server snapshot's
-            // rotation and may point the wrong direction on the first step).
-            // Recompute the yaw every frame from the actual curr→target vector
-            // so the player always faces where it is walking.
-            //
-            // SKIP the rotation override when movement keys are held — the
-            // player should face the input direction (set by PlayerMovementSystem),
-            // not the reconcile direction, to prevent rapid direction twitching.
-            bool anyMoveKeyHeld = InputMaster::isActionDown("MoveForward")  ||
-                                  InputMaster::isActionDown("MoveBackward") ||
-                                  InputMaster::isActionDown("MoveLeft")     ||
-                                  InputMaster::isActionDown("MoveRight");
-            if (!anyMoveKeyHeld) {
+            if (distSq < 0.0025f) {   // within 0.05 m — snap and clear
+                localPlayer_->setPosition(target);
+                if (physicsSystem_) physicsSystem_->warpPlayer(target);
+                hasReconcileTarget_ = false;
+
+                // Reconciliation complete — re-enable delta-based animation and
+                // reset the last-position baseline so there is no one-frame spike.
+                // AMC lives on a separate render entity (isLocalPlayer=true), NOT
+                // on the Player's own ECS entity, so we must search for it.
+                {
+                    auto amcView = registry_.view<AnimatedModelComponent>();
+                    for (auto e : amcView) {
+                        auto& amc = amcView.get<AnimatedModelComponent>(e);
+                        if (amc.isLocalPlayer) {
+                            amc.suppressDeltaAnimation = false;
+                            amc.lastPosition           = target;
+                            break;
+                        }
+                    }
+                }
+            } else {
+                // Move at the same constant run speed used by WASD input so the
+                // auto-walk animation and pace exactly match normal player movement.
+                const float runSpd  = SharedMovement::runSpeed();
+                const float maxStep = runSpd * deltaTime;
+                const float dist    = std::sqrt(distSq);
+                const float stepFrac = (maxStep >= dist) ? 1.0f : maxStep / dist;
+
+                glm::vec3 newPos = glm::mix(curr, target, stepFrac);
+                newPos.y = curr.y;
+                localPlayer_->setPosition(newPos);
+                if (physicsSystem_) physicsSystem_->warpPlayer(newPos);
+
+                // Face directly toward the target — recompute yaw every frame
+                // from the actual curr→target vector so the player always faces
+                // where it is walking.
                 if (auto* tc = registry_.try_get<TransformComponent>(localPlayer_->getHandle())) {
                     glm::vec3 toTarget = target - curr;
                     toTarget.y = 0.0f;
@@ -170,12 +178,12 @@ void NetworkSystem::update(float deltaTime) {
                         tc->rotation.y = glm::degrees(std::atan2(dir.x, dir.z));
                     }
                 }
-            }
 
-            // Report the actual per-frame speed so AnimationSystem plays Run.
-            if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
-                float moved = glm::length(newPos - curr);
-                is->currentSpeed = (deltaTime > 0.0001f) ? moved / deltaTime : runSpd;
+                // Report the actual per-frame speed so AnimationSystem plays Run.
+                if (auto* is = registry_.try_get<InputStateComponent>(localPlayer_->getHandle())) {
+                    float moved = glm::length(newPos - curr);
+                    is->currentSpeed = (deltaTime > 0.0001f) ? moved / deltaTime : runSpd;
+                }
             }
         }
     }
