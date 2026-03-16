@@ -2,7 +2,27 @@
 
 #include "AnimatedRenderer.h"
 
-AnimatedRenderer::AnimatedRenderer(AnimatedShader* s) : shader(s) {}
+AnimatedRenderer::AnimatedRenderer(AnimatedShader* s) : shader(s) {
+    // Create a 1×1 opaque-white RGBA fallback texture.
+    // Used in renderMesh() when a mesh has no embedded texture (textureID==0).
+    // Without this, the fragment shader's `if (texColor.a < 0.5) discard`
+    // receives alpha=0 from an unbound sampler and discards every fragment,
+    // making the model completely invisible.
+    glGenTextures(1, &fallbackTextureID_);
+    glBindTexture(GL_TEXTURE_2D, fallbackTextureID_);
+    const unsigned char white[4] = { 255, 255, 255, 255 };
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+AnimatedRenderer::~AnimatedRenderer() {
+    if (fallbackTextureID_) {
+        glDeleteTextures(1, &fallbackTextureID_);
+        fallbackTextureID_ = 0;
+    }
+}
 
 void AnimatedRenderer::render(const std::vector<AnimatedEntity*>& entities,
                                float deltaTime,
@@ -44,10 +64,12 @@ void AnimatedRenderer::render(const std::vector<AnimatedEntity*>& entities,
 
 void AnimatedRenderer::renderMesh(const AnimatedMesh& mesh,
                                    const std::vector<glm::mat4>& /*boneMatrices*/) {
-    if (mesh.textureID) {
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, mesh.textureID);
-    }
+    glActiveTexture(GL_TEXTURE0);
+    // Always bind a texture so the fragment shader's alpha-discard sees alpha=1.
+    // If the mesh has no embedded texture, bind the 1×1 white fallback so the
+    // model renders in flat white rather than being invisible.
+    GLuint texToBind = mesh.textureID ? mesh.textureID : fallbackTextureID_;
+    glBindTexture(GL_TEXTURE_2D, texToBind);
 
     glBindVertexArray(mesh.VAO);
     glDrawElements(GL_TRIANGLES,
