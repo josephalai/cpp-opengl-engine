@@ -151,11 +151,15 @@ void NetworkSystem::update(float deltaTime) {
         //     direct keyboard control.  Without this, PhysicsSystem advances
         //     the player in the WASD direction each frame, then this code
         //     warps the player back toward the reconcile target — creating a
-        //     visible per-frame position oscillation (stutter). ---
-        bool anyMoveKeyHeld = InputMaster::isActionDown("MoveForward")  ||
-                              InputMaster::isActionDown("MoveBackward") ||
-                              InputMaster::isActionDown("MoveLeft")     ||
-                              InputMaster::isActionDown("MoveRight");
+        //     visible per-frame position oscillation (stutter).
+        //     Ignore WASD keys when the chat input field has focus — typing
+        //     letters must not be mistaken for intentional movement. ---
+        const bool chatTypingReconcile = ChatBox::instance().isTyping();
+        bool anyMoveKeyHeld = !chatTypingReconcile &&
+                              (InputMaster::isActionDown("MoveForward")  ||
+                               InputMaster::isActionDown("MoveBackward") ||
+                               InputMaster::isActionDown("MoveLeft")     ||
+                               InputMaster::isActionDown("MoveRight"));
         if (anyMoveKeyHeld) {
             hasReconcileTarget_ = false;
             localHistory_.clear();
@@ -262,14 +266,21 @@ void NetworkSystem::update(float deltaTime) {
         // on where the player is "looking" for purposes of movement.
         input.cameraYaw      = playerCamera_ ? playerCamera_->getOrbitYaw()
                                              : localPlayer_->getRotation().y;
-        input.moveForward    = InputMaster::isActionDown("MoveForward");
-        input.moveBackward   = InputMaster::isActionDown("MoveBackward");
+
+        // Suppress all movement flags while the chat input field has focus so
+        // that pressing W/A/S/D to type does not simultaneously move the player
+        // on the server.  The InputDispatcher already suppresses the local
+        // PlayerMoveCommandEvent via the same guard; this ensures the server
+        // receives the same "no movement" state.
+        const bool chatTyping = ChatBox::instance().isTyping();
+        input.moveForward    = !chatTyping && InputMaster::isActionDown("MoveForward");
+        input.moveBackward   = !chatTyping && InputMaster::isActionDown("MoveBackward");
         // A/D are now strafe keys (camera-relative).  SharedMovement::applyInput
         // uses cameraYaw as the forward reference and moveLeft/moveRight as
         // perpendicular strafe flags — so client and server stay in sync.
-        input.moveLeft       = InputMaster::isActionDown("MoveLeft");
-        input.moveRight      = InputMaster::isActionDown("MoveRight");
-        input.jump           = InputMaster::isActionDown("Jump");
+        input.moveLeft       = !chatTyping && InputMaster::isActionDown("MoveLeft");
+        input.moveRight      = !chatTyping && InputMaster::isActionDown("MoveRight");
+        input.jump           = !chatTyping && InputMaster::isActionDown("Jump");
 
         auto buf = Network::serialise(Network::PacketType::PlayerInput,
                                       input);

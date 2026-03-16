@@ -19,11 +19,14 @@ void InventoryGrid::init() {
     // the networking layer: NetworkSystem owns the packet; InventoryGrid owns
     // the visual representation.
     EventBus::instance().subscribe<InventorySyncEvent>([this](const InventorySyncEvent& e) {
+        // Convert to the canonical packet layout so all slot-setting logic
+        // lives in one place (applySync).
+        Network::InventorySyncPacket pkt{};
         for (int i = 0; i < kSlots; ++i) {
-            slots_[i].itemId   = e.itemIds[i];
-            slots_[i].quantity = e.quantities[i];
+            pkt.itemIds[i]    = e.itemIds[i];
+            pkt.quantities[i] = e.quantities[i];
         }
-        std::cout << "[InventoryGrid] Sync applied.\n";
+        applySync(pkt);
         if (!visible_) show();
     });
 }

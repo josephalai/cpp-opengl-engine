@@ -19,10 +19,13 @@ void SkillsPanel::init() {
     // the networking layer: NetworkSystem owns the packet; SkillsPanel owns
     // the visual representation.
     EventBus::instance().subscribe<SkillsSyncEvent>([this](const SkillsSyncEvent& e) {
+        // Convert to the canonical packet layout so all XP-setting logic
+        // lives in one place (applySync).
+        Network::SkillsSyncPacket pkt{};
         for (int i = 0; i < kSkills; ++i) {
-            xp_[i] = e.xp[i];
+            pkt.xp[i] = e.xp[i];
         }
-        std::cout << "[SkillsPanel] Sync applied.\n";
+        applySync(pkt);
         if (!visible_) show();
     });
 }
