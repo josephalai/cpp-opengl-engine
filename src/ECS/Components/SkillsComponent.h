@@ -101,11 +101,16 @@ struct SkillsComponent {
 
     std::array<uint32_t, kCount> xp{};  ///< Raw XP per skill.
 
+    /// Dirty flag — set by addXp().  The server tick loop checks this flag
+    /// and broadcasts a SkillsSyncPacket when true, then resets it to false.
+    bool dirty = false;
+
     /// Add XP to a skill.  Returns the new XP total.
     uint32_t addXp(SkillId skill, uint32_t amount) {
         int idx = static_cast<int>(skill);
         if (idx < 0 || idx >= kCount) return 0;
         xp[idx] += amount;
+        dirty = true;
         return xp[idx];
     }
 

@@ -55,6 +55,9 @@ void EditorSystem::update(float /*deltaTime*/) {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
+    // Clear per-frame UI region data so each panel can re-register its bounds.
+    UiMaster::clearUiRegions();
+
     // -----------------------------------------------------------------------
     // Phase 2-5: Render ImGui-based gameplay HUD panels.
     // These must be inside the ImGui frame (after NewFrame, before Render).

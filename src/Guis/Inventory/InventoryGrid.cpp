@@ -3,6 +3,7 @@
 #include "InventoryGrid.h"
 #include "../../Events/EventBus.h"
 #include "../../Events/Event.h"
+#include "../UiMaster.h"
 
 #include <imgui.h>
 #include <string>
@@ -41,6 +42,9 @@ void InventoryGrid::applySync(const Network::InventorySyncPacket& pkt) {
 
 void InventoryGrid::render() {
     if (!visible_) return;
+
+    // Reset per-frame drag tracking; set below if a drag is active.
+    dragSrc_ = -1;
 
     const float padding   = 4.0f;
     const float totalW    = kCols * (kSlotSize + padding) + padding + 16.0f; // +16 for scroll bar
@@ -101,6 +105,7 @@ void InventoryGrid::render() {
 
             // Drag source.
             if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+                dragSrc_ = idx;
                 ImGui::SetDragDropPayload("INV_SLOT", &idx, sizeof(int));
                 char tooltip[32];
                 snprintf(tooltip, sizeof(tooltip), "Item #%u", slot.itemId);
@@ -137,6 +142,12 @@ void InventoryGrid::render() {
     ImGui::SetCursorScreenPos(
         ImVec2(origin.x,
                origin.y + kRows * (kSlotSize + padding) + padding));
+
+    // Register the window bounds as a UI region so InputDispatcher
+    // skips world interactions when the cursor is over the inventory.
+    ImVec2 wPos  = ImGui::GetWindowPos();
+    ImVec2 wSize = ImGui::GetWindowSize();
+    UiMaster::registerUiRegion(wPos.x, wPos.y, wSize.x, wSize.y);
 
     ImGui::End();
 }

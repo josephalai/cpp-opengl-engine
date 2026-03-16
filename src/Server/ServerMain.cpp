@@ -1899,6 +1899,29 @@ int main() {
                     sendTo(peer, Network::PacketType::TransformSnapshot,
                            &snap, sizeof(snap));
                 }
+
+                // ----- Inventory / Skills dirty-flag sync -----
+                // If this client's InventoryComponent or SkillsComponent was
+                // mutated since the last tick (e.g. a Lua script called
+                // addItem / addXp), send a reliable sync packet and clear the
+                // dirty flag so we don't re-send every tick.
+                auto clientEntityForSync = peit->second;
+                if (auto* inv = registry.try_get<InventoryComponent>(clientEntityForSync)) {
+                    if (inv->dirty) {
+                        auto invPkt = inv->toSyncPacket();
+                        sendTo(peer, Network::PacketType::InventorySync,
+                               &invPkt, sizeof(invPkt), true);
+                        inv->dirty = false;
+                    }
+                }
+                if (auto* sk = registry.try_get<SkillsComponent>(clientEntityForSync)) {
+                    if (sk->dirty) {
+                        auto skPkt = sk->toSyncPacket();
+                        sendTo(peer, Network::PacketType::SkillsSync,
+                               &skPkt, sizeof(skPkt), true);
+                        sk->dirty = false;
+                    }
+                }
             }
 
             enet_host_flush(server);

@@ -3,6 +3,7 @@
 #include "ChatBox.h"
 #include "../../Events/EventBus.h"
 #include "../../Events/Event.h"
+#include "../UiMaster.h"
 
 #include <imgui.h>
 #include <cstring>
@@ -98,5 +99,11 @@ void ChatBox::render() {
             ImGui::SetKeyboardFocusHere(-1);
         }
     }
+    // Register the window bounds as a UI region so InputDispatcher
+    // skips world interactions when the cursor is over the chat box.
+    ImVec2 wPos  = ImGui::GetWindowPos();
+    ImVec2 wSize = ImGui::GetWindowSize();
+    UiMaster::registerUiRegion(wPos.x, wPos.y, wSize.x, wSize.y);
+
     ImGui::End();
 }

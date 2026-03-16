@@ -3,6 +3,7 @@
 #include "SkillsPanel.h"
 #include "../../Events/EventBus.h"
 #include "../../Events/Event.h"
+#include "../UiMaster.h"
 
 #include <imgui.h>
 #include <string>
@@ -130,6 +131,12 @@ void SkillsPanel::render() {
     ImGui::SetCursorScreenPos(
         ImVec2(origin.x,
                origin.y + rows * (blockH + padding) + padding));
+
+    // Register the window bounds as a UI region so InputDispatcher
+    // skips world interactions when the cursor is over the skills panel.
+    ImVec2 wPos  = ImGui::GetWindowPos();
+    ImVec2 wSize = ImGui::GetWindowSize();
+    UiMaster::registerUiRegion(wPos.x, wPos.y, wSize.x, wSize.y);
 
     ImGui::End();
 }

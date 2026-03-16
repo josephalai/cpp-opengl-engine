@@ -25,6 +25,11 @@ struct InventoryComponent {
 
     std::array<ItemSlot, kSlots> slots{};
 
+    /// Dirty flag — set by any mutating operation.  The server tick loop
+    /// checks this flag and broadcasts an InventorySyncPacket when true,
+    /// then resets it to false.
+    bool dirty = false;
+
     // -----------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------
@@ -42,11 +47,12 @@ struct InventoryComponent {
     bool addItem(uint32_t itemId, uint32_t qty = 1) {
         // Try stacking first.
         for (auto& s : slots) {
-            if (s.itemId == itemId) { s.quantity += qty; return true; }
+            if (s.itemId == itemId) { s.quantity += qty; dirty = true; return true; }
         }
         int idx = firstEmpty();
         if (idx < 0) return false;
         slots[idx] = {itemId, qty};
+        dirty = true;
         return true;
     }
 
@@ -56,6 +62,7 @@ struct InventoryComponent {
             if (s.itemId == itemId && s.quantity >= qty) {
                 s.quantity -= qty;
                 if (s.quantity == 0) s.itemId = 0;
+                dirty = true;
                 return true;
             }
         }
@@ -66,6 +73,7 @@ struct InventoryComponent {
     void swapSlots(int src, int dst) {
         if (src < 0 || src >= kSlots || dst < 0 || dst >= kSlots) return;
         std::swap(slots[src], slots[dst]);
+        dirty = true;
     }
 
     /// Build a wire-ready InventorySyncPacket from the current state.
