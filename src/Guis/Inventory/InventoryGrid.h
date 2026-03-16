@@ -51,7 +51,8 @@ public:
     void show()   { visible_ = true;  }
     void hide()   { visible_ = false; }
     void toggle() { visible_ = !visible_; }
-    bool isVisible() const { return visible_; }
+    bool isVisible()  const { return visible_; }
+    bool isDragging() const { return dragSrc_ >= 0; }
 
 private:
     InventoryGrid() = default;
