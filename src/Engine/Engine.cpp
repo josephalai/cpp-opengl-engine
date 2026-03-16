@@ -422,8 +422,8 @@ void Engine::initGui() {
 
 void Engine::initFramebuffersAndPickers() {
     reflectFbo = new FrameBuffers();
-    auto gui   = new GuiTexture(reflectFbo->getReflectionTexture(), glm::vec2(0.75f, 0.75f), glm::vec2(0.2f));
-    guis.push_back(gui);
+    // The reflection FBO debug overlay (top-right white box) has been removed.
+    // reflectFbo is still used by the water renderer below.
 
     // Water renderer — loads optional DuDv / normal textures, falls back to neutral 1×1 textures.
     // Always created so water tiles (from scene.cfg or the default) are rendered.
