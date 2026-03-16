@@ -135,6 +135,7 @@ list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/TerrainPicker\\.cpp$")
 list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/EntityPicker\\.cpp$")
 list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/InteractiveModel\\.cpp$")
 list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/MockServer\\.cpp$")
+list(FILTER COMMON_SOURCES EXCLUDE REGEX ".*/UiLayoutLoader\\.cpp$")
 
 # --- SERVER: headless entry point and NPC support ---
 file(GLOB_RECURSE SERVER_SOURCES CONFIGURE_DEPENDS

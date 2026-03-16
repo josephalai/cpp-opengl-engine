@@ -4,6 +4,11 @@
   "render_mode": "instanced",
   "is_npc": true,
   "mesh": "Models/Characters/characters.glb",
+  "actions": [
+    { "id": 3, "label": "Talk-to" },
+    { "id": 4, "label": "Bank" },
+    { "id": 0, "label": "Examine" }
+  ],
   "physics": {
     "type": "kinematic_character",
     "radius": 0.5,

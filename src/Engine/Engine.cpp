@@ -148,22 +148,19 @@ void Engine::initFonts() {
 
     fontModel = loader->loadFontVAO();
 
-    auto text1 = new GUIText(
-        "This is sample text because I know what I am doing whether you like it or not so I am joe."
-        "This is sample text because I know what I am doing whether you like it or not so I am joe.",
-        0.50f, fontModel, noodleFont, glm::vec2(25.0f, 225.0f), ColorName::Whitesmoke,
-        0.50f * static_cast<float>(DisplayManager::Width()), false);
-    texts.push_back(text1);
-
     pNameText = new GUIText("Joseph Alai MCMXII", 0.5f, fontModel, arialFont,
                             glm::vec2(540.0f, 50.0f), ColorName::Cyan,
                             0.75f * static_cast<float>(DisplayManager::Width()), false);
     texts.push_back(pNameText);
+    // Remove from TextMaster's render list so the name does not appear on screen.
+    TextMaster::remove(pNameText);
 
     clickColorText = new GUIText("Color: ", 0.5f, fontModel, arialFont,
                                  glm::vec2(10.0f, 20.0f), ColorName::Green,
                                  0.75f * static_cast<float>(DisplayManager::Width()), false);
     texts.push_back(clickColorText);
+    // Remove from TextMaster's render list so the "Color:" label does not appear on screen.
+    TextMaster::remove(clickColorText);
 }
 
 void Engine::loadScene() {
@@ -405,56 +402,18 @@ void Engine::initRenderers() {
 }
 
 void Engine::initGui() {
-    // sampleModifiedGui is the extra lifebar that slides across the screen;
-    // its texture comes from the first GUI texture loaded by SceneLoader
-    // (gui/lifebar), which is already in the guis vector.
-    // We create a separate copy at a different position for the animation.
+    // sampleModifiedGui is kept for InputSystem animation but is NOT added to guis
+    // so it is never rendered on screen.
     sampleModifiedGui = new GuiTexture(loader->loadTexture("gui/lifebar")->getId(),
                                        glm::vec2(-0.72f, 0.3f),
                                        glm::vec2(0.290f, 0.0900f) / 3.0f);
-    guis.push_back(sampleModifiedGui);
 
-    Color     color   = ColorName::Cyan;
-    glm::vec2 position  = glm::vec2(-0.75f, 0.67f);
-    glm::vec2 size      = glm::vec2(0.290f, 0.0900f);
-    glm::vec2 scale     = glm::vec2(0.25f,  0.33f);
-    float     alpha     = 0.33f;
-
-    auto guiRect  = new GuiRect(color, position, size, scale, alpha);
-    glm::vec2 position2 = glm::vec2(-0.55f, 0.37f);
-    Color     color2    = ColorName::Green;
-    auto guiRect2 = new GuiRect(color2, position2, size, scale, alpha);
-    rects.push_back(guiRect);
-
-    sampleModifiedGui->addChild(sampleModifiedGui, new UiConstraints(0.0f, 0.0f, 200, 200));
+    // Clear the lifebar / green-bar / heart textures that SceneLoader loaded from
+    // scene.json so they are not rendered by the raw GUI renderer.
+    guis.clear();
 
     masterContainer = UiMaster::getMasterComponent();
-    auto parent     = new GuiComponent(Container::CONTAINER, new UiConstraints(0.01f, -0.01f, 50, 50));
-    parent->setName("Parent");
     masterContainer->setName("Master Container");
-
-    // Retrieve the GUI textures added by SceneLoader in config order:
-    //   guis[0] = gui/lifebar, guis[1] = gui/green, guis[2] = gui/heart
-    GuiTexture* t1 = guis.size() > 0 ? guis[0] : nullptr;
-    GuiTexture* t2 = guis.size() > 1 ? guis[1] : nullptr;
-    GuiTexture* t3 = guis.size() > 2 ? guis[2] : nullptr;
-
-    if (t1) { t1->setName("gui/lifebar"); }
-    if (t2) { t2->setName("gui/green"); }
-    if (t3) { t3->setName("gui/heart"); }
-    guiRect->setName("GuiRect");
-    guiRect2->setName("GuiRect2");
-
-    masterContainer->addChild(guiRect,   new UiConstraints(0.0f,  -0.1f, 50, 50));
-    masterContainer->addChild(guiRect2,  new UiConstraints(0.0f,  -0.1f, 50, 50));
-    masterContainer->addChild(parent,    new UiConstraints(0.02f, -0.1f, 50, 50));
-    if (t1) parent->addChild(t1, new UiConstraints(0.00f, -0.1f, 50, 50));
-    if (t2) parent->addChild(t2, new UiConstraints(0.00f, -0.1f, 50, 50));
-    if (t3) parent->addChild(t3, new UiConstraints(0.00f, -0.1f, 50, 50));
-    parent->addChild(texts[0],    new UiConstraints(0.00f, -0.1f, 50, 50));
-    parent->addChild(texts[1],    new UiConstraints(0.00f, -0.1f, 50, 50));
-    parent->addChild(clickColorText, new UiConstraints(0.00f, -0.1f, 50, 50));
-    if (t1) t1->addChild(pNameText, new UiConstraints(-500.00f, 40.1f, 50, 50));
 
     masterContainer->initialize();
     UiMaster::createRenderQueue(masterContainer);
@@ -463,8 +422,8 @@ void Engine::initGui() {
 
 void Engine::initFramebuffersAndPickers() {
     reflectFbo = new FrameBuffers();
-    auto gui   = new GuiTexture(reflectFbo->getReflectionTexture(), glm::vec2(0.75f, 0.75f), glm::vec2(0.2f));
-    guis.push_back(gui);
+    // The reflection FBO debug overlay (top-right white box) has been removed.
+    // reflectFbo is still used by the water renderer below.
 
     // Water renderer — loads optional DuDv / normal textures, falls back to neutral 1×1 textures.
     // Always created so water tiles (from scene.cfg or the default) are rendered.

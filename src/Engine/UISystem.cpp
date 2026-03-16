@@ -49,9 +49,9 @@ void UISystem::update(float /*deltaTime*/) {
     // Render text registered via TextMaster::loadText()
     TextMaster::render();
 
-    // Slide the master container slightly each frame (animated UI demo)
-    if (masterContainer_) {
-        masterContainer_->getConstraints()->getPosition() += glm::vec2(0.001f, 0.0f);
-        UiMaster::applyConstraints(masterContainer_);
-    }
+    // NOTE: ImGui-based panels (ContextMenu, ChatBox, InventoryGrid, SkillsPanel)
+    // are rendered by EditorSystem::update() which owns the ImGui frame boundary
+    // (ImGui::NewFrame() … ImGui::Render()).  Calling ImGui functions here —
+    // before NewFrame — would crash the process.  Do NOT add ImGui calls to this
+    // function.
 }

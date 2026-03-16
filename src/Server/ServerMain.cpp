@@ -39,6 +39,8 @@
 #include "../Interaction/InteractionSystem.h"
 #include "../ECS/Components/ActionStateComponent.h"
 #include "../ECS/Components/InteractableComponent.h"
+#include "../ECS/Components/InventoryComponent.h"
+#include "../ECS/Components/SkillsComponent.h"
 
 #include <nlohmann/json.hpp>
 
@@ -1226,6 +1228,25 @@ int main() {
                 peerToEntity[event.peer] = entity;
                 spatialSystem.registerEntity(entity, spawnPos, /*isStatic=*/false);
 
+                // Phase 4 (Inventory) — Attach a fresh InventoryComponent and
+                // Phase 5 (Skills)    — Attach a fresh SkillsComponent.
+                // In a real game these would be loaded from a database; for now
+                // we give every new player a default empty inventory + starter XP.
+                {
+                    auto& inv = registry.emplace_or_replace<InventoryComponent>(entity);
+                    // Starter item: Bronze Axe (item ID 1337).
+                    // TODO: Replace with database-driven player save when available.
+                    static constexpr uint32_t kBronzeAxeItemId = 1337;
+                    inv.addItem(kBronzeAxeItemId, 1);
+
+                    auto& sk = registry.emplace_or_replace<SkillsComponent>(entity);
+                    // Seed Hitpoints to level 10 (1154 XP) so the player starts with
+                    // some health rather than the bare minimum level 1 (0 XP).
+                    // TODO: Replace with database-driven player save when available.
+                    static constexpr uint32_t kStarterHitpointsXp = 1154; // level 10
+                    sk.xp[static_cast<int>(SkillId::Hitpoints)] = kStarterHitpointsXp;
+                }
+
                 std::cout << "[Server] Client connected — networkId " << newId
                           << " from " << event.peer->address.host << ":"
                           << event.peer->address.port << "\n";
@@ -1264,6 +1285,21 @@ int main() {
                                &newSp, sizeof(newSp), true);
                     }
                 }
+
+                // 4) Send initial InventorySyncPacket to the new peer.
+                if (auto* invComp = registry.try_get<InventoryComponent>(entity)) {
+                    auto invPkt = invComp->toSyncPacket();
+                    sendTo(event.peer, Network::PacketType::InventorySync,
+                           &invPkt, sizeof(invPkt), true);
+                }
+
+                // 5) Send initial SkillsSyncPacket to the new peer.
+                if (auto* skComp = registry.try_get<SkillsComponent>(entity)) {
+                    auto skPkt = skComp->toSyncPacket();
+                    sendTo(event.peer, Network::PacketType::SkillsSync,
+                           &skPkt, sizeof(skPkt), true);
+                }
+
                 break;
             }
 
@@ -1439,6 +1475,90 @@ int main() {
                                             playerEntity,
                                             PathfindingComponent{path, 0, 0.1f, true});
                                     }
+                                }
+                            }
+                        }
+                    } // end ActionRequest
+
+                    // ----------------------------------------------------------
+                    // Phase 3 — Chat: routes incoming ChatMessagePacket to nearby
+                    // players within the 3×3 SpatialGrid neighbourhood (AoI).
+                    // ----------------------------------------------------------
+                    if (ptype == Network::PacketType::ChatMessage &&
+                        plen == sizeof(Network::ChatMessagePacket)) {
+
+                        Network::ChatMessagePacket chatPkt;
+                        std::memcpy(&chatPkt, payload, sizeof(chatPkt));
+
+                        auto pit = peerToNetworkId.find(event.peer);
+                        if (pit != peerToNetworkId.end()) {
+                            uint32_t senderNid = pit->second;
+                            chatPkt.senderNetworkId = senderNid;
+
+                            std::string senderName = "Player#" + std::to_string(senderNid);
+                            std::strncpy(chatPkt.senderName, senderName.c_str(),
+                                         Network::kMaxSenderLen - 1);
+                            chatPkt.senderName[Network::kMaxSenderLen - 1] = '\0';
+
+                            std::cout << "[Server] Chat from " << senderName
+                                      << ": " << chatPkt.message << "\n";
+
+                            auto senderEntityIt = networkIdToEntity.find(senderNid);
+                            if (senderEntityIt != networkIdToEntity.end()) {
+                                auto* senderSC = registry.try_get<SpatialComponent>(
+                                    senderEntityIt->second);
+                                for (auto& [peer, pid] : peerToNetworkId) {
+                                    // Never echo back to the sender; the client
+                                    // already shows a local echo via ChatBox::init().
+                                    if (peer == event.peer) continue;
+                                    bool inRange = true;
+                                    if (senderSC) {
+                                        auto targetEntityIt = networkIdToEntity.find(pid);
+                                        if (targetEntityIt != networkIdToEntity.end()) {
+                                            auto* targetSC = registry.try_get<SpatialComponent>(
+                                                targetEntityIt->second);
+                                            if (targetSC) {
+                                                int dx = std::abs(senderSC->currentCellX -
+                                                                  targetSC->currentCellX);
+                                                int dz = std::abs(senderSC->currentCellZ -
+                                                                  targetSC->currentCellZ);
+                                                inRange = (dx <= 1 && dz <= 1);
+                                            }
+                                        }
+                                    }
+                                    if (inRange) {
+                                        sendTo(peer, Network::PacketType::ChatMessage,
+                                               &chatPkt, sizeof(chatPkt), true);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ----------------------------------------------------------
+                    // Phase 4 — Inventory move: authoritative slot swap.
+                    // ----------------------------------------------------------
+                    if (ptype == Network::PacketType::InventoryMove &&
+                        plen == sizeof(Network::InventoryMovePacket)) {
+
+                        Network::InventoryMovePacket movePkt;
+                        std::memcpy(&movePkt, payload, sizeof(movePkt));
+
+                        auto pit = peerToNetworkId.find(event.peer);
+                        if (pit != peerToNetworkId.end()) {
+                            auto eit = networkIdToEntity.find(pit->second);
+                            if (eit != networkIdToEntity.end()) {
+                                auto* inv = registry.try_get<InventoryComponent>(eit->second);
+                                if (inv) {
+                                    inv->swapSlots(movePkt.srcSlot, movePkt.dstSlot);
+                                    auto syncPkt = inv->toSyncPacket();
+                                    sendTo(event.peer, Network::PacketType::InventorySync,
+                                           &syncPkt, sizeof(syncPkt), true);
+                                    std::cout << "[Server] Inventory move "
+                                              << static_cast<int>(movePkt.srcSlot)
+                                              << " -> "
+                                              << static_cast<int>(movePkt.dstSlot)
+                                              << "\n";
                                 }
                             }
                         }

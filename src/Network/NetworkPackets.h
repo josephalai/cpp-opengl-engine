@@ -28,8 +28,12 @@ enum class PacketType : uint8_t {
     Welcome           = 3,
     Spawn             = 4,
     Despawn           = 5,
-    ActionRequest     = 6,  ///< Phase 4 — Client requests a pathfound action on a target.
-    ServerMessage     = 7,  ///< Phase 6 — Server sends a text message to a specific client (e.g. NPC dialogue).
+    ActionRequest     = 6,  ///< Client requests a pathfound action on a target.
+    ServerMessage     = 7,  ///< Server sends a text message to a specific client (e.g. NPC dialogue).
+    ChatMessage       = 8,  ///< Phase 3 — Bidirectional spatial chat message.
+    InventorySync     = 9,  ///< Phase 4 — Server pushes full inventory state to a client.
+    InventoryMove     = 10, ///< Phase 4 — Client requests an item slot swap.
+    SkillsSync        = 11, ///< Phase 5 — Server pushes full skills/XP state to a client.
 };
 
 // -------------------------------------------------------------------------
@@ -103,6 +107,50 @@ struct ActionRequestPacket {
 static constexpr size_t kMaxMessageLen = 128;
 struct ServerMessagePacket {
     char message[kMaxMessageLen] = {};
+};
+
+// -------------------------------------------------------------------------
+// Phase 3 — Spatial chat
+// -------------------------------------------------------------------------
+
+/// Fixed-length chat message buffer (client → server → nearby clients).
+static constexpr size_t kMaxChatLen     = 128;
+static constexpr size_t kMaxSenderLen   = 32;
+
+/// Client sends this to the server; server redistributes to nearby players.
+struct ChatMessagePacket {
+    uint32_t senderNetworkId              = 0;         ///< Filled in by the server before relay.
+    char     senderName[kMaxSenderLen]    = {};        ///< Display name resolved server-side.
+    char     message[kMaxChatLen]         = {};        ///< UTF-8 message body (null-terminated).
+};
+
+// -------------------------------------------------------------------------
+// Phase 4 — Inventory synchronisation
+// -------------------------------------------------------------------------
+
+static constexpr int kInventorySlots = 28; ///< Classic 28-slot OSRS inventory.
+
+/// Server → Client: full snapshot of the player's inventory.
+struct InventorySyncPacket {
+    uint32_t itemIds[kInventorySlots]       = {}; ///< 0 = empty slot.
+    uint32_t quantities[kInventorySlots]    = {}; ///< Stack count per slot.
+};
+
+/// Client → Server: request to move item from srcSlot to dstSlot.
+struct InventoryMovePacket {
+    uint8_t srcSlot = 0; ///< Source slot index [0, kInventorySlots).
+    uint8_t dstSlot = 0; ///< Destination slot index [0, kInventorySlots).
+};
+
+// -------------------------------------------------------------------------
+// Phase 5 — Skills synchronisation
+// -------------------------------------------------------------------------
+
+static constexpr int kSkillCount = 23; ///< Total number of tracked skills.
+
+/// Server → Client: full snapshot of the player's skill XP values.
+struct SkillsSyncPacket {
+    uint32_t xp[kSkillCount] = {}; ///< Raw XP integer per skill (index = SkillId enum).
 };
 
 // -------------------------------------------------------------------------

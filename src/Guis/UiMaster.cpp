@@ -10,6 +10,11 @@
 #include "../Util/CommonHeader.h"
 #include "Constraints/UiPercentConstraint.h"
 #include "Constraints/UiNormalizedConstraint.h"
+#include "ContextMenu/ContextMenu.h"
+#include "Chat/ChatBox.h"
+#include "Inventory/InventoryGrid.h"
+#include "Skills/SkillsPanel.h"
+#include "../Input/InputMaster.h"
 
 GuiComponent *UiMaster::masterContainer;
 UiConstraints *UiMaster::masterConstraints;
@@ -207,3 +212,74 @@ void UiMaster::cleanUp() {}
 void UiMaster::printComponentPosition(Container *childComponent) {}
 
 void UiMaster::printComponentInformation(GuiComponent *parentComponent) {}
+
+// ---------------------------------------------------------------------------
+// Phase 1 — UI region registration & mouse-over detection
+// ---------------------------------------------------------------------------
+
+std::vector<float> UiMaster::uiRegions_ = {};
+
+void UiMaster::registerUiRegion(float x, float y, float w, float h) {
+    uiRegions_.push_back(x);
+    uiRegions_.push_back(y);
+    uiRegions_.push_back(w);
+    uiRegions_.push_back(h);
+}
+
+void UiMaster::clearUiRegions() {
+    uiRegions_.clear();
+}
+
+bool UiMaster::isMouseOverUi() {
+    double mx = InputMaster::mouseX;
+    double my = InputMaster::mouseY;
+
+    // Check every registered pixel rectangle.
+    for (std::size_t i = 0; i + 3 < uiRegions_.size(); i += 4) {
+        float rx = uiRegions_[i];
+        float ry = uiRegions_[i + 1];
+        float rw = uiRegions_[i + 2];
+        float rh = uiRegions_[i + 3];
+        if (mx >= rx && mx <= rx + rw &&
+            my >= ry && my <= ry + rh) {
+            return true;
+        }
+    }
+
+    // Also consume clicks when the context menu is under the cursor.
+    if (ContextMenu::instance().isMouseOver()) return true;
+
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Context menu render
+// ---------------------------------------------------------------------------
+
+void UiMaster::renderContextMenu() {
+    ContextMenu::instance().render();
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 — Chat box render
+// ---------------------------------------------------------------------------
+
+void UiMaster::renderChatBox() {
+    ChatBox::instance().render();
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Inventory render
+// ---------------------------------------------------------------------------
+
+void UiMaster::renderInventory() {
+    InventoryGrid::instance().render();
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5 — Skills panel render
+// ---------------------------------------------------------------------------
+
+void UiMaster::renderSkillsPanel() {
+    SkillsPanel::instance().render();
+}

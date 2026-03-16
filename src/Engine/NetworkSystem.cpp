@@ -18,9 +18,13 @@
 #include "../Network/SharedMovement.h"
 #include "../Events/EventBus.h"
 #include "../Events/EntityClickedEvent.h"
+#include "../Events/Event.h"
 #include "../ECS/Components/NetworkIdComponent.h"
 #include "../ECS/Components/InputStateComponent.h"
 #include "../ECS/Components/AnimatedModelComponent.h"
+#include "../Guis/Chat/ChatBox.h"
+#include "../Guis/Inventory/InventoryGrid.h"
+#include "../Guis/Skills/SkillsPanel.h"
 #include <iostream>
 #include <cstring>
 #include <cmath>
@@ -53,6 +57,29 @@ void NetworkSystem::init() {
     EventBus::instance().subscribe<EntityClickedEvent>([this](const EntityClickedEvent& e) {
         sendActionRequest(e.networkId);
     });
+
+    // Subscribe to ContextMenuActionEvent (Phase 2) — when the player selects
+    // an action from the OSRS right-click context menu, forward it to the server
+    // as an ActionRequestPacket with the chosen action type.
+    EventBus::instance().subscribe<ContextMenuActionEvent>([this](const ContextMenuActionEvent& e) {
+        sendActionRequest(e.targetNetworkId);
+        std::cout << "[NetworkSystem] ContextMenu action '" << e.actionName
+                  << "' → ActionRequest for entity " << e.targetNetworkId << "\n";
+    });
+
+    // Subscribe to ChatReceivedEvent that originated locally (the player typed
+    // something in the ChatBox) — senderNetworkId == 0 means "local outgoing".
+    EventBus::instance().subscribe<ChatReceivedEvent>([this](const ChatReceivedEvent& e) {
+        if (e.senderNetworkId == 0) {
+            // Local outgoing message — send it to the server.
+            sendChatMessage(e.message);
+        }
+        // Incoming messages (senderNetworkId != 0) are already displayed by
+        // the ChatMessagePacket handler above; no further action needed here.
+    });
+
+    // Initialise the chat box event subscriptions.
+    ChatBox::instance().init();
 
     client_ = enet_host_create(nullptr, 1, kChannelCount, 0, 0);
 
@@ -364,17 +391,53 @@ void NetworkSystem::update(float deltaTime) {
 
                 // ----- ServerMessagePacket -----
                 // Reliable dialogue / notification text from a server Lua script.
-                // In Phase 9 this feeds into the ImGui chat box.  For now we
-                // print it clearly to the client terminal as proof-of-life.
                 else if (ptype == Network::PacketType::ServerMessage &&
                          plen == sizeof(Network::ServerMessagePacket)) {
                     Network::ServerMessagePacket msgPkt;
                     std::memcpy(&msgPkt, payload, sizeof(msgPkt));
-                    // Guarantee null termination even if the server forgot.
                     msgPkt.message[Network::kMaxMessageLen - 1] = '\0';
-                    std::cout << "\n===================================================\n";
-                    std::cout << "[NPC DIALOGUE]: " << msgPkt.message << "\n";
-                    std::cout << "===================================================\n\n";
+                    std::cout << "\n[NPC DIALOGUE]: " << msgPkt.message << "\n\n";
+                    // Route to the chat box so the player sees it in-game.
+                    ChatBox::instance().appendMessage("NPC", msgPkt.message);
+                }
+
+                // ----- Phase 3: ChatMessagePacket -----
+                else if (ptype == Network::PacketType::ChatMessage &&
+                         plen == sizeof(Network::ChatMessagePacket)) {
+                    Network::ChatMessagePacket chatPkt;
+                    std::memcpy(&chatPkt, payload, sizeof(chatPkt));
+                    chatPkt.message[Network::kMaxChatLen - 1]      = '\0';
+                    chatPkt.senderName[Network::kMaxSenderLen - 1] = '\0';
+                    // Publish the event — the ChatBox subscription in ChatBox::init()
+                    // will call appendMessage once.  Do NOT call appendMessage here
+                    // directly or the message would appear twice.
+                    ChatReceivedEvent evt{};
+                    evt.senderNetworkId = chatPkt.senderNetworkId;
+                    evt.senderName      = chatPkt.senderName;
+                    evt.message         = chatPkt.message;
+                    EventBus::instance().publish(evt);
+                }
+
+                // ----- Phase 4: InventorySyncPacket -----
+                else if (ptype == Network::PacketType::InventorySync &&
+                         plen == sizeof(Network::InventorySyncPacket)) {
+                    Network::InventorySyncPacket invPkt;
+                    std::memcpy(&invPkt, payload, sizeof(invPkt));
+                    InventoryGrid::instance().applySync(invPkt);
+                    if (!InventoryGrid::instance().isVisible()) {
+                        InventoryGrid::instance().show();
+                    }
+                }
+
+                // ----- Phase 5: SkillsSyncPacket -----
+                else if (ptype == Network::PacketType::SkillsSync &&
+                         plen == sizeof(Network::SkillsSyncPacket)) {
+                    Network::SkillsSyncPacket skPkt;
+                    std::memcpy(&skPkt, payload, sizeof(skPkt));
+                    SkillsPanel::instance().applySync(skPkt);
+                    if (!SkillsPanel::instance().isVisible()) {
+                        SkillsPanel::instance().show();
+                    }
                 }
 
                 // ----- TransformSnapshot -----
@@ -625,4 +688,23 @@ void NetworkSystem::sendActionRequest(uint32_t targetNetworkId) {
     enet_peer_send(serverPeer_, 0,
         enet_packet_create(buf.data(), buf.size(),
             ENET_PACKET_FLAG_RELIABLE));
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 — sendChatMessage
+// ---------------------------------------------------------------------------
+
+void NetworkSystem::sendChatMessage(const std::string& message) {
+    if (!serverPeer_ || message.empty()) return;
+
+    Network::ChatMessagePacket pkt{};
+    std::strncpy(pkt.message, message.c_str(), Network::kMaxChatLen - 1);
+    pkt.message[Network::kMaxChatLen - 1] = '\0';
+    // senderNetworkId and senderName are filled in by the server.
+
+    auto buf = Network::serialise(Network::PacketType::ChatMessage, pkt);
+    enet_peer_send(serverPeer_, 0,
+        enet_packet_create(buf.data(), buf.size(),
+            ENET_PACKET_FLAG_RELIABLE));
+    std::cout << "[NetworkSystem] Sent chat: " << message << "\n";
 }
