@@ -148,13 +148,6 @@ void Engine::initFonts() {
 
     fontModel = loader->loadFontVAO();
 
-    auto text1 = new GUIText(
-        "This is sample text because I know what I am doing whether you like it or not so I am joe."
-        "This is sample text because I know what I am doing whether you like it or not so I am joe.",
-        0.50f, fontModel, noodleFont, glm::vec2(25.0f, 225.0f), ColorName::Whitesmoke,
-        0.50f * static_cast<float>(DisplayManager::Width()), false);
-    texts.push_back(text1);
-
     pNameText = new GUIText("Joseph Alai MCMXII", 0.5f, fontModel, arialFont,
                             glm::vec2(540.0f, 50.0f), ColorName::Cyan,
                             0.75f * static_cast<float>(DisplayManager::Width()), false);
@@ -421,9 +414,6 @@ void Engine::initGui() {
     float     alpha     = 0.33f;
 
     auto guiRect  = new GuiRect(color, position, size, scale, alpha);
-    glm::vec2 position2 = glm::vec2(-0.55f, 0.37f);
-    Color     color2    = ColorName::Green;
-    auto guiRect2 = new GuiRect(color2, position2, size, scale, alpha);
     rects.push_back(guiRect);
 
     sampleModifiedGui->addChild(sampleModifiedGui, new UiConstraints(0.0f, 0.0f, 200, 200));
@@ -443,16 +433,13 @@ void Engine::initGui() {
     if (t2) { t2->setName("gui/green"); }
     if (t3) { t3->setName("gui/heart"); }
     guiRect->setName("GuiRect");
-    guiRect2->setName("GuiRect2");
 
     masterContainer->addChild(guiRect,   new UiConstraints(0.0f,  -0.1f, 50, 50));
-    masterContainer->addChild(guiRect2,  new UiConstraints(0.0f,  -0.1f, 50, 50));
     masterContainer->addChild(parent,    new UiConstraints(0.02f, -0.1f, 50, 50));
     if (t1) parent->addChild(t1, new UiConstraints(0.00f, -0.1f, 50, 50));
     if (t2) parent->addChild(t2, new UiConstraints(0.00f, -0.1f, 50, 50));
     if (t3) parent->addChild(t3, new UiConstraints(0.00f, -0.1f, 50, 50));
     parent->addChild(texts[0],    new UiConstraints(0.00f, -0.1f, 50, 50));
-    parent->addChild(texts[1],    new UiConstraints(0.00f, -0.1f, 50, 50));
     parent->addChild(clickColorText, new UiConstraints(0.00f, -0.1f, 50, 50));
     if (t1) t1->addChild(pNameText, new UiConstraints(-500.00f, 40.1f, 50, 50));
 
