@@ -50,6 +50,7 @@ struct AnimatedEntity {
 class AnimatedRenderer {
 public:
     explicit AnimatedRenderer(AnimatedShader* shader);
+    ~AnimatedRenderer();
 
     /// Render a list of animated entities.
     void render(const std::vector<AnimatedEntity*>& entities,

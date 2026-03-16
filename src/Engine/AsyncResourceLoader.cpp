@@ -197,29 +197,20 @@ static RawMeshData processMeshCPU(aiMesh* mesh, const aiScene* scene,
     }
 
     // Normalize bone weights
+    constexpr float kWeightEpsilon = 1e-5f;
     for (auto& v : result.vertices) {
         float sum = v.boneWeights.x + v.boneWeights.y
                   + v.boneWeights.z + v.boneWeights.w;
-        if (sum > 0.0f && std::abs(sum - 1.0f) > 1e-5f) {
+        if (sum > 0.0f && std::abs(sum - 1.0f) > kWeightEpsilon) {
             v.boneWeights /= sum;
         }
     }
 
     if (mesh->mMaterialIndex < scene->mNumMaterials) {
         aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
-        aiString texPath;
-        bool found = false;
         if (mat->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
+            aiString texPath;
             mat->GetTexture(aiTextureType_DIFFUSE, 0, &texPath);
-            found = true;
-        }
-#ifdef aiTextureType_BASE_COLOR
-        if (!found && mat->GetTextureCount(aiTextureType_BASE_COLOR) > 0) {
-            mat->GetTexture(aiTextureType_BASE_COLOR, 0, &texPath);
-            found = true;
-        }
-#endif
-        if (found) {
             result.texture = loadTextureCPU(texPath.C_Str(), directory, scene);
         }
     }

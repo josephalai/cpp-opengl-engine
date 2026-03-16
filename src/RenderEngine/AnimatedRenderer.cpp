@@ -17,6 +17,13 @@ AnimatedRenderer::AnimatedRenderer(AnimatedShader* s) : shader(s) {
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+AnimatedRenderer::~AnimatedRenderer() {
+    if (fallbackTexture_) {
+        glDeleteTextures(1, &fallbackTexture_);
+        fallbackTexture_ = 0;
+    }
+}
+
 void AnimatedRenderer::render(const std::vector<AnimatedEntity*>& entities,
                                float deltaTime,
                                const std::vector<Light*>& lights,
