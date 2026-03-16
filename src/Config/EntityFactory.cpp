@@ -181,21 +181,61 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                     return out;
                 };
 
+                // Resolve optional animation_map from prefab top-level or from
+                // components.AnimatedModelComponent.animation_map.
+                const nlohmann::json* animMapJson = nullptr;
+                if (prefab.contains("animation_map") &&
+                    prefab["animation_map"].is_object()) {
+                    animMapJson = &prefab["animation_map"];
+                } else if (prefab.contains("components") &&
+                           prefab["components"].contains("AnimatedModelComponent")) {
+                    const auto& j = prefab["components"]["AnimatedModelComponent"];
+                    if (j.contains("animation_map") && j["animation_map"].is_object())
+                        animMapJson = &j["animation_map"];
+                }
+
                 auto* controller = new AnimationController();
-                std::string firstNormName;
+                std::string firstStateName;
                 bool idleFound = false;
-                for (auto& clip : animModel->clips) {
-                    const std::string normName = normalizeClipName(clip.name);
-                    controller->addState(normName, &clip);
-                    if (firstNormName.empty()) firstNormName = normName;
-                    if (!idleFound && normName == "Idle") {
-                        controller->setState("Idle");
-                        idleFound = true;
+
+                if (animMapJson) {
+                    // Explicit animation_map: exact (case-sensitive) clip name lookup.
+                    // Only clips mentioned in the map are registered.
+                    for (auto& [stateName, clipNameVal] : animMapJson->items()) {
+                        const std::string clipName = clipNameVal.get<std::string>();
+                        AnimationClip* foundClip = nullptr;
+                        for (auto& clip : animModel->clips) {
+                            if (clip.name == clipName) { foundClip = &clip; break; }
+                        }
+                        if (foundClip) {
+                            controller->addState(stateName, foundClip);
+                            if (firstStateName.empty()) firstStateName = stateName;
+                            if (!idleFound && stateName == "Idle") {
+                                controller->setState("Idle");
+                                idleFound = true;
+                            }
+                        } else {
+                            std::cerr << "[EntityFactory] animation_map entry '"
+                                      << stateName << "' references clip '"
+                                      << clipName << "' which was not found in '"
+                                      << meshPath << "'\n";
+                        }
+                    }
+                } else {
+                    // No animation_map: fall back to normalizeClipName() auto-detection.
+                    for (auto& clip : animModel->clips) {
+                        const std::string normName = normalizeClipName(clip.name);
+                        controller->addState(normName, &clip);
+                        if (firstStateName.empty()) firstStateName = normName;
+                        if (!idleFound && normName == "Idle") {
+                            controller->setState("Idle");
+                            idleFound = true;
+                        }
                     }
                 }
                 // Fall back to first clip if no Idle clip was found.
-                if (!idleFound && !firstNormName.empty())
-                    controller->setState(firstNormName);
+                if (!idleFound && !firstStateName.empty())
+                    controller->setState(firstStateName);
 
                 auto& amc       = registry.emplace<AnimatedModelComponent>(entity);
                 amc.model       = animModel;

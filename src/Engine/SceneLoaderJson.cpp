@@ -695,15 +695,48 @@ bool SceneLoaderJson::load(
             }
 
             auto* controller = new AnimationController();
-            for (auto& clip : animModel->clips)
-                controller->addState(normalizeClipName(clip.name), &clip);
+            bool idleRegistered = false;
 
-            auto hasState = [&](const std::string& s) {
-                for (const auto& clip : animModel->clips)
-                    if (normalizeClipName(clip.name) == s) return true;
-                return false;
-            };
-            if (hasState("Idle")) controller->setState("Idle");
+            std::cout << "[SceneLoaderJson] Loaded animated_character '" << relPath
+                      << "': " << animModel->clips.size() << " clip(s), "
+                      << animModel->skeleton.getBoneCount() << " bone(s).\n";
+
+            if (ac.contains("animation_map") && ac["animation_map"].is_object()) {
+                // Explicit animation_map: register ONLY the mapped states using
+                // exact (case-sensitive) clip name lookup.  normalizeClipName() is
+                // NOT called.  Clips absent from the map are silently ignored.
+                const auto& amap = ac["animation_map"];
+                for (auto& [stateName, clipNameVal] : amap.items()) {
+                    const std::string clipName = clipNameVal.get<std::string>();
+                    AnimationClip* foundClip = nullptr;
+                    for (auto& clip : animModel->clips) {
+                        if (clip.name == clipName) { foundClip = &clip; break; }
+                    }
+                    if (foundClip) {
+                        controller->addState(stateName, foundClip);
+                        if (stateName == "Idle") idleRegistered = true;
+                        std::cout << "[SceneLoaderJson]   state '" << stateName
+                                  << "' <- clip '" << clipName << "'\n";
+                    } else {
+                        std::cerr << "[SceneLoaderJson]   WARNING: animation_map"
+                                     " entry '" << stateName << "' references clip '"
+                                  << clipName << "' which was not found in '"
+                                  << relPath << "'\n";
+                    }
+                }
+            } else {
+                // No animation_map: fall back to normalizeClipName() auto-detection
+                // so all existing assets continue to work with zero config changes.
+                for (auto& clip : animModel->clips) {
+                    std::string stateName = normalizeClipName(clip.name);
+                    controller->addState(stateName, &clip);
+                    if (stateName == "Idle") idleRegistered = true;
+                    std::cout << "[SceneLoaderJson]   state '" << stateName
+                              << "' <- clip '" << clip.name << "'\n";
+                }
+            }
+
+            if (idleRegistered) controller->setState("Idle");
 
             if (rx != 0.0f || ry != 0.0f || rz != 0.0f) {
                 glm::mat4 userRot = glm::mat4(1.0f);
@@ -732,10 +765,6 @@ bool SceneLoaderJson::load(
             // coordinateCorrection was potentially adjusted above (userRot) — use
             // it as the default so AnimatedRenderer no longer needs to multiply it.
             amc.modelRotationMat = animModel->coordinateCorrection;
-
-            std::cout << "[SceneLoaderJson] Loaded animated_character '" << relPath
-                      << "': " << animModel->clips.size() << " clip(s), "
-                      << animModel->skeleton.getBoneCount() << " bone(s).\n";
         }
     }
 

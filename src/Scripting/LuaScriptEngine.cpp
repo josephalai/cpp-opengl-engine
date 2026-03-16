@@ -356,6 +356,22 @@ sol::table LuaScriptEngine::buildEngineTable(entt::entity player,
     };
     engine["AI"] = ai;
 
+    // --- engine.Animation ---
+    // Allows Lua scripts to trigger any registered animation state by its
+    // semantic name (as configured via animation_map in scene.json / prefab JSON).
+    // Example:
+    //   engine.Animation.play("Patrol")  -- plays the clip mapped to "Patrol"
+    //   engine.Animation.play("Sprint")  -- plays the clip mapped to "Sprint"
+    //   engine.Animation.play("Idle")    -- returns to idle pose
+    // Full entity context wiring (AnimationController::requestTransition) will be
+    // connected when the interaction system carries per-entity AnimatedModelComponent
+    // references.  For now this stub logs the intent so scripts can be written now.
+    sol::table anim = lua_.create_table();
+    anim["play"] = [](const std::string& stateName) {
+        std::cout << "[Lua] Animation.play(\"" << stateName << "\")\n";
+    };
+    engine["Animation"] = anim;
+
     return engine;
 }
 
