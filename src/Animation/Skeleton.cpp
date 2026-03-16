@@ -14,13 +14,13 @@ Bone* Skeleton::getBoneByName(const std::string& name) const {
 
 std::vector<glm::mat4> Skeleton::computeBoneMatrices() const {
     std::vector<glm::mat4> result(bones.size(), glm::mat4(1.0f));
-    if (root) computeRecursive(root, glm::mat4(1.0f), result);
+    if (root) computeRecursive(root, rootTransform, result);
     return result;
 }
 
 void Skeleton::computeRecursive(Bone* bone, const glm::mat4& parentTransform,
                                   std::vector<glm::mat4>& out) const {
-    glm::mat4 globalTransform = parentTransform * bone->localTransform;
+    glm::mat4 globalTransform = parentTransform * bone->nonBoneParentTransform * bone->localTransform;
     if (bone->id >= 0 && bone->id < static_cast<int>(out.size())) {
         out[bone->id] = globalTransform * bone->offsetMatrix;
     }

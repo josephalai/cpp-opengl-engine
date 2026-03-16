@@ -15,6 +15,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <algorithm>
+#include <cmath>
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -95,9 +96,12 @@ static unsigned int loadTextureFromFile(const std::string& path,
 
 static void buildBoneHierarchy(const aiNode* aiNode,
                                 Bone* parent,
-                                Skeleton& skeleton) {
+                                Skeleton& skeleton,
+                                const glm::mat4& nonBoneAccum = glm::mat4(1.0f)) {
     std::string nodeName(aiNode->mName.C_Str());
     Bone* current = skeleton.getBoneByName(nodeName);
+
+    glm::mat4 childAccum;
 
     if (current) {
         // Initialise to the bind-pose local transform so that in the rest state
@@ -110,13 +114,30 @@ static void buildBoneHierarchy(const aiNode* aiNode,
         // Attach to parent if one exists
         if (parent) {
             parent->children.push_back(current);
+            // Preserve accumulated non-bone ancestor transforms between this
+            // bone and its parent bone (e.g. intermediate Armature nodes in
+            // Meshy GLBs).  These transforms are static and not overwritten
+            // by animation keyframes, so they must be applied separately in
+            // Skeleton::computeRecursive().
+            current->nonBoneParentTransform = nonBoneAccum;
         } else if (!skeleton.root) {
             skeleton.root = current;
+            // Store the accumulated non-bone ancestor transforms from the
+            // scene root down to this bone — e.g. the Armature node that
+            // Meshy exports above the Hips bone.
+            skeleton.rootTransform = nonBoneAccum;
         }
+
+        // Reset accumulation — children of a bone start fresh
+        childAccum = glm::mat4(1.0f);
+    } else {
+        // Non-bone node: accumulate its transform for descendant bones
+        childAccum = nonBoneAccum * toGlm(aiNode->mTransformation);
     }
 
     for (unsigned int i = 0; i < aiNode->mNumChildren; ++i) {
-        buildBoneHierarchy(aiNode->mChildren[i], current ? current : parent, skeleton);
+        buildBoneHierarchy(aiNode->mChildren[i], current ? current : parent,
+                           skeleton, childAccum);
     }
 }
 
@@ -174,12 +195,36 @@ static AnimatedMesh processMesh(aiMesh* mesh, const aiScene* scene,
         }
     }
 
-    // Texture
+    // Normalize bone weights so they sum to 1.0.  Some exporters (including
+    // Meshy) can produce weights that don't sum exactly to 1.0 due to
+    // floating-point precision or partial coverage.  Without normalization
+    // the skinned vertex would be scaled up or down, causing visual artifacts.
+    for (auto& v : result.vertices) {
+        float sum = v.boneWeights.x + v.boneWeights.y
+                  + v.boneWeights.z + v.boneWeights.w;
+        if (sum > 0.0f && std::abs(sum - 1.0f) > 1e-5f) {
+            v.boneWeights /= sum;
+        }
+    }
+
+    // Texture — check diffuse first (standard Assimp mapping for glTF
+    // baseColorTexture), then try BASE_COLOR for Assimp 5.1+ which adds
+    // a separate texture type for PBR base colour.
     if (mesh->mMaterialIndex < scene->mNumMaterials) {
         aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
+        aiString texPath;
+        bool found = false;
         if (mat->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
-            aiString texPath;
             mat->GetTexture(aiTextureType_DIFFUSE, 0, &texPath);
+            found = true;
+        }
+#ifdef aiTextureType_BASE_COLOR
+        if (!found && mat->GetTextureCount(aiTextureType_BASE_COLOR) > 0) {
+            mat->GetTexture(aiTextureType_BASE_COLOR, 0, &texPath);
+            found = true;
+        }
+#endif
+        if (found) {
             result.textureID = loadTextureFromFile(texPath.C_Str(), directory, scene);
         }
     }

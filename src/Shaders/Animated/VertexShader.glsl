@@ -5,7 +5,7 @@
 // This replaces per-bone glUniformMatrix4fv calls and is more efficient
 // for large skeletons.
 
-#define MAX_BONES 100
+#define MAX_BONES 200
 
 struct Light {
     vec3  position;

@@ -30,6 +30,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <cstring>
+#include <cmath>
 
 // ---------------------------------------------------------------------------
 // Internal CPU-only representation (no GL objects)
@@ -65,19 +66,30 @@ static glm::mat4 toGlmAsync(const aiMatrix4x4& m) {
     return glm::transpose(glm::make_mat4(&m.a1));
 }
 
-static void buildBoneHierarchyAsync(const aiNode* node, Bone* parent, Skeleton& skeleton) {
+static void buildBoneHierarchyAsync(const aiNode* node, Bone* parent, Skeleton& skeleton,
+                                     const glm::mat4& nonBoneAccum = glm::mat4(1.0f)) {
     std::string name(node->mName.C_Str());
     Bone* current = skeleton.getBoneByName(name);
+
+    glm::mat4 childAccum;
+
     if (current) {
         current->localTransform = toGlmAsync(node->mTransformation);
         if (parent) {
             parent->children.push_back(current);
+            current->nonBoneParentTransform = nonBoneAccum;
         } else if (!skeleton.root) {
             skeleton.root = current;
+            skeleton.rootTransform = nonBoneAccum;
         }
+        childAccum = glm::mat4(1.0f);
+    } else {
+        childAccum = nonBoneAccum * toGlmAsync(node->mTransformation);
     }
+
     for (unsigned int i = 0; i < node->mNumChildren; ++i) {
-        buildBoneHierarchyAsync(node->mChildren[i], current ? current : parent, skeleton);
+        buildBoneHierarchyAsync(node->mChildren[i], current ? current : parent,
+                                skeleton, childAccum);
     }
 }
 
@@ -184,11 +196,30 @@ static RawMeshData processMeshCPU(aiMesh* mesh, const aiScene* scene,
         }
     }
 
+    // Normalize bone weights
+    for (auto& v : result.vertices) {
+        float sum = v.boneWeights.x + v.boneWeights.y
+                  + v.boneWeights.z + v.boneWeights.w;
+        if (sum > 0.0f && std::abs(sum - 1.0f) > 1e-5f) {
+            v.boneWeights /= sum;
+        }
+    }
+
     if (mesh->mMaterialIndex < scene->mNumMaterials) {
         aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
+        aiString texPath;
+        bool found = false;
         if (mat->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
-            aiString texPath;
             mat->GetTexture(aiTextureType_DIFFUSE, 0, &texPath);
+            found = true;
+        }
+#ifdef aiTextureType_BASE_COLOR
+        if (!found && mat->GetTextureCount(aiTextureType_BASE_COLOR) > 0) {
+            mat->GetTexture(aiTextureType_BASE_COLOR, 0, &texPath);
+            found = true;
+        }
+#endif
+        if (found) {
             result.texture = loadTextureCPU(texPath.C_Str(), directory, scene);
         }
     }

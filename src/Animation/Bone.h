@@ -34,6 +34,14 @@ public:
     glm::mat4   offsetMatrix;    ///< Bind-pose inverse (object→bone space).
     glm::mat4   localTransform;  ///< Updated each frame by interpolate().
 
+    /// Accumulated transform of non-bone ancestor nodes between this bone and
+    /// its parent bone in the skeleton hierarchy.  Identity for bones whose
+    /// immediate parent in the scene graph is another bone.  Set during
+    /// hierarchy construction so that intermediate non-bone node transforms
+    /// (e.g. Armature nodes in Meshy GLBs) are preserved at runtime even
+    /// though they are not in the bone array.
+    glm::mat4   nonBoneParentTransform = glm::mat4(1.0f);
+
     std::vector<Bone*> children;
 
     Bone(const std::string& name, int id, const glm::mat4& offsetMatrix);

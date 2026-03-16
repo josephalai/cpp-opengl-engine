@@ -61,6 +61,11 @@ public:
 private:
     AnimatedShader* shader;
 
+    /// 1×1 white fallback texture bound when a mesh has no texture.
+    /// Prevents the fragment shader's alpha discard from hiding untextured
+    /// Meshy models that only specify a PBR baseColorFactor.
+    GLuint fallbackTexture_ = 0;
+
     void renderMesh(const AnimatedMesh& mesh,
                     const std::vector<glm::mat4>& boneMatrices);
 };

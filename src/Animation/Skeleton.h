@@ -10,13 +10,20 @@
 #include <glm/glm.hpp>
 #include "Bone.h"
 
-static const int MAX_BONES = 100;
+static const int MAX_BONES = 200;
 
 class Skeleton {
 public:
     Bone*                                   root = nullptr;
     std::vector<Bone*>                      bones;       ///< Flat array indexed by bone ID.
     std::unordered_map<std::string, Bone*>  bonesByName;
+
+    /// Accumulated transform of all non-bone ancestor nodes from the scene
+    /// root down to (but not including) the skeleton root bone.  Applied as
+    /// the initial parent transform in computeBoneMatrices() so that
+    /// transforms on nodes like the Armature (common in Meshy GLBs) are not
+    /// lost.
+    glm::mat4 rootTransform = glm::mat4(1.0f);
 
     int    getBoneCount()                      const { return static_cast<int>(bones.size()); }
     Bone*  getBone(int id)                     const;
