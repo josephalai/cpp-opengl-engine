@@ -1429,16 +1429,15 @@ int main() {
                                     // Run A* to find a path from player to target.
                                     auto path = navMesh.findPath(playerTC.position, targetTC.position);
                                     if (!path.empty()) {
-                                        // Skip waypoint 0 (start cell centre) — the player is
-                                        // already at or very near their own cell, so the first
-                                        // step should be toward the second waypoint (index 1).
-                                        // If the path has only 1 point the player is adjacent
-                                        // to the target; PathfindingSystem removes the component
-                                        // immediately when currentWaypoint >= waypoints.size().
-                                        int startWp = (path.size() > 1) ? 1 : 0;
+                                        // findPath() already replaces path[0] with the
+                                        // player's exact position and applies line-of-sight
+                                        // smoothing, so always start from waypoint 0.
+                                        // The player is already at path[0] (distance == 0)
+                                        // so PathfindingSystem skips it immediately and
+                                        // heads straight for the next waypoint.
                                         registry.emplace_or_replace<PathfindingComponent>(
                                             playerEntity,
-                                            PathfindingComponent{path, startWp, 0.1f, true});
+                                            PathfindingComponent{path, 0, 0.1f, true});
                                     }
                                 }
                             }

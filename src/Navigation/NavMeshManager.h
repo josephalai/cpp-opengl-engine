@@ -175,7 +175,7 @@ public:
             auto& cur = nodes[idx];
 
             if (cur.x == gx && cur.z == gz) {
-                // Reconstruct path.
+                // Reconstruct path from cell centres.
                 std::vector<glm::vec3> path;
                 int i = idx;
                 while (i >= 0) {
@@ -183,6 +183,38 @@ public:
                     i = nodes[i].parentIdx;
                 }
                 std::reverse(path.begin(), path.end());
+
+                // Replace the first and last waypoints with the caller's exact
+                // world positions so that the player walks from where they
+                // actually stand to where the target actually is, rather than
+                // drifting to the nearest cell centre first.
+                if (!path.empty()) {
+                    path.front() = start;
+                    path.back()  = glm::vec3(goal.x, start.y, goal.z);
+                }
+
+                // Greedy line-of-sight smoothing: skip any intermediate
+                // cell-centre waypoints that can be bypassed by a straight,
+                // unobstructed line.  On open terrain this collapses the
+                // entire path to [start, goal], giving perfectly straight
+                // auto-walk.  Around obstacles the necessary turns are kept.
+                if (path.size() > 2) {
+                    std::vector<glm::vec3> smooth;
+                    smooth.push_back(path.front());
+                    size_t cur2 = 0;
+                    while (cur2 + 1 < path.size()) {
+                        // Find the furthest waypoint visible from path[cur2].
+                        size_t far = path.size() - 1;
+                        while (far > cur2 + 1 &&
+                               !hasLineOfSight(path[cur2], path[far])) {
+                            --far;
+                        }
+                        cur2 = far;
+                        smooth.push_back(path[cur2]);
+                    }
+                    path = std::move(smooth);
+                }
+
                 return path;
             }
 
@@ -239,6 +271,30 @@ private:
 
     bool isBlocked(int x, int z) const {
         return blocked_.count(cellKey(x, z)) > 0;
+    }
+
+    /// Return true when the straight line between world positions @p a and @p b
+    /// does not pass through any blocked grid cell.  Uses Bresenham's line
+    /// algorithm on the cell grid for efficiency.
+    bool hasLineOfSight(const glm::vec3& a, const glm::vec3& b) const {
+        int x0 = clampX(worldToCellX(a.x)), z0 = clampZ(worldToCellZ(a.z));
+        int x1 = clampX(worldToCellX(b.x)), z1 = clampZ(worldToCellZ(b.z));
+
+        int dx = std::abs(x1 - x0);
+        int dz = std::abs(z1 - z0);
+        int sx = (x0 < x1) ? 1 : -1;
+        int sz = (z0 < z1) ? 1 : -1;
+        int err = dx - dz;
+        int cx = x0, cz = z0;
+
+        for (;;) {
+            if (isBlocked(cx, cz)) return false;
+            if (cx == x1 && cz == z1) break;
+            int e2 = 2 * err;
+            if (e2 > -dz) { err -= dz; cx += sx; }
+            if (e2 <  dx) { err += dx; cz += sz; }
+        }
+        return true;
     }
 
     glm::vec3 cellToWorld(int cx, int cz, float y) const {
