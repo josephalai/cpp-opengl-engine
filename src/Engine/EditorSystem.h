@@ -32,7 +32,7 @@ public:
 
     void init()                  override {}
     void update(float deltaTime) override;
-    void shutdown()              override {}
+    void shutdown()              override { destroyMeshGhost(); }
 
 private:
     entt::registry& registry_;
@@ -48,6 +48,20 @@ private:
 
     // Left-click placement edge detection.
     bool prevLeftClick_ = false;
+
+    // --- Mesh-based ghost preview ---
+    /// For prefabs with a "mesh" field (animated characters, static GLB meshes),
+    /// the instanced-model ghost preview path does not apply.  Instead we
+    /// maintain a real ECS entity that AnimationSystem / MasterRenderer can
+    /// draw.  The entity's TransformComponent is updated each frame to follow
+    /// the ghost position.
+    entt::entity meshGhostEntity_  = entt::null;
+    std::string  meshGhostPrefabId_;
+
+    /// Create (or update) the mesh ghost entity for the given prefab.
+    void ensureMeshGhost();
+    /// Destroy the current mesh ghost entity and free its resources.
+    void destroyMeshGhost();
 
     // --- Helper methods ---
     void renderEditorWindow();

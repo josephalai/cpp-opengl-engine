@@ -50,20 +50,32 @@ void NetworkInterpolationSystem::update(float deltaTime) {
             nsd.started = true;
         }
 
-        const auto& s0 = nsd.buffer[0];
-        const auto& s1 = nsd.buffer[1];
-        const float span = s1.timestamp - s0.timestamp;
-
         // Adaptive playback rate based on queue depth.
         // Target: keep ~2-3 snapshots buffered (at 10 Hz that's 200-300ms).
         float playbackRate = 1.0f;
         size_t queued = nsd.buffer.size();
+
+        // When severely behind (e.g. after a lag spike delivered many
+        // snapshots at once), skip old segments to avoid a prolonged
+        // slingshot where the entity slowly replays stale positions.
+        // Must happen BEFORE we take s0/s1 references so they remain valid.
+        if (queued > 10) {
+            while (nsd.buffer.size() > 3) nsd.buffer.pop_front();
+            nsd.renderTime = 0.0f;
+            queued = nsd.buffer.size();
+            // Fall through to interpolate from the near-latest pair.
+        }
+
+        const auto& s0 = nsd.buffer[0];
+        const auto& s1 = nsd.buffer[1];
+        const float span = s1.timestamp - s0.timestamp;
+
         if (queued > 5) {
-            playbackRate = 1.5f;   // very behind — catch up aggressively
+            playbackRate = 2.0f;   // far behind — aggressive catch up
         } else if (queued > 3) {
-            playbackRate = 1.2f;   // slightly behind
+            playbackRate = 1.5f;   // slightly behind
         } else if (queued <= 1) {
-            playbackRate = 0.5f;   // starving — slow way down
+            playbackRate = 0.8f;   // starving — slow down gently
         }
 
         // Advance the interpolation timer.
@@ -89,9 +101,9 @@ void NetworkInterpolationSystem::update(float deltaTime) {
         // renderTime to 0.  The entity stays at s1 for one frame and then
         // smoothly advances toward C — no backward snap.
         //
-        // If there are only 2 snapshots left (can't skip), just reset
-        // renderTime so t starts from 0 within the same s0→s1 segment.  The
-        // entity may briefly snap to s0 but that is better than t >> 1.
+        // If there are only 2 snapshots left (can't skip), cap renderTime
+        // to span so the entity holds at s1.  Resetting to 0 would snap the
+        // entity backward to s0 — the classic "run in place / slingshot".
         if (span > 0.0001f && nsd.renderTime > span * 2.0f) {
             if (nsd.buffer.size() > 2) {
                 // Skip the stale s0→s1 segment we already played before the hold.
@@ -100,7 +112,8 @@ void NetworkInterpolationSystem::update(float deltaTime) {
                 // Re-evaluate this entity next frame with the fresh s0→s1 pair.
                 continue;
             }
-            nsd.renderTime = 0.0f;
+            // Hold at s1 — don't snap backward.
+            nsd.renderTime = span;
         }
 
         float t = (span > 0.0001f) ? glm::clamp(nsd.renderTime / span, 0.0f, 1.0f) : 1.0f;

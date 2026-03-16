@@ -6,6 +6,11 @@
 #include "../ECS/Components/InputQueueComponent.h"
 #include "../ECS/Components/InputStateComponent.h"
 #include "../ECS/Components/TransformComponent.h"
+#include "../ECS/Components/AnimatedModelComponent.h"
+#include "../ECS/Components/AssimpModelComponent.h"
+#include "../ECS/Components/NetworkIdComponent.h"
+#include "../ECS/Components/AIScriptComponent.h"
+#include "../ECS/Components/InteractableComponent.h"
 #include "../Config/PrefabManager.h"
 #include "../Config/EntityFactory.h"
 #include "../Input/InputMaster.h"
@@ -54,6 +59,9 @@ void EditorSystem::update(float /*deltaTime*/) {
         handlePlacement();
         handleEntityDeletion();
         renderEditorWindow();
+    } else {
+        // Clean up the mesh ghost when editor mode is toggled off.
+        destroyMeshGhost();
     }
 
     // --- Flush ImGui draw data ---
@@ -68,6 +76,7 @@ void EditorSystem::handleGhostPreview() {
     if (editorState_.selectedPrefab.empty()) {
         editorState_.hasGhostEntity   = false;
         editorState_.placementBlocked = false;
+        destroyMeshGhost();
         return;
     }
 
@@ -86,6 +95,9 @@ void EditorSystem::handleGhostPreview() {
             editorState_.ghostPosition  = pt;
             editorState_.hasGhostEntity = true;
 
+            // Maintain mesh ghost entity for prefabs that use "mesh" rendering.
+            ensureMeshGhost();
+
             // --- Overlap check ---
             editorState_.placementBlocked = !TileGrid::isPlacementValid(
                 registry_,
@@ -94,8 +106,94 @@ void EditorSystem::handleGhostPreview() {
         } else {
             editorState_.hasGhostEntity   = false;
             editorState_.placementBlocked = false;
+            // Hide mesh ghost off-screen when there is no terrain intersection.
+            if (meshGhostEntity_ != entt::null && registry_.valid(meshGhostEntity_)) {
+                if (auto* tc = registry_.try_get<TransformComponent>(meshGhostEntity_)) {
+                    tc->position.y = -10000.0f;
+                }
+            }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// ensureMeshGhost — create or update the mesh ghost entity.
+// ---------------------------------------------------------------------------
+void EditorSystem::ensureMeshGhost() {
+    const auto& prefab = PrefabManager::get().getPrefab(editorState_.selectedPrefab);
+    if (prefab.is_null() || !prefab.contains("mesh")) {
+        // Not a mesh-based prefab — instanced ghost path handles it.
+        destroyMeshGhost();
+        return;
+    }
+
+    // If the ghost already exists for this prefab, just update its transform.
+    if (meshGhostEntity_ != entt::null && meshGhostPrefabId_ == editorState_.selectedPrefab) {
+        if (registry_.valid(meshGhostEntity_)) {
+            if (auto* tc = registry_.try_get<TransformComponent>(meshGhostEntity_)) {
+                tc->position = editorState_.ghostPosition;
+                tc->rotation = glm::vec3(0.0f, editorState_.ghostRotationY, 0.0f);
+                tc->scale    = editorState_.ghostScale;
+            }
+            return;
+        }
+        // Entity became invalid — fall through to re-create.
+        meshGhostEntity_ = entt::null;
+        meshGhostPrefabId_.clear();
+    }
+
+    // Destroy old ghost if it was for a different prefab.
+    destroyMeshGhost();
+
+    // Spawn a new entity via EntityFactory.
+    meshGhostEntity_ = EntityFactory::spawn(
+        registry_, editorState_.selectedPrefab, editorState_.ghostPosition, nullptr);
+    if (meshGhostEntity_ == entt::null) return;
+
+    meshGhostPrefabId_ = editorState_.selectedPrefab;
+
+    // Strip every non-visual component so the ghost is inert.
+    registry_.remove<InputStateComponent>(meshGhostEntity_);
+    registry_.remove<InputQueueComponent>(meshGhostEntity_);
+    if (registry_.any_of<NetworkIdComponent>(meshGhostEntity_))
+        registry_.remove<NetworkIdComponent>(meshGhostEntity_);
+    if (registry_.any_of<AIScriptComponent>(meshGhostEntity_))
+        registry_.remove<AIScriptComponent>(meshGhostEntity_);
+    if (registry_.any_of<InteractableComponent>(meshGhostEntity_))
+        registry_.remove<InteractableComponent>(meshGhostEntity_);
+
+    // Apply ghost scale / rotation.
+    if (auto* tc = registry_.try_get<TransformComponent>(meshGhostEntity_)) {
+        tc->rotation = glm::vec3(0.0f, editorState_.ghostRotationY, 0.0f);
+        tc->scale    = editorState_.ghostScale;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// destroyMeshGhost — tear down the current mesh ghost entity.
+// ---------------------------------------------------------------------------
+void EditorSystem::destroyMeshGhost() {
+    if (meshGhostEntity_ == entt::null) return;
+    if (!registry_.valid(meshGhostEntity_)) {
+        meshGhostEntity_ = entt::null;
+        meshGhostPrefabId_.clear();
+        return;
+    }
+
+    // Clean up owned AnimatedModel / AnimationController resources.
+    if (auto* amc = registry_.try_get<AnimatedModelComponent>(meshGhostEntity_)) {
+        if (amc->ownsModel && amc->model) {
+            amc->model->cleanUp();
+            delete amc->model;
+            amc->model = nullptr;
+        }
+        delete amc->controller;
+        amc->controller = nullptr;
+    }
+
+    registry_.destroy(meshGhostEntity_);
+    meshGhostEntity_ = entt::null;
+    meshGhostPrefabId_.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -187,12 +285,16 @@ void EditorSystem::renderEditorWindow() {
                 selectedPrefabIndex_       = -1;
                 editorState_.selectedPrefab.clear();
                 editorState_.hasGhostEntity = false;
+                destroyMeshGhost();
             }
             for (int i = 0; i < static_cast<int>(prefabIds_.size()); ++i) {
                 bool selected = (i == selectedPrefabIndex_);
                 if (ImGui::Selectable(prefabIds_[static_cast<size_t>(i)].c_str(), selected)) {
                     selectedPrefabIndex_       = i;
                     editorState_.selectedPrefab = prefabIds_[static_cast<size_t>(i)];
+                    // Selection changed — destroy the old mesh ghost so
+                    // ensureMeshGhost() creates a fresh one for the new prefab.
+                    destroyMeshGhost();
                 }
                 if (selected) ImGui::SetItemDefaultFocus();
             }
