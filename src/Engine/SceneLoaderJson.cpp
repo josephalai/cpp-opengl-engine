@@ -671,6 +671,24 @@ bool SceneLoaderJson::load(
             std::string relPath = ac.value("path", "");
             std::string absPath = FileSystem::Path("/src/Resources/Models/" + relPath);
             AnimatedModel* animModel = AnimationLoader::load(absPath);
+
+            // If the primary path fails, try the optional fallback_path.
+            // When the fallback is used, animation_map is NOT applied because the
+            // fallback asset may have different clip names; normalizeClipName()
+            // auto-detection is used instead.
+            bool usingFallback = false;
+            if (!animModel && ac.contains("fallback_path")) {
+                const std::string fbRel = ac.value("fallback_path", "");
+                const std::string fbAbs = FileSystem::Path("/src/Resources/Models/" + fbRel);
+                std::cerr << "[SceneLoaderJson] Primary path '" << relPath
+                          << "' failed to load; trying fallback '" << fbRel << "'\n";
+                animModel = AnimationLoader::load(fbAbs);
+                if (animModel) {
+                    relPath      = fbRel;
+                    usingFallback = true;
+                }
+            }
+
             if (!animModel) {
                 std::cerr << "[SceneLoaderJson] Failed to load animated_character: "
                           << absPath << "\n";
@@ -701,7 +719,7 @@ bool SceneLoaderJson::load(
                       << "': " << animModel->clips.size() << " clip(s), "
                       << animModel->skeleton.getBoneCount() << " bone(s).\n";
 
-            if (ac.contains("animation_map") && ac["animation_map"].is_object()) {
+            if (!usingFallback && ac.contains("animation_map") && ac["animation_map"].is_object()) {
                 // Explicit animation_map: register ONLY the mapped states using
                 // exact (case-sensitive) clip name lookup.  normalizeClipName() is
                 // NOT called.  Clips absent from the map are silently ignored.

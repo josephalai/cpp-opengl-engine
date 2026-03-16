@@ -3,6 +3,7 @@
   "animated_characters": [
     {
       "path": "Characters/man-1.glb",
+      "fallback_path": "Characters/characters.glb",
       "scale": 2.5,
       "x": 100.0,
       "y": "terrain",
