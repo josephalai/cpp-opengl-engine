@@ -78,6 +78,10 @@ public:
     /// @param targetNetworkId  The NetworkIdComponent::id of the clicked entity.
     void sendActionRequest(uint32_t targetNetworkId);
 
+    /// Phase 3 — Send a chat message to the server; the server will route it
+    /// to all peers within the spatial Area-of-Interest neighbourhood.
+    void sendChatMessage(const std::string& message);
+
 private:
     // ADD THIS STRUCT AND VECTOR:
     struct PlayerHistory {

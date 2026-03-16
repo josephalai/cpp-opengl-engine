@@ -54,4 +54,24 @@ void UISystem::update(float /*deltaTime*/) {
         masterContainer_->getConstraints()->getPosition() += glm::vec2(0.001f, 0.0f);
         UiMaster::applyConstraints(masterContainer_);
     }
+
+    // ----------------------------------------------------------------
+    // Phase 2: OSRS-style right-click context menu
+    // ----------------------------------------------------------------
+    UiMaster::renderContextMenu();
+
+    // ----------------------------------------------------------------
+    // Phase 3: Spatial chat box
+    // ----------------------------------------------------------------
+    UiMaster::renderChatBox();
+
+    // ----------------------------------------------------------------
+    // Phase 4: Inventory grid
+    // ----------------------------------------------------------------
+    UiMaster::renderInventory();
+
+    // ----------------------------------------------------------------
+    // Phase 5: Skills panel
+    // ----------------------------------------------------------------
+    UiMaster::renderSkillsPanel();
 }

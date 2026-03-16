@@ -59,6 +59,13 @@ private:
     /// @return true if an entity was found and the event published.
     bool tryPickEntity();
 
+    /// Phase 2 — right-click context menu.
+    /// Casts a pick ray, finds the entity under the cursor, reads its available
+    /// actions from the prefab JSON, and spawns an OSRS-style context menu at
+    /// the cursor's screen coordinates.
+    /// @return true if an entity was found and the context menu was shown.
+    bool spawnContextMenu();
+
     TerrainPicker*  picker_;
     EditorState*    editorState_;
     EntityPicker*   entityPicker_;

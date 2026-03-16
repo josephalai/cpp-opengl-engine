@@ -11,6 +11,10 @@
 #include "../RenderEngine/DisplayManager.h"
 #include "../Interaction/EntityPicker.h"
 #include "../ECS/Components/NetworkIdComponent.h"
+#include "../Guis/UiMaster.h"
+#include "../Guis/ContextMenu/ContextMenu.h"
+#include "../Guis/Chat/ChatBox.h"
+#include "../Config/PrefabManager.h"
 
 #include <imgui.h>
 #include <iostream>
@@ -31,8 +35,9 @@ InputDispatcher::InputDispatcher(TerrainPicker*  picker,
 
 // ---------------------------------------------------------------------------
 // tryPickEntity — shared helper for both left-click and right-click.
-// Casts a pick ray, finds the closest entity, and fires EntityClickedEvent.
-// Returns true when an entity with a NetworkIdComponent was hit.
+// Casts a ray from the current cursor position (or screen centre in FPS
+// mode) and fires EntityClickedEvent if a NetworkIdComponent entity is hit.
+// @return true if an entity was found and the event published.
 // ---------------------------------------------------------------------------
 bool InputDispatcher::tryPickEntity() {
     if (!entityPicker_ || !camera_ || !registry_) return false;
@@ -81,6 +86,58 @@ bool InputDispatcher::tryPickEntity() {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Phase 2 — spawnContextMenu
+// Reads actions from the entity's prefab JSON and shows the OSRS-style
+// right-click context menu at the current cursor position.
+// Returns true if the menu was shown (entity with NetworkIdComponent found).
+// ---------------------------------------------------------------------------
+bool InputDispatcher::spawnContextMenu() {
+    if (!entityPicker_ || !camera_ || !registry_) return false;
+
+    float pickX = static_cast<float>(InputMaster::mouseX);
+    float pickY = static_cast<float>(InputMaster::mouseY);
+
+    glm::vec3 rayOrigin, rayDir;
+    EntityPicker::buildPickRay(
+        pickX, pickY,
+        DisplayManager::Width(),
+        DisplayManager::Height(),
+        projection_,
+        camera_->getViewMatrix(),
+        rayOrigin,
+        rayDir);
+
+    entt::entity hit = entityPicker_->pick(rayOrigin, rayDir);
+    if (hit == entt::null) return false;
+
+    auto* nid = registry_->try_get<NetworkIdComponent>(hit);
+    if (!nid) return false;
+
+    // Retrieve actions from the prefab definition.
+    std::vector<ContextMenuAction> actions;
+    if (PrefabManager::get().hasPrefab(nid->modelType)) {
+        const auto& prefab = PrefabManager::get().getPrefab(nid->modelType);
+        if (prefab.contains("actions") && prefab["actions"].is_array()) {
+            for (const auto& a : prefab["actions"]) {
+                ContextMenuAction act;
+                act.id    = a.value("id",    0);
+                act.label = a.value("label", "Examine");
+                actions.push_back(act);
+            }
+        }
+    }
+    // Always provide a fallback "Examine" option.
+    if (actions.empty()) {
+        actions.push_back({0, "Examine"});
+    }
+
+    ContextMenu::instance().show(pickX, pickY, nid->id, nid->modelType, actions);
+    std::cout << "[Input] Context menu for entity " << nid->id
+              << " (" << nid->modelType << ")\n";
+    return true;
+}
+
 void InputDispatcher::update(float /*deltaTime*/) {
     // --- ImGui input multiplexing ---
     // When ImGui has captured the keyboard, skip all gameplay key dispatch.
@@ -126,8 +183,13 @@ void InputDispatcher::update(float /*deltaTime*/) {
         return;
     }
 
-    // --- Skip gameplay input when ImGui has focus ---
-    if (!imguiWantsKeyboard) {
+    // -----------------------------------------------------------------------
+    // Phase 1: Suppress WASD while the chat input field is focused.
+    // -----------------------------------------------------------------------
+    const bool chatTyping = ChatBox::instance().isTyping();
+
+    // --- Skip gameplay input when ImGui has keyboard focus or chat is active ---
+    if (!imguiWantsKeyboard && !chatTyping) {
         // --- Movement command ---
         PlayerMoveCommandEvent moveCmd{};
         moveCmd.forward     = InputMaster::isActionDown("MoveForward")  ?  1.0f
@@ -147,31 +209,46 @@ void InputDispatcher::update(float /*deltaTime*/) {
     }
 
     if (!imguiWantsMouse) {
+        // -----------------------------------------------------------------------
+        // Phase 1: UI input consumption — skip world interaction when the cursor
+        // is over a UI panel or the context menu is active.
+        // -----------------------------------------------------------------------
+        const bool uiConsumed = UiMaster::isMouseOverUi();
+
         // -------------------------------------------------------------------
-        // Right-click (rising edge): entity interaction → terrain walk fallback
+        // Right-click (rising edge)
         // -------------------------------------------------------------------
         bool rightNow = InputMaster::isMouseDown(RightClick);
         if (rightNow && !prevRightClick_) {
-            bool entityHit = tryPickEntity();
-
-            // Fallback to terrain walk if no entity was hit.
-            if (!entityHit && picker_) {
-                glm::vec3 pt = picker_->getCurrentTerrainPoint();
-                if (pt != glm::vec3(0.0f)) {
-                    TargetLocationClickedEvent evt{};
-                    evt.worldPosition = pt;
-                    EventBus::instance().publish(evt);
+            if (!uiConsumed) {
+                // Phase 2: Attempt to show the OSRS context menu for the
+                // hovered entity.  If no entity is under the cursor, fall back
+                // to the terrain walk destination.
+                bool menuShown = spawnContextMenu();
+                if (!menuShown && picker_) {
+                    glm::vec3 pt = picker_->getCurrentTerrainPoint();
+                    if (pt != glm::vec3(0.0f)) {
+                        TargetLocationClickedEvent evt{};
+                        evt.worldPosition = pt;
+                        EventBus::instance().publish(evt);
+                    }
                 }
             }
         }
         prevRightClick_ = rightNow;
 
         // -------------------------------------------------------------------
-        // Left-click (rising edge): entity interaction only (no terrain fallback)
+        // Left-click (rising edge): dismiss context menu first; if the menu
+        // was not open, attempt an entity pick (no terrain fallback).
         // -------------------------------------------------------------------
         bool leftNow = InputMaster::isMouseDown(LeftClick);
         if (leftNow && !prevLeftClick_) {
-            tryPickEntity();
+            if (ContextMenu::instance().isVisible()) {
+                // ContextMenu::render() handles dismissal on outside-click via
+                // ImGui — no extra action needed here.
+            } else if (!uiConsumed) {
+                tryPickEntity();
+            }
         }
         prevLeftClick_ = leftNow;
     } else {

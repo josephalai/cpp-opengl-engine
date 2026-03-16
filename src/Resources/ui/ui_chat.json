@@ -1,0 +1,23 @@
+{
+  "type": "container",
+  "name": "chat_panel",
+  "visible": true,
+  "constraints": {
+    "x": 0.0,
+    "y": 0.72,
+    "width": 0.40,
+    "height": 0.28
+  },
+  "children": [
+    {
+      "type": "rect",
+      "name": "chat_bg",
+      "color": [0.05, 0.05, 0.05],
+      "alpha": 0.75,
+      "constraints": {
+        "x": 0.0, "y": 0.0,
+        "width": 1.0, "height": 1.0
+      }
+    }
+  ]
+}

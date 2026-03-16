@@ -83,6 +83,59 @@ public:
     static void  printComponentInformation(GuiComponent *parentComponent);
 
     static std::vector<Container *> renderOrder;
+
+    // ------------------------------------------------------------------
+    // Phase 1 — UI Input Consumption
+    // ------------------------------------------------------------------
+
+    /// Returns true when the mouse cursor is currently over any registered
+    /// UiMaster component region.  InputDispatcher calls this before routing
+    /// clicks to the 3D world to prevent accidental world interactions when
+    /// the player is clicking UI elements.
+    static bool isMouseOverUi();
+
+    /// Register a screen-space pixel rectangle as a "UI region".
+    /// InputDispatcher will treat clicks within any registered region as
+    /// consumed (i.e. not passed to the 3D world).
+    /// Coordinates are in window pixels (origin = top-left).
+    static void registerUiRegion(float x, float y, float w, float h);
+
+    /// Clear all registered UI regions (call once per frame, or when layout changes).
+    static void clearUiRegions();
+
+    // ------------------------------------------------------------------
+    // Phase 2 — Context menu helpers (delegate to ContextMenu singleton)
+    // ------------------------------------------------------------------
+
+    /// Render the OSRS-style right-click context menu (if visible).
+    /// Called from UISystem::update() each frame.
+    static void renderContextMenu();
+
+    // ------------------------------------------------------------------
+    // Phase 3 — Chat box helper
+    // ------------------------------------------------------------------
+
+    /// Render the spatial chat box.
+    static void renderChatBox();
+
+    // ------------------------------------------------------------------
+    // Phase 4 — Inventory grid helper
+    // ------------------------------------------------------------------
+
+    /// Render the inventory grid panel.
+    static void renderInventory();
+
+    // ------------------------------------------------------------------
+    // Phase 5 — Skills panel helper
+    // ------------------------------------------------------------------
+
+    /// Render the skills panel.
+    static void renderSkillsPanel();
+
+private:
+    /// Registered 2-D UI regions (pixel rectangles) for mouse-over detection.
+    /// Layout: {x, y, w, h} tuples stored flat.
+    static std::vector<float> uiRegions_;
 };
 
 

@@ -15,6 +15,10 @@
       0.5
     ]
   },
+  "actions": [
+    { "id": 2, "label": "Chop down" },
+    { "id": 0, "label": "Examine" }
+  ],
   "InteractableComponent": {
     "script": "scripts/skills/woodcutting.lua",
     "interact_range": 1.5
