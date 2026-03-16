@@ -1508,6 +1508,9 @@ int main() {
                                 auto* senderSC = registry.try_get<SpatialComponent>(
                                     senderEntityIt->second);
                                 for (auto& [peer, pid] : peerToNetworkId) {
+                                    // Never echo back to the sender; the client
+                                    // already shows a local echo via ChatBox::init().
+                                    if (peer == event.peer) continue;
                                     bool inRange = true;
                                     if (senderSC) {
                                         auto targetEntityIt = networkIdToEntity.find(pid);

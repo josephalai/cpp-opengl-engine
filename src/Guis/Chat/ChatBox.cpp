@@ -81,16 +81,16 @@ void ChatBox::render() {
         inputFocused_  = ImGui::IsItemActive();
 
         if (submitted && inputBuf_[0] != '\0') {
-            // Publish a local "send chat" event that the NetworkSystem will pick up.
+            // Publish a local "send chat" event.
+            // The ChatBox subscription in init() handles the local echo; the
+            // NetworkSystem subscription relays the message to the server.
             ChatReceivedEvent outgoing{};
             outgoing.senderNetworkId = 0; // 0 = local player (server fills this in)
             outgoing.senderName      = "You";
             outgoing.message         = inputBuf_;
 
-            // Echo locally first.
-            appendMessage("You", inputBuf_);
-
-            // Publish for NetworkSystem to relay to server.
+            // Publish for local echo (via ChatBox::init subscription) and
+            // for NetworkSystem to relay to server.
             EventBus::instance().publish(outgoing);
 
             // Clear the input buffer and re-focus for rapid chatting.

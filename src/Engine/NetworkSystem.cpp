@@ -408,7 +408,9 @@ void NetworkSystem::update(float deltaTime) {
                     std::memcpy(&chatPkt, payload, sizeof(chatPkt));
                     chatPkt.message[Network::kMaxChatLen - 1]      = '\0';
                     chatPkt.senderName[Network::kMaxSenderLen - 1] = '\0';
-                    ChatBox::instance().appendMessage(chatPkt.senderName, chatPkt.message);
+                    // Publish the event — the ChatBox subscription in ChatBox::init()
+                    // will call appendMessage once.  Do NOT call appendMessage here
+                    // directly or the message would appear twice.
                     ChatReceivedEvent evt{};
                     evt.senderNetworkId = chatPkt.senderNetworkId;
                     evt.senderName      = chatPkt.senderName;
