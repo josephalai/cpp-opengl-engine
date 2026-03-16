@@ -13,11 +13,27 @@ SkillsPanel& SkillsPanel::instance() {
     return inst;
 }
 
+void SkillsPanel::init() {
+    // Subscribe to skills sync events published by NetworkSystem when a
+    // SkillsSyncPacket arrives from the server.  This decouples the UI from
+    // the networking layer: NetworkSystem owns the packet; SkillsPanel owns
+    // the visual representation.
+    EventBus::instance().subscribe<SkillsSyncEvent>([this](const SkillsSyncEvent& e) {
+        // Convert to the canonical packet layout so all XP-setting logic
+        // lives in one place (applySync).
+        Network::SkillsSyncPacket pkt{};
+        for (int i = 0; i < kSkills; ++i) {
+            pkt.xp[i] = e.xp[i];
+        }
+        applySync(pkt);
+        if (!visible_) show();
+    });
+}
+
 void SkillsPanel::applySync(const Network::SkillsSyncPacket& pkt) {
     for (int i = 0; i < kSkills; ++i) {
         xp_[i] = pkt.xp[i];
     }
-    EventBus::instance().publish(SkillsSyncReceivedEvent{});
     std::cout << "[SkillsPanel] Sync applied.\n";
 }
 

@@ -10,6 +10,7 @@
 #include "../Physics/PhysicsSystem.h"
 #include "../Terrain/Terrain.h"
 #include "../Entities/Camera.h"
+#include "../Guis/Chat/ChatBox.h"
 #include <cmath>
 #include <glm/glm.hpp>
 
@@ -54,16 +55,21 @@ void PlayerMovementSystem::update(float deltaTime) {
                 input.isInAir      = true;
             }
         } else {
-            fwdInput    = InputMaster::isActionDown("MoveForward")  ?  1.0f
-                        : InputMaster::isActionDown("MoveBackward") ? -1.0f : 0.0f;
-            strafeInput = InputMaster::isActionDown("MoveLeft")     ?  1.0f
-                        : InputMaster::isActionDown("MoveRight")    ? -1.0f : 0.0f;
+            // Legacy path (useEventBus = false): read keys directly.
+            // Guard against chat input stealing movement keys.
+            const bool chatTypingLegacy = ChatBox::instance().isTyping();
+            fwdInput    = (!chatTypingLegacy && InputMaster::isActionDown("MoveForward"))  ?  1.0f
+                        : (!chatTypingLegacy && InputMaster::isActionDown("MoveBackward")) ? -1.0f : 0.0f;
+            strafeInput = (!chatTypingLegacy && InputMaster::isActionDown("MoveLeft"))     ?  1.0f
+                        : (!chatTypingLegacy && InputMaster::isActionDown("MoveRight"))    ? -1.0f : 0.0f;
             // Camera::Yaw is kept equal to PlayerCamera::orbitYaw_ each frame.
             camYaw      = Camera::Yaw;
-            wantsJump   = InputMaster::isActionDown("Jump");
+            wantsJump   = !chatTypingLegacy && InputMaster::isActionDown("Jump");
 
-            if (InputMaster::isActionDown("Sprint"))      input.speedHack = ConfigManager::get().physics.sprintMultiplier;
-            if (InputMaster::isActionDown("SprintReset")) input.speedHack = 1.0f;
+            if (!chatTypingLegacy) {
+                if (InputMaster::isActionDown("Sprint"))      input.speedHack = ConfigManager::get().physics.sprintMultiplier;
+                if (InputMaster::isActionDown("SprintReset")) input.speedHack = 1.0f;
+            }
 
             if (wantsJump && !input.isInAir) {
                 input.upwardsSpeed = InputStateComponent::kJumpPower;

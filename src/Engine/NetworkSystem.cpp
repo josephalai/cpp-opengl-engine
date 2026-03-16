@@ -62,9 +62,11 @@ void NetworkSystem::init() {
     // an action from the OSRS right-click context menu, forward it to the server
     // as an ActionRequestPacket with the chosen action type.
     EventBus::instance().subscribe<ContextMenuActionEvent>([this](const ContextMenuActionEvent& e) {
-        sendActionRequest(e.targetNetworkId);
+        sendActionRequest(e.targetNetworkId,
+                          static_cast<Network::ActionType>(e.actionId));
         std::cout << "[NetworkSystem] ContextMenu action '" << e.actionName
-                  << "' → ActionRequest for entity " << e.targetNetworkId << "\n";
+                  << "' (id=" << e.actionId
+                  << ") → ActionRequest for entity " << e.targetNetworkId << "\n";
     });
 
     // Subscribe to ChatReceivedEvent that originated locally (the player typed
@@ -78,8 +80,27 @@ void NetworkSystem::init() {
         // the ChatMessagePacket handler above; no further action needed here.
     });
 
+    // Subscribe to InventoryMoveEvent published by InventoryGrid when the
+    // player drag-drops an item slot.  Forward the move request to the server
+    // as an InventoryMovePacket for authoritative slot-swap validation.
+    EventBus::instance().subscribe<InventoryMoveEvent>([this](const InventoryMoveEvent& e) {
+        if (!serverPeer_) return;
+        Network::InventoryMovePacket movePkt{};
+        movePkt.srcSlot = e.srcSlot;
+        movePkt.dstSlot = e.dstSlot;
+        auto buf = Network::serialise(Network::PacketType::InventoryMove, movePkt);
+        enet_peer_send(serverPeer_, 0,
+            enet_packet_create(buf.data(), buf.size(), ENET_PACKET_FLAG_RELIABLE));
+        std::cout << "[NetworkSystem] Inventory move " << static_cast<int>(e.srcSlot)
+                  << " → " << static_cast<int>(e.dstSlot) << "\n";
+    });
+
     // Initialise the chat box event subscriptions.
     ChatBox::instance().init();
+    // Initialise inventory and skills panel event subscriptions so the UI
+    // responds to InventorySyncEvent / SkillsSyncEvent published below.
+    InventoryGrid::instance().init();
+    SkillsPanel::instance().init();
 
     client_ = enet_host_create(nullptr, 1, kChannelCount, 0, 0);
 
@@ -130,11 +151,15 @@ void NetworkSystem::update(float deltaTime) {
         //     direct keyboard control.  Without this, PhysicsSystem advances
         //     the player in the WASD direction each frame, then this code
         //     warps the player back toward the reconcile target — creating a
-        //     visible per-frame position oscillation (stutter). ---
-        bool anyMoveKeyHeld = InputMaster::isActionDown("MoveForward")  ||
-                              InputMaster::isActionDown("MoveBackward") ||
-                              InputMaster::isActionDown("MoveLeft")     ||
-                              InputMaster::isActionDown("MoveRight");
+        //     visible per-frame position oscillation (stutter).
+        //     Ignore WASD keys when the chat input field has focus — typing
+        //     letters must not be mistaken for intentional movement. ---
+        const bool chatTypingReconcile = ChatBox::instance().isTyping();
+        bool anyMoveKeyHeld = !chatTypingReconcile &&
+                              (InputMaster::isActionDown("MoveForward")  ||
+                               InputMaster::isActionDown("MoveBackward") ||
+                               InputMaster::isActionDown("MoveLeft")     ||
+                               InputMaster::isActionDown("MoveRight"));
         if (anyMoveKeyHeld) {
             hasReconcileTarget_ = false;
             localHistory_.clear();
@@ -241,14 +266,21 @@ void NetworkSystem::update(float deltaTime) {
         // on where the player is "looking" for purposes of movement.
         input.cameraYaw      = playerCamera_ ? playerCamera_->getOrbitYaw()
                                              : localPlayer_->getRotation().y;
-        input.moveForward    = InputMaster::isActionDown("MoveForward");
-        input.moveBackward   = InputMaster::isActionDown("MoveBackward");
+
+        // Suppress all movement flags while the chat input field has focus so
+        // that pressing W/A/S/D to type does not simultaneously move the player
+        // on the server.  The InputDispatcher already suppresses the local
+        // PlayerMoveCommandEvent via the same guard; this ensures the server
+        // receives the same "no movement" state.
+        const bool chatTyping = ChatBox::instance().isTyping();
+        input.moveForward    = !chatTyping && InputMaster::isActionDown("MoveForward");
+        input.moveBackward   = !chatTyping && InputMaster::isActionDown("MoveBackward");
         // A/D are now strafe keys (camera-relative).  SharedMovement::applyInput
         // uses cameraYaw as the forward reference and moveLeft/moveRight as
         // perpendicular strafe flags — so client and server stay in sync.
-        input.moveLeft       = InputMaster::isActionDown("MoveLeft");
-        input.moveRight      = InputMaster::isActionDown("MoveRight");
-        input.jump           = InputMaster::isActionDown("Jump");
+        input.moveLeft       = !chatTyping && InputMaster::isActionDown("MoveLeft");
+        input.moveRight      = !chatTyping && InputMaster::isActionDown("MoveRight");
+        input.jump           = !chatTyping && InputMaster::isActionDown("Jump");
 
         auto buf = Network::serialise(Network::PacketType::PlayerInput,
                                       input);
@@ -423,10 +455,14 @@ void NetworkSystem::update(float deltaTime) {
                          plen == sizeof(Network::InventorySyncPacket)) {
                     Network::InventorySyncPacket invPkt;
                     std::memcpy(&invPkt, payload, sizeof(invPkt));
-                    InventoryGrid::instance().applySync(invPkt);
-                    if (!InventoryGrid::instance().isVisible()) {
-                        InventoryGrid::instance().show();
+                    // Publish an event so InventoryGrid can update itself
+                    // without coupling directly to NetworkSystem.
+                    InventorySyncEvent syncEvt{};
+                    for (int i = 0; i < Network::kInventorySlots; ++i) {
+                        syncEvt.itemIds[i]    = invPkt.itemIds[i];
+                        syncEvt.quantities[i] = invPkt.quantities[i];
                     }
+                    EventBus::instance().publish(syncEvt);
                 }
 
                 // ----- Phase 5: SkillsSyncPacket -----
@@ -434,10 +470,13 @@ void NetworkSystem::update(float deltaTime) {
                          plen == sizeof(Network::SkillsSyncPacket)) {
                     Network::SkillsSyncPacket skPkt;
                     std::memcpy(&skPkt, payload, sizeof(skPkt));
-                    SkillsPanel::instance().applySync(skPkt);
-                    if (!SkillsPanel::instance().isVisible()) {
-                        SkillsPanel::instance().show();
+                    // Publish an event so SkillsPanel can update itself
+                    // without coupling directly to NetworkSystem.
+                    SkillsSyncEvent syncEvt{};
+                    for (int i = 0; i < Network::kSkillCount; ++i) {
+                        syncEvt.xp[i] = skPkt.xp[i];
                     }
+                    EventBus::instance().publish(syncEvt);
                 }
 
                 // ----- TransformSnapshot -----
@@ -677,12 +716,13 @@ void NetworkSystem::removeEntity(uint32_t networkId) {
 // sendActionRequest — send an ActionRequestPacket to the server
 // ---------------------------------------------------------------------------
 
-void NetworkSystem::sendActionRequest(uint32_t targetNetworkId) {
+void NetworkSystem::sendActionRequest(uint32_t targetNetworkId,
+                                      Network::ActionType action) {
     if (!serverPeer_) return;
 
     Network::ActionRequestPacket req;
     req.targetNetworkId = targetNetworkId;
-    req.action          = Network::ActionType::None; // Let the server decide from InteractableComponent
+    req.action          = action;
 
     auto buf = Network::serialise(Network::PacketType::ActionRequest, req);
     enet_peer_send(serverPeer_, 0,

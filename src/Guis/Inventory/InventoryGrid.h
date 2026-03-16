@@ -31,6 +31,14 @@ public:
     static InventoryGrid& instance();
 
     // ------------------------------------------------------------------
+    // Lifecycle
+    // ------------------------------------------------------------------
+
+    /// Subscribe to InventorySyncEvent and InventoryMoveEvent via the EventBus.
+    /// Must be called once before the first render frame.
+    void init();
+
+    // ------------------------------------------------------------------
     // Data update (called by NetworkSystem on InventorySyncPacket arrival)
     // ------------------------------------------------------------------
     void applySync(const Network::InventorySyncPacket& pkt);
