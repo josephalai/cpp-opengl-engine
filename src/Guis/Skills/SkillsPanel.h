@@ -26,6 +26,14 @@ public:
     static SkillsPanel& instance();
 
     // ------------------------------------------------------------------
+    // Lifecycle
+    // ------------------------------------------------------------------
+
+    /// Subscribe to SkillsSyncEvent via the EventBus.
+    /// Must be called once before the first render frame.
+    void init();
+
+    // ------------------------------------------------------------------
     // Data update (called by NetworkSystem on SkillsSyncPacket arrival)
     // ------------------------------------------------------------------
     void applySync(const Network::SkillsSyncPacket& pkt);

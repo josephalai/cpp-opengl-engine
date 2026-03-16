@@ -13,13 +13,26 @@ InventoryGrid& InventoryGrid::instance() {
     return inst;
 }
 
+void InventoryGrid::init() {
+    // Subscribe to inventory sync events published by NetworkSystem when an
+    // InventorySyncPacket arrives from the server.  This decouples the UI from
+    // the networking layer: NetworkSystem owns the packet; InventoryGrid owns
+    // the visual representation.
+    EventBus::instance().subscribe<InventorySyncEvent>([this](const InventorySyncEvent& e) {
+        for (int i = 0; i < kSlots; ++i) {
+            slots_[i].itemId   = e.itemIds[i];
+            slots_[i].quantity = e.quantities[i];
+        }
+        std::cout << "[InventoryGrid] Sync applied.\n";
+        if (!visible_) show();
+    });
+}
+
 void InventoryGrid::applySync(const Network::InventorySyncPacket& pkt) {
     for (int i = 0; i < kSlots; ++i) {
         slots_[i].itemId   = pkt.itemIds[i];
         slots_[i].quantity = pkt.quantities[i];
     }
-    // Notify the EventBus so other systems can react (e.g. weight calculation).
-    EventBus::instance().publish(InventoryUpdatedEvent{});
     std::cout << "[InventoryGrid] Sync applied.\n";
 }
 
@@ -104,8 +117,12 @@ void InventoryGrid::render() {
                         // will be sent back and will correct any discrepancy if the move
                         // was rejected or if the packet was reordered.
                         std::swap(slots_[srcIdx], slots_[idx]);
-                        // Publish move event for NetworkSystem to send InventoryMovePacket.
-                        // (NetworkSystem listens for a future InventoryMoveEvent.)
+                        // Publish InventoryMoveEvent so NetworkSystem can send
+                        // InventoryMovePacket to the server for authoritative validation.
+                        InventoryMoveEvent moveEvt{};
+                        moveEvt.srcSlot = static_cast<uint8_t>(srcIdx);
+                        moveEvt.dstSlot = static_cast<uint8_t>(idx);
+                        EventBus::instance().publish(moveEvt);
                     }
                 }
                 ImGui::EndDragDropTarget();

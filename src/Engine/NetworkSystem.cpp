@@ -62,9 +62,11 @@ void NetworkSystem::init() {
     // an action from the OSRS right-click context menu, forward it to the server
     // as an ActionRequestPacket with the chosen action type.
     EventBus::instance().subscribe<ContextMenuActionEvent>([this](const ContextMenuActionEvent& e) {
-        sendActionRequest(e.targetNetworkId);
+        sendActionRequest(e.targetNetworkId,
+                          static_cast<Network::ActionType>(e.actionId));
         std::cout << "[NetworkSystem] ContextMenu action '" << e.actionName
-                  << "' → ActionRequest for entity " << e.targetNetworkId << "\n";
+                  << "' (id=" << e.actionId
+                  << ") → ActionRequest for entity " << e.targetNetworkId << "\n";
     });
 
     // Subscribe to ChatReceivedEvent that originated locally (the player typed
@@ -78,8 +80,27 @@ void NetworkSystem::init() {
         // the ChatMessagePacket handler above; no further action needed here.
     });
 
+    // Subscribe to InventoryMoveEvent published by InventoryGrid when the
+    // player drag-drops an item slot.  Forward the move request to the server
+    // as an InventoryMovePacket for authoritative slot-swap validation.
+    EventBus::instance().subscribe<InventoryMoveEvent>([this](const InventoryMoveEvent& e) {
+        if (!serverPeer_) return;
+        Network::InventoryMovePacket movePkt{};
+        movePkt.srcSlot = e.srcSlot;
+        movePkt.dstSlot = e.dstSlot;
+        auto buf = Network::serialise(Network::PacketType::InventoryMove, movePkt);
+        enet_peer_send(serverPeer_, 0,
+            enet_packet_create(buf.data(), buf.size(), ENET_PACKET_FLAG_RELIABLE));
+        std::cout << "[NetworkSystem] Inventory move " << static_cast<int>(e.srcSlot)
+                  << " → " << static_cast<int>(e.dstSlot) << "\n";
+    });
+
     // Initialise the chat box event subscriptions.
     ChatBox::instance().init();
+    // Initialise inventory and skills panel event subscriptions so the UI
+    // responds to InventorySyncEvent / SkillsSyncEvent published below.
+    InventoryGrid::instance().init();
+    SkillsPanel::instance().init();
 
     client_ = enet_host_create(nullptr, 1, kChannelCount, 0, 0);
 
@@ -423,10 +444,14 @@ void NetworkSystem::update(float deltaTime) {
                          plen == sizeof(Network::InventorySyncPacket)) {
                     Network::InventorySyncPacket invPkt;
                     std::memcpy(&invPkt, payload, sizeof(invPkt));
-                    InventoryGrid::instance().applySync(invPkt);
-                    if (!InventoryGrid::instance().isVisible()) {
-                        InventoryGrid::instance().show();
+                    // Publish an event so InventoryGrid can update itself
+                    // without coupling directly to NetworkSystem.
+                    InventorySyncEvent syncEvt{};
+                    for (int i = 0; i < Network::kInventorySlots; ++i) {
+                        syncEvt.itemIds[i]    = invPkt.itemIds[i];
+                        syncEvt.quantities[i] = invPkt.quantities[i];
                     }
+                    EventBus::instance().publish(syncEvt);
                 }
 
                 // ----- Phase 5: SkillsSyncPacket -----
@@ -434,10 +459,13 @@ void NetworkSystem::update(float deltaTime) {
                          plen == sizeof(Network::SkillsSyncPacket)) {
                     Network::SkillsSyncPacket skPkt;
                     std::memcpy(&skPkt, payload, sizeof(skPkt));
-                    SkillsPanel::instance().applySync(skPkt);
-                    if (!SkillsPanel::instance().isVisible()) {
-                        SkillsPanel::instance().show();
+                    // Publish an event so SkillsPanel can update itself
+                    // without coupling directly to NetworkSystem.
+                    SkillsSyncEvent syncEvt{};
+                    for (int i = 0; i < Network::kSkillCount; ++i) {
+                        syncEvt.xp[i] = skPkt.xp[i];
                     }
+                    EventBus::instance().publish(syncEvt);
                 }
 
                 // ----- TransformSnapshot -----
@@ -677,12 +705,13 @@ void NetworkSystem::removeEntity(uint32_t networkId) {
 // sendActionRequest — send an ActionRequestPacket to the server
 // ---------------------------------------------------------------------------
 
-void NetworkSystem::sendActionRequest(uint32_t targetNetworkId) {
+void NetworkSystem::sendActionRequest(uint32_t targetNetworkId,
+                                      Network::ActionType action) {
     if (!serverPeer_) return;
 
     Network::ActionRequestPacket req;
     req.targetNetworkId = targetNetworkId;
-    req.action          = Network::ActionType::None; // Let the server decide from InteractableComponent
+    req.action          = action;
 
     auto buf = Network::serialise(Network::PacketType::ActionRequest, req);
     enet_peer_send(serverPeer_, 0,

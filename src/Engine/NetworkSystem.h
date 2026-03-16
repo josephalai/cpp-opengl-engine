@@ -76,7 +76,10 @@ public:
     /// interaction between the local player and the target entity.
     ///
     /// @param targetNetworkId  The NetworkIdComponent::id of the clicked entity.
-    void sendActionRequest(uint32_t targetNetworkId);
+    /// @param action           The specific ActionType the player chose
+    ///                         (defaults to None so the server decides).
+    void sendActionRequest(uint32_t targetNetworkId,
+                           Network::ActionType action = Network::ActionType::None);
 
     /// Phase 3 — Send a chat message to the server; the server will route it
     /// to all peers within the spatial Area-of-Interest neighbourhood.

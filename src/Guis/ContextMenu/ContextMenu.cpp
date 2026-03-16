@@ -83,6 +83,7 @@ void ContextMenu::render() {
                 ContextMenuActionEvent evt{};
                 evt.targetNetworkId = networkId_;
                 evt.actionIndex     = static_cast<int>(i);
+                evt.actionId        = act.id;
                 evt.actionName      = act.label;
                 EventBus::instance().publish(evt);
                 std::cout << "[ContextMenu] Selected \"" << act.label

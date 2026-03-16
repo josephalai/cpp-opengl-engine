@@ -12,6 +12,8 @@
 #include <glm/glm.hpp>
 #include <cstdint>
 #include <string>
+#include <array>
+#include "../Network/NetworkPackets.h"
 
 /// Base type for all engine events.
 struct Event {
@@ -69,14 +71,27 @@ struct WindowResizeEvent : Event {
 // Skilling / progression events
 // ---------------------------------------------------------------------------
 
-/// Published by the client NetworkSystem when an InventorySyncPacket arrives,
-/// or locally when items are added/removed.  UI systems subscribe to refresh
-/// the inventory grid without coupling to network code.
-struct InventoryUpdatedEvent : Event {};
+/// Published by the client NetworkSystem when an InventorySyncPacket arrives.
+/// InventoryGrid::init() subscribes to this event to refresh the slot grid
+/// without coupling directly to the networking layer.
+struct InventorySyncEvent : Event {
+    std::array<uint32_t, Network::kInventorySlots> itemIds{};
+    std::array<uint32_t, Network::kInventorySlots> quantities{};
+};
+
+/// Published by InventoryGrid when the player drag-drops a slot.
+/// NetworkSystem subscribes to forward an InventoryMovePacket to the server.
+struct InventoryMoveEvent : Event {
+    uint8_t srcSlot = 0; ///< Source slot index.
+    uint8_t dstSlot = 0; ///< Destination slot index.
+};
 
 /// Published by the client NetworkSystem when a SkillsSyncPacket arrives.
-/// The SkillsPanel subscribes to refresh XP bars and level labels.
-struct SkillsSyncReceivedEvent : Event {};
+/// SkillsPanel::init() subscribes to this event to refresh XP bars and
+/// level labels without coupling directly to the networking layer.
+struct SkillsSyncEvent : Event {
+    std::array<uint32_t, Network::kSkillCount> xp{};
+};
 
 /// Published (client-side) when the player gains XP in a skill.
 /// Decouples the skilling Lua script result from the SkillsPanel renderer.
@@ -107,6 +122,7 @@ struct ChatReceivedEvent : Event {
 struct ContextMenuActionEvent : Event {
     uint32_t targetNetworkId = 0;  ///< Entity the player right-clicked.
     int      actionIndex     = 0;  ///< Index into the entity's prefab "actions" array.
+    int      actionId        = 0;  ///< ActionType int value (Network::ActionType cast).
     std::string actionName;        ///< Human-readable label (e.g. "Chop down", "Talk").
 };
 
