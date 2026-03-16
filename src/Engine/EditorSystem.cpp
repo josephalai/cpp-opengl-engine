@@ -20,6 +20,7 @@
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
+#include "../Guis/UiMaster.h"
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -53,6 +54,17 @@ void EditorSystem::update(float /*deltaTime*/) {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
+
+    // -----------------------------------------------------------------------
+    // Phase 2-5: Render ImGui-based gameplay HUD panels.
+    // These must be inside the ImGui frame (after NewFrame, before Render).
+    // UISystem runs BEFORE EditorSystem so it cannot own ImGui draw calls —
+    // they are all consolidated here instead.
+    // -----------------------------------------------------------------------
+    UiMaster::renderContextMenu();   // Phase 2: OSRS right-click context menu
+    UiMaster::renderChatBox();       // Phase 3: Spatial chat box
+    UiMaster::renderInventory();     // Phase 4: Inventory grid
+    UiMaster::renderSkillsPanel();   // Phase 5: Skills / XP panel
 
     if (editorState_.isEditorMode) {
         handleGhostPreview();

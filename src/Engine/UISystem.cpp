@@ -55,23 +55,9 @@ void UISystem::update(float /*deltaTime*/) {
         UiMaster::applyConstraints(masterContainer_);
     }
 
-    // ----------------------------------------------------------------
-    // Phase 2: OSRS-style right-click context menu
-    // ----------------------------------------------------------------
-    UiMaster::renderContextMenu();
-
-    // ----------------------------------------------------------------
-    // Phase 3: Spatial chat box
-    // ----------------------------------------------------------------
-    UiMaster::renderChatBox();
-
-    // ----------------------------------------------------------------
-    // Phase 4: Inventory grid
-    // ----------------------------------------------------------------
-    UiMaster::renderInventory();
-
-    // ----------------------------------------------------------------
-    // Phase 5: Skills panel
-    // ----------------------------------------------------------------
-    UiMaster::renderSkillsPanel();
+    // NOTE: ImGui-based panels (ContextMenu, ChatBox, InventoryGrid, SkillsPanel)
+    // are rendered by EditorSystem::update() which owns the ImGui frame boundary
+    // (ImGui::NewFrame() … ImGui::Render()).  Calling ImGui functions here —
+    // before NewFrame — would crash the process.  Do NOT add ImGui calls to this
+    // function.
 }
