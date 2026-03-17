@@ -1,6 +1,7 @@
 // src/Guis/ContextMenu/ContextMenu.cpp
 
 #include "ContextMenu.h"
+#include "../UiMaster.h"
 #include "../../Events/EventBus.h"
 #include "../../Events/Event.h"
 #include "../../Input/InputMaster.h"
@@ -99,6 +100,12 @@ void ContextMenu::render() {
         // Record the actual rendered height for hit-testing.
         menuH_ = ImGui::GetWindowSize().y;
         menuW_ = ImGui::GetWindowSize().x;
+
+        // Register the window bounds as a UI region so InputDispatcher
+        // skips world interactions when the cursor is over the context menu.
+        ImVec2 wPos  = ImGui::GetWindowPos();
+        ImVec2 wSize = ImGui::GetWindowSize();
+        UiMaster::registerUiRegion(wPos.x, wPos.y, wSize.x, wSize.y);
     }
     ImGui::End();
 
