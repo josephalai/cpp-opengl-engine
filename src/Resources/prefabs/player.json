@@ -11,6 +11,11 @@
     "height": 1.8
   },
   "animation_controller": "animations/humanoid.json",
+  "animation_map": {
+    "Idle": "Armature|Idle",
+    "Walk": "Armature|Walk",
+    "Run":  "Armature|Run"
+  },
   "components": {
     "AnimatedModelComponent": {
       "scale": 0.04,
