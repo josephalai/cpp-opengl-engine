@@ -326,7 +326,12 @@ AnimatedModel* AnimationLoader::loadSkin(const std::string& skinPath) {
             std::string boneName(mesh->mBones[b]->mName.C_Str());
             if (boneIndexMap.find(boneName) == boneIndexMap.end()) {
                 int newID = static_cast<int>(boneIndexMap.size());
-                if (newID >= MAX_BONES) break;
+                if (newID >= MAX_BONES) {
+                    std::cerr << "[AnimationLoader::loadSkin] WARNING: bone limit ("
+                              << MAX_BONES << ") exceeded in '" << skinPath
+                              << "'. Excess bones will be ignored — some skinning may be incorrect.\n";
+                    break;
+                }
                 boneIndexMap[boneName] = newID;
 
                 glm::mat4 offset = toGlm(mesh->mBones[b]->mOffsetMatrix);

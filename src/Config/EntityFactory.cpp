@@ -178,14 +178,14 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
             // ---------------------------------------------------------------
 
             // Determine which scenario applies.
-            const nlohmann::json* acJson = nullptr;  // AnimationController block
+            const nlohmann::json* animControllerJson = nullptr;  // AnimationController block
             bool modularMode = false;
             if (prefab.contains("components") &&
                 prefab["components"].contains("AnimationController")) {
                 const auto& ac = prefab["components"]["AnimationController"];
                 if (ac.contains("animations") && ac["animations"].is_object() &&
                     !ac["animations"].empty()) {
-                    acJson      = &prefab["components"]["AnimationController"];
+                    animControllerJson = &prefab["components"]["AnimationController"];
                     modularMode = true;
                 }
             }
@@ -202,10 +202,10 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                 std::string skinAbsPath = absPath;
                 if (prefab.contains("components") &&
                     prefab["components"].contains("AnimatedModelComponent")) {
-                    const auto& amcJson = prefab["components"]["AnimatedModelComponent"];
-                    if (amcJson.contains("mesh_path")) {
+                    const auto& animatedModelJson = prefab["components"]["AnimatedModelComponent"];
+                    if (animatedModelJson.contains("mesh_path")) {
                         skinAbsPath = FileSystem::Scene(
-                            amcJson["mesh_path"].get<std::string>());
+                            animatedModelJson["mesh_path"].get<std::string>());
                     }
                 }
 
@@ -264,12 +264,13 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                     // Scenario 2: load each external animation clip and register
                     // it with the AnimationController state machine.
                     // ----------------------------------------------------------
-                    const auto& animsJson = (*acJson)["animations"];
-                    std::string defaultState = acJson->value("default_state", "");
+                    const auto& animsJson  = (*animControllerJson)["animations"];
+                    std::string defaultState = animControllerJson->value("default_state", "");
 
-                    // We'll build the AnimationControllerComponent alongside
-                    auto& acc = registry.emplace<AnimationControllerComponent>(entity);
-                    acc.defaultState = defaultState;
+                    // Attach an AnimationControllerComponent to keep the shared_ptr
+                    // owners alive alongside the AnimationController raw pointers.
+                    auto& animControllerComp = registry.emplace<AnimationControllerComponent>(entity);
+                    animControllerComp.defaultState = defaultState;
 
                     for (auto& [stateName, animPathVal] : animsJson.items()) {
                         const std::string animRelPath = animPathVal.get<std::string>();
@@ -283,7 +284,7 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                             continue;
                         }
 
-                        acc.animations[stateName] = clip;
+                        animControllerComp.animations[stateName] = clip;
                         controller->addState(stateName, clip.get());
 
                         if (firstStateName.empty()) firstStateName = stateName;
@@ -295,11 +296,11 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
 
                     // Apply default_state if explicitly specified and not already set.
                     if (!idleFound && !defaultState.empty() &&
-                        acc.animations.count(defaultState)) {
+                        animControllerComp.animations.count(defaultState)) {
                         controller->setState(defaultState);
                         idleFound = true;
                     }
-                    acc.currentAnimationName = controller->getCurrentStateName();
+                    animControllerComp.currentAnimationName = controller->getCurrentStateName();
 
                 } else if (animMapJson) {
                     // Scenario 1 with explicit animation_map
