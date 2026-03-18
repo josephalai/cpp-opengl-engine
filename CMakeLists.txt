@@ -194,36 +194,33 @@ option(ENGINE_ASSIMP_WITH_DRACO
     "Build Assimp from source with Draco mesh-compression support (opt-in; see comments above)"
     OFF)
 
+option(ENGINE_ASSIMP_WITH_DRACO
+    "Build Assimp from source with Draco mesh-compression support (opt-in)"
+    OFF)
+
 if(ENGINE_ASSIMP_WITH_DRACO)
-    # -------------------------------------------------------------------------
-    # Build Assimp from source so we can enable Draco.
-    # ASSIMP_BUILD_ZLIB is OFF so Assimp uses the system zlib instead of
-    # building its own copy — this prevents duplicate-symbol / version
-    # conflicts with the zlib that PNG and other libraries already link.
-    # -------------------------------------------------------------------------
     FetchContent_Declare(
         assimp
         GIT_REPOSITORY https://github.com/assimp/assimp.git
-        GIT_TAG        v5.3.1
+        GIT_TAG        v5.4.3
         GIT_SUBMODULES "contrib/draco"
     )
+
     set(ASSIMP_BUILD_DRACO          ON  CACHE BOOL "" FORCE)
     set(ASSIMP_BUILD_ZLIB           OFF CACHE BOOL "" FORCE)
     set(ASSIMP_BUILD_TESTS          OFF CACHE BOOL "" FORCE)
     set(ASSIMP_BUILD_ASSIMP_TOOLS   OFF CACHE BOOL "" FORCE)
     set(ASSIMP_INSTALL              OFF CACHE BOOL "" FORCE)
+    set(ASSIMP_INSTALL_PDB          OFF CACHE BOOL "" FORCE)
     set(ASSIMP_INJECT_DEBUG_POSTFIX OFF CACHE BOOL "" FORCE)
+    set(BUILD_SHARED_LIBS           ON  CACHE BOOL "" FORCE)  # <--- KEY CHANGE: ensures draco_shared exists
+
     FetchContent_MakeAvailable(assimp)
 
-    # FetchContent does not always create the assimp::assimp imported-target
-    # alias (it depends on ASSIMP_INSTALL, which we disable).  Create it here
-    # so the target_link_libraries call below is uniform regardless of path.
     if(NOT TARGET assimp::assimp)
         add_library(assimp::assimp ALIAS assimp)
     endif()
 else()
-    # Use whatever system Assimp is available.  Draco-compressed GLBs will fail
-    # to load at runtime unless the system package was compiled with Draco ON.
     find_package(assimp REQUIRED)
 endif()
 

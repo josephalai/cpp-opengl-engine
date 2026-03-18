@@ -4,7 +4,7 @@
     {
       "path": "Characters/man-1.glb",
       "fallback_path": "Characters/characters.glb",
-      "scale": 2.5,
+      "scale": 0.05,
       "x": 100.0,
       "y": "terrain",
       "z": -80.0,
