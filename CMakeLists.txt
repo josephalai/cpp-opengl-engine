@@ -172,26 +172,34 @@ find_package(PNG REQUIRED)
 target_include_directories(client_engine PRIVATE ${PNG_INCLUDE_DIR})
 
 # =============================================================================
-# Assimp — Open Asset Import Library (with optional Draco mesh-compression)
+# Assimp — Open Asset Import Library
 # =============================================================================
-# ENGINE_ASSIMP_WITH_DRACO (default ON):
-#   Builds Assimp from source via FetchContent with ASSIMP_BUILD_DRACO=ON.
-#   Required when loading GLBs produced by AssetForge.py with Draco compression
-#   (the default).  The first configure step fetches the assimp git repo and its
-#   contrib/draco submodule — subsequent builds use the cached download.
+# Default: use the system-installed Assimp (e.g. `brew install assimp`).
+# This is the same approach the project used before; it avoids any zlib or
+# other system-library conflicts that arise when building Assimp from source.
 #
-# Set -DENGINE_ASSIMP_WITH_DRACO=OFF to skip the FetchContent build and use a
-# system-installed Assimp instead (no Draco support unless the system package
-# was explicitly compiled with it).
+# If you need Draco mesh-compression support (for GLBs produced by
+# AssetForge.py with Draco enabled), you can opt-in to building Assimp from
+# source by passing -DENGINE_ASSIMP_WITH_DRACO=ON to cmake.
+#
+# IMPORTANT: the FetchContent path builds Assimp from source.  It sets
+# ASSIMP_BUILD_ZLIB=OFF so Assimp uses the same system zlib that PNG and
+# other dependencies already depend on.  If your system zlib is in an unusual
+# location you may still need to set ZLIB_ROOT or ZLIB_LIBRARY explicitly.
+#
+# Alternatively — no build changes needed — export skins from AssetForge.py
+# WITHOUT Draco compression (set export_draco_mesh_compression_enable=False).
+# Standard Assimp loads uncompressed GLBs transparently.
 option(ENGINE_ASSIMP_WITH_DRACO
-    "Build Assimp from source with Draco mesh-compression support (required for AssetForge.py skins)"
-    ON)
+    "Build Assimp from source with Draco mesh-compression support (opt-in; see comments above)"
+    OFF)
 
 if(ENGINE_ASSIMP_WITH_DRACO)
     # -------------------------------------------------------------------------
     # Build Assimp from source so we can enable Draco.
-    # GIT_SUBMODULES fetches only the Draco vendored submodule; all other
-    # Assimp submodules are optional and skipped to keep the checkout fast.
+    # ASSIMP_BUILD_ZLIB is OFF so Assimp uses the system zlib instead of
+    # building its own copy — this prevents duplicate-symbol / version
+    # conflicts with the zlib that PNG and other libraries already link.
     # -------------------------------------------------------------------------
     FetchContent_Declare(
         assimp
@@ -200,6 +208,7 @@ if(ENGINE_ASSIMP_WITH_DRACO)
         GIT_SUBMODULES "contrib/draco"
     )
     set(ASSIMP_BUILD_DRACO          ON  CACHE BOOL "" FORCE)
+    set(ASSIMP_BUILD_ZLIB           OFF CACHE BOOL "" FORCE)
     set(ASSIMP_BUILD_TESTS          OFF CACHE BOOL "" FORCE)
     set(ASSIMP_BUILD_ASSIMP_TOOLS   OFF CACHE BOOL "" FORCE)
     set(ASSIMP_INSTALL              OFF CACHE BOOL "" FORCE)
@@ -214,7 +223,7 @@ if(ENGINE_ASSIMP_WITH_DRACO)
     endif()
 else()
     # Use whatever system Assimp is available.  Draco-compressed GLBs will fail
-    # to load unless the system package was compiled with -DASSIMP_BUILD_DRACO=ON.
+    # to load at runtime unless the system package was compiled with Draco ON.
     find_package(assimp REQUIRED)
 endif()
 

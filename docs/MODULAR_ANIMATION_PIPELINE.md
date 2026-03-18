@@ -166,32 +166,29 @@ If Draco-compressed skins are loaded with a non-Draco Assimp build, you will see
 [AnimationLoader::loadSkin] Assimp error: GLTF: Draco mesh compression not supported.
 ```
 
-### Default behaviour (Draco ON)
+### Default behaviour (system Assimp, no Draco)
 
-`CMakeLists.txt` now uses `FetchContent` to build Assimp from source with Draco enabled by default.  The `ENGINE_ASSIMP_WITH_DRACO` option is `ON` out of the box:
+`CMakeLists.txt` uses `find_package(assimp REQUIRED)` by default — i.e. the system-installed Assimp package (e.g. `brew install assimp` on macOS).  This is the stable, conflict-free path that does not touch the project's existing zlib setup.
+
+`ENGINE_ASSIMP_WITH_DRACO` defaults to `OFF`:
 
 ```cmake
-option(ENGINE_ASSIMP_WITH_DRACO "Build Assimp from source with Draco support" ON)
+option(ENGINE_ASSIMP_WITH_DRACO "Build Assimp from source with Draco support" OFF)
 ```
 
-This means:
-- The **first** `cmake ..` run fetches `assimp` (and its `contrib/draco` vendored submodule) from GitHub — this takes a few minutes on a cold cache.
-- Subsequent builds use the cached `build/_deps/assimp-src/` directory and are fast.
-- **No manual steps are required** to load Draco-compressed skin GLBs.
+### Option A — Opt-in to FetchContent Assimp with Draco (cmake flag)
 
-### Opting out (system Assimp)
-
-If you have a system-installed Assimp that you want to use instead (e.g., because Draco is not needed), configure with:
+If you need Draco at runtime and your system Assimp was not compiled with it, configure with:
 
 ```sh
-cmake -DENGINE_ASSIMP_WITH_DRACO=OFF ..
+cmake -DENGINE_ASSIMP_WITH_DRACO=ON ..
 ```
 
-Note: This will fail to load any Draco-compressed `.glb` at runtime unless the system Assimp was compiled with Draco support.
+This builds Assimp 5.3.1 from source via FetchContent with `ASSIMP_BUILD_DRACO=ON` and `ASSIMP_BUILD_ZLIB=OFF` (so Assimp uses the system zlib rather than building its own).
 
-### CI / caching tip
+**Note:** The first configure run fetches the assimp repo and its `contrib/draco` submodule from GitHub — allow a few extra minutes on a cold cache.  Subsequent builds use the cached `build/_deps/assimp-src/` directory and are fast.
 
-Cache the `build/_deps/` directory between CI runs to avoid re-cloning Assimp on every build.
+Cache the `build/_deps/` directory between CI runs:
 
 ```yaml
 # GitHub Actions example
@@ -201,7 +198,7 @@ Cache the `build/_deps/` directory between CI runs to avoid re-cloning Assimp on
     key: assimp-draco-${{ hashFiles('CMakeLists.txt') }}
 ```
 
-### Option B — Disable Draco compression in AssetForge.py
+### Option B — Disable Draco compression in AssetForge.py (no build changes)
 
 If you cannot or do not want to build Assimp from source, export skins **without** Draco compression.  Edit `AssetForge.py` and remove (or set to `False`) the Draco export flag:
 
@@ -214,7 +211,7 @@ bpy.ops.export_scene.gltf(
 )
 ```
 
-Then configure with `-DENGINE_ASSIMP_WITH_DRACO=OFF`.  Non-compressed GLBs load with any standard Assimp build.
+Non-compressed GLBs load with any standard Assimp build.
 
 ---
 
