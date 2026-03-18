@@ -154,7 +154,7 @@ Add a `"AnimationController"` block under `"components"` with a non-empty `"anim
 
 ---
 
-## Phase 4 — Draco Assimp Warning
+## Phase 4 — Draco Assimp Support
 
 ### What is Draco?
 
@@ -163,42 +163,50 @@ Google's Draco is a mesh-compression library.  `AssetForge.py` uses Draco by def
 If Draco-compressed skins are loaded with a non-Draco Assimp build, you will see:
 
 ```
-[AnimationLoader::loadSkin] Assimp error: No suitable reader found for the file format of file "Resources/skins/npc.glb".
+[AnimationLoader::loadSkin] Assimp error: GLTF: Draco mesh compression not supported.
 ```
 
-or:
+### Default behaviour (Draco ON)
 
-```
-Assimp: KHR_draco_mesh_compression is not supported
-```
-
-### Option A — Build Assimp with Draco via FetchContent (recommended for production)
-
-Replace `find_package(assimp REQUIRED)` in `CMakeLists.txt` with the following:
+`CMakeLists.txt` now uses `FetchContent` to build Assimp from source with Draco enabled by default.  The `ENGINE_ASSIMP_WITH_DRACO` option is `ON` out of the box:
 
 ```cmake
-FetchContent_Declare(
-    assimp
-    GIT_REPOSITORY https://github.com/assimp/assimp.git
-    GIT_TAG        v5.3.1
-)
-set(ASSIMP_BUILD_DRACO         ON  CACHE BOOL "" FORCE)
-set(ASSIMP_BUILD_TESTS         OFF CACHE BOOL "" FORCE)
-set(ASSIMP_BUILD_ASSIMP_TOOLS  OFF CACHE BOOL "" FORCE)
-set(ASSIMP_INSTALL             OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(assimp)
-# Link with 'assimp' instead of 'assimp::assimp' when using FetchContent
-target_link_libraries(client_engine PRIVATE assimp ...)
+option(ENGINE_ASSIMP_WITH_DRACO "Build Assimp from source with Draco support" ON)
 ```
 
-**Warning:** Building Assimp from source adds ~2–5 minutes to a clean build.  Cache the build directory (`build/_deps/`) between CI runs.
+This means:
+- The **first** `cmake ..` run fetches `assimp` (and its `contrib/draco` vendored submodule) from GitHub — this takes a few minutes on a cold cache.
+- Subsequent builds use the cached `build/_deps/assimp-src/` directory and are fast.
+- **No manual steps are required** to load Draco-compressed skin GLBs.
 
-### Option B — Disable Draco compression in AssetForge.py (zero-config workaround)
+### Opting out (system Assimp)
 
-If you cannot rebuild Assimp, export skins **without** Draco compression.  Edit `AssetForge.py` and remove (or set to `False`) the Draco export flag:
+If you have a system-installed Assimp that you want to use instead (e.g., because Draco is not needed), configure with:
+
+```sh
+cmake -DENGINE_ASSIMP_WITH_DRACO=OFF ..
+```
+
+Note: This will fail to load any Draco-compressed `.glb` at runtime unless the system Assimp was compiled with Draco support.
+
+### CI / caching tip
+
+Cache the `build/_deps/` directory between CI runs to avoid re-cloning Assimp on every build.
+
+```yaml
+# GitHub Actions example
+- uses: actions/cache@v3
+  with:
+    path: build/_deps
+    key: assimp-draco-${{ hashFiles('CMakeLists.txt') }}
+```
+
+### Option B — Disable Draco compression in AssetForge.py
+
+If you cannot or do not want to build Assimp from source, export skins **without** Draco compression.  Edit `AssetForge.py` and remove (or set to `False`) the Draco export flag:
 
 ```python
-# In AssetForge.py — disable Draco compression for Assimp compatibility
+# In AssetForge.py — disable Draco compression for standard Assimp compatibility
 bpy.ops.export_scene.gltf(
     filepath=skin_path,
     export_draco_mesh_compression_enable=False,  # ← disable Draco
@@ -206,7 +214,7 @@ bpy.ops.export_scene.gltf(
 )
 ```
 
-Non-compressed GLBs load with any standard Assimp build and produce files typically in the 2–5 MB range (still much smaller than FBX).
+Then configure with `-DENGINE_ASSIMP_WITH_DRACO=OFF`.  Non-compressed GLBs load with any standard Assimp build.
 
 ---
 

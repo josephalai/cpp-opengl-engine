@@ -193,6 +193,7 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
             const std::string absPath  = FileSystem::Scene(meshPath);
 
             AnimatedModel* animModel = nullptr;
+            std::string loadedFromPath = absPath;  // track the actual path used for diagnostics
             if (modularMode) {
                 // ----------------------------------------------------------
                 // Scenario 2: load skin + external animations
@@ -208,11 +209,8 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                             animatedModelJson["mesh_path"].get<std::string>());
                     }
                 }
-
+                loadedFromPath = skinAbsPath;
                 animModel = AnimationLoader::loadSkin(skinAbsPath);
-                if (!animModel) {
-                    std::cerr << "[EntityFactory] loadSkin failed: " << skinAbsPath << "\n";
-                }
             } else {
                 // ----------------------------------------------------------
                 // Scenario 1: monolithic load (legacy path)
@@ -222,7 +220,7 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
 
             if (!animModel) {
                 std::cerr << "[EntityFactory] Failed to load animated model: "
-                          << absPath << "\n";
+                          << loadedFromPath << "\n";
                 // Fall through; entity is created without a visual component.
             } else {
                 auto normalizeClipName = [](const std::string& raw) -> std::string {

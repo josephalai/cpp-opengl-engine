@@ -320,7 +320,8 @@ AnimatedModel* AnimationLoader::loadSkin(const std::string& skinPath) {
 
     // 1) Build bone index map from mesh bones
     std::unordered_map<std::string, int> boneIndexMap;
-    for (unsigned int m = 0; m < scene->mNumMeshes; ++m) {
+    bool boneLimitReached = false;
+    for (unsigned int m = 0; m < scene->mNumMeshes && !boneLimitReached; ++m) {
         aiMesh* mesh = scene->mMeshes[m];
         for (unsigned int b = 0; b < mesh->mNumBones; ++b) {
             std::string boneName(mesh->mBones[b]->mName.C_Str());
@@ -330,7 +331,8 @@ AnimatedModel* AnimationLoader::loadSkin(const std::string& skinPath) {
                     std::cerr << "[AnimationLoader::loadSkin] WARNING: bone limit ("
                               << MAX_BONES << ") exceeded in '" << skinPath
                               << "'. Excess bones will be ignored — some skinning may be incorrect.\n";
-                    break;
+                    boneLimitReached = true;
+                    break;  // break inner; outer loop exits via !boneLimitReached guard
                 }
                 boneIndexMap[boneName] = newID;
 
