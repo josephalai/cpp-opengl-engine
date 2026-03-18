@@ -168,21 +168,29 @@ void EditorSystem::ensureMeshGhost() {
 
     meshGhostPrefabId_ = editorState_.selectedPrefab;
 
-    // Populate the animation preview list from the ghost's
-    // AnimationControllerComponent (present for modular animated prefabs).
     ghostAnimNames_.clear();
     ghostAnimIndex_ = -1;
-    if (auto* acc = registry_.try_get<AnimationControllerComponent>(meshGhostEntity_)) {
-        for (const auto& kv : acc->animations) {
-            ghostAnimNames_.push_back(kv.first);
+    // Populate animation list for the preview combo.
+    // Scenario 2 (modular): state names come from AnimationControllerComponent.
+    // Scenario 1 (monolithic): state names come from the AnimationController directly.
+    if (auto* amc = registry_.try_get<AnimatedModelComponent>(meshGhostEntity_)) {
+        if (auto* acc = registry_.try_get<AnimationControllerComponent>(meshGhostEntity_)) {
+            // Modular path: use the ACC's animations map (preserves mapping to clip data).
+            for (const auto& kv : acc->animations)
+                ghostAnimNames_.push_back(kv.first);
+            std::sort(ghostAnimNames_.begin(), ghostAnimNames_.end());
+        } else if (amc->controller) {
+            // Monolithic path: query the controller directly for all registered states.
+            ghostAnimNames_ = amc->controller->getStateNames();
         }
-        std::sort(ghostAnimNames_.begin(), ghostAnimNames_.end());
-        // Match the index to the currently active state.
-        const std::string& curState = acc->currentAnimationName;
-        for (int i = 0; i < static_cast<int>(ghostAnimNames_.size()); ++i) {
-            if (ghostAnimNames_[static_cast<size_t>(i)] == curState) {
-                ghostAnimIndex_ = i;
-                break;
+        // Pre-select the currently active animation.
+        if (amc->controller) {
+            const std::string& curState = amc->controller->getCurrentStateName();
+            for (int i = 0; i < static_cast<int>(ghostAnimNames_.size()); ++i) {
+                if (ghostAnimNames_[static_cast<size_t>(i)] == curState) {
+                    ghostAnimIndex_ = i;
+                    break;
+                }
             }
         }
     }
@@ -345,11 +353,13 @@ void EditorSystem::renderEditorWindow() {
     if (!ghostAnimNames_.empty()) {
         ImGui::SeparatorText("Animation Preview");
 
-        // Show the currently playing animation name.
+        // Show the currently playing animation name (read directly from the controller
+        // so it reflects the live state in both Debug and Release builds).
         std::string curAnim;
         if (meshGhostEntity_ != entt::null && registry_.valid(meshGhostEntity_)) {
-            if (auto* acc = registry_.try_get<AnimationControllerComponent>(meshGhostEntity_))
-                curAnim = acc->currentAnimationName;
+            if (auto* amc = registry_.try_get<AnimatedModelComponent>(meshGhostEntity_))
+                if (amc->controller)
+                    curAnim = amc->controller->getCurrentStateName();
         }
         ImGui::Text("Playing: %s", curAnim.empty() ? "(none)" : curAnim.c_str());
 

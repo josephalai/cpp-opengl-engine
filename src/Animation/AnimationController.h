@@ -48,7 +48,9 @@ public:
     // ------------------------------------------------------------------
     void addState(const std::string& name, AnimationClip* clip,
                   float speed = 1.0f, bool looping = true) {
-        addState(StringId(name), clip, speed, looping);
+        StringId id(name);
+        stateNames_[id.value()] = name;  // always track name so getCurrentStateName() works in all builds
+        addState(id, clip, speed, looping);
     }
     void addTransition(const std::string& from, const std::string& to,
                        std::function<bool()> condition = nullptr,
@@ -82,6 +84,10 @@ public:
     /// Returns the display name of the current state (empty = bind-pose).
     const std::string& getCurrentStateName() const { return currentStateName_; }
 
+    /// Returns a sorted list of all registered state names.
+    /// Names are populated when states are added via the std::string overload.
+    std::vector<std::string> getStateNames() const;
+
     /// Set up common predefined transitions: Idle↔Walk↔Run, any→Jump, Jump→Idle.
     void setupDefaultTransitions(std::function<bool()> walkCond,
                                   std::function<bool()> runCond,
@@ -93,7 +99,8 @@ private:
     /// Internal state map keyed by StringId hash (uint32_t).
     std::unordered_map<uint32_t, AnimationState> states_;
 
-    /// Debug-only reverse map: hash → display name.
+    /// Reverse map: hash → display name.  Populated by the std::string overload of
+    /// addState() in all builds so getCurrentStateName() always returns a readable name.
     std::unordered_map<uint32_t, std::string>    stateNames_;
 
     std::vector<AnimationTransition> transitions_;
