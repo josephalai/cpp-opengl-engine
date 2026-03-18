@@ -181,11 +181,11 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
             const nlohmann::json* animControllerJson = nullptr;  // AnimationController block
             bool modularMode = false;
             if (prefab.contains("components") &&
-                prefab["components"].contains("AnimationController")) {
-                const auto& ac = prefab["components"]["AnimationController"];
+                prefab["components"].contains("AnimationControllerComponent")) {
+                const auto& ac = prefab["components"]["AnimationControllerComponent"];
                 if (ac.contains("animations") && ac["animations"].is_object() &&
                     !ac["animations"].empty()) {
-                    animControllerJson = &prefab["components"]["AnimationController"];
+                    animControllerJson = &prefab["components"]["AnimationControllerComponent"];
                     modularMode = true;
                 }
             }

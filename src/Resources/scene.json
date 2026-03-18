@@ -1,30 +1,30 @@
 {
-  "_comment": "scene.json \u2014 JSON equivalent of scene.cfg. Loaded by SceneLoaderJson.",
+  "_comment": "scene.json — JSON equivalent of scene.cfg. Loaded by SceneLoaderJson.",
   "animated_characters": [
     {
-      "path": "Characters/man-1.glb",
-      "fallback_path": "Characters/characters.glb",
-      "scale": 0.05,
-      "x": 100.0,
-      "y": "terrain",
-      "z": -80.0,
-      "rot": {
-        "rx": 0.0,
-        "ry": 0.0,
-        "rz": 0.0
+      "animation_map": {
+        "Idle": "Idle",
+        "Patrol": "Walking",
+        "Run": "Running",
+        "Sprint": "Run_03",
+        "Walk": "Casual_Walk"
       },
+      "fallback_path": "Characters/characters.glb",
       "offset": {
         "ox": 0.0,
         "oy": 0.0,
         "oz": 0.0
       },
-      "animation_map": {
-        "Idle":   "Idle",
-        "Walk":   "Casual_Walk",
-        "Run":    "Running",
-        "Sprint": "Run_03",
-        "Patrol": "Walking"
-      }
+      "path": "Characters/man-1.glb",
+      "rot": {
+        "rx": 0.0,
+        "ry": 0.0,
+        "rz": 0.0
+      },
+      "scale": 0.05,
+      "x": 100.0,
+      "y": "terrain",
+      "z": -80.0
     }
   ],
   "assimp": [
@@ -38,20 +38,12 @@
   ],
   "editor_entities": [
     {
-      "alias": "npc_wanderer",
-      "ry": 0.0,
+      "alias": "white_aether_man",
+      "ry": 107.64700317382813,
       "scale": 1.0,
-      "x": 68.0,
-      "y": 0.0,
-      "z": 4.0
-    },
-    {
-      "alias": "npc_banker",
-      "ry": 0.0,
-      "scale": 1.0,
-      "x": 76.0,
-      "y": -3.814697265625e-06,
-      "z": 4.0
+      "x": 80.0,
+      "y": -0.7383041381835938,
+      "z": -44.0
     }
   ],
   "entities": [
