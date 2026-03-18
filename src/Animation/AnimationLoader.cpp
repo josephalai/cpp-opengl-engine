@@ -1,5 +1,7 @@
 // src/Animation/AnimationLoader.cpp
 // Uses Assimp to load mesh bone weights, bone hierarchy, and animation clips.
+// Also provides modular loaders (loadSkin / loadExternalAnimation) that support
+// the split-file MMO pipeline produced by AssetForge.py.
 
 #include "AnimationLoader.h"
 #include "../Libraries/images/stb_image.h"
@@ -297,4 +299,163 @@ AnimatedModel* AnimationLoader::load(const std::string& path) {
     model->setupMeshes();
 
     return model;
+}
+
+// ---- modular loaders (MMO pipeline) -----------------------------------------
+
+AnimatedModel* AnimationLoader::loadSkin(const std::string& skinPath) {
+    Assimp::Importer importer;
+    const aiScene* scene = importer.ReadFile(skinPath,
+        aiProcess_Triangulate | aiProcess_GenSmoothNormals |
+        aiProcess_FlipUVs     | aiProcess_CalcTangentSpace);
+
+    if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode) {
+        std::cerr << "[AnimationLoader::loadSkin] Assimp error: "
+                  << importer.GetErrorString() << "\n";
+        return nullptr;
+    }
+
+    auto* model = new AnimatedModel();
+    model->directory = skinPath.substr(0, skinPath.find_last_of('/'));
+
+    // 1) Build bone index map from mesh bones
+    std::unordered_map<std::string, int> boneIndexMap;
+    for (unsigned int m = 0; m < scene->mNumMeshes; ++m) {
+        aiMesh* mesh = scene->mMeshes[m];
+        for (unsigned int b = 0; b < mesh->mNumBones; ++b) {
+            std::string boneName(mesh->mBones[b]->mName.C_Str());
+            if (boneIndexMap.find(boneName) == boneIndexMap.end()) {
+                int newID = static_cast<int>(boneIndexMap.size());
+                if (newID >= MAX_BONES) break;
+                boneIndexMap[boneName] = newID;
+
+                glm::mat4 offset = toGlm(mesh->mBones[b]->mOffsetMatrix);
+                auto* bone = new Bone(boneName, newID, offset);
+                model->skeleton.bones.push_back(bone);
+                model->skeleton.bonesByName[boneName] = bone;
+            }
+        }
+    }
+
+    // 2) Build bone hierarchy
+    buildBoneHierarchy(scene->mRootNode, nullptr, model->skeleton);
+    if (!model->skeleton.root && !model->skeleton.bones.empty())
+        model->skeleton.root = model->skeleton.bones[0];
+
+    // 3) Process meshes
+    for (unsigned int m = 0; m < scene->mNumMeshes; ++m) {
+        model->meshes.push_back(processMesh(scene->mMeshes[m], scene,
+                                             model->directory, boneIndexMap));
+    }
+
+    // NOTE: step 4 (animation clips) is intentionally skipped — this is a skin-only load.
+
+    // 5) Coordinate system correction
+    {
+        int32_t upAxis = 1, upAxisSign = 1;
+        if (scene->mMetaData) {
+            scene->mMetaData->Get("UpAxis",     upAxis);
+            scene->mMetaData->Get("UpAxisSign", upAxisSign);
+        }
+        if (upAxis == 2) {
+            float angle = static_cast<float>(upAxisSign) * glm::radians(-90.0f);
+            model->coordinateCorrection =
+                glm::rotate(glm::mat4(1.0f), angle, glm::vec3(1.0f, 0.0f, 0.0f));
+            std::cout << "[AnimationLoader::loadSkin] Z-up model detected — applying coordinate correction.\n";
+        }
+    }
+
+    // 6) Upload to GPU
+    model->setupMeshes();
+
+    std::cout << "[AnimationLoader::loadSkin] Loaded '" << skinPath
+              << "': " << model->meshes.size() << " mesh(es), "
+              << model->skeleton.getBoneCount() << " bone(s).\n";
+    return model;
+}
+
+std::shared_ptr<AnimationClip> AnimationLoader::loadExternalAnimation(
+    const std::string& animPath,
+    Skeleton* targetSkeleton)
+{
+    if (!targetSkeleton) {
+        std::cerr << "[AnimationLoader::loadExternalAnimation] targetSkeleton is null.\n";
+        return nullptr;
+    }
+
+    Assimp::Importer importer;
+    // No mesh post-processing needed — we only care about mAnimations.
+    const aiScene* scene = importer.ReadFile(animPath, aiProcess_Triangulate);
+
+    if (!scene || !scene->mRootNode) {
+        std::cerr << "[AnimationLoader::loadExternalAnimation] Assimp error: "
+                  << importer.GetErrorString() << "\n";
+        return nullptr;
+    }
+
+    if (scene->mNumAnimations == 0) {
+        std::cerr << "[AnimationLoader::loadExternalAnimation] No animations found in '"
+                  << animPath << "'\n";
+        return nullptr;
+    }
+
+    // Use the first animation track in the file (animation-only GLBs typically
+    // contain exactly one animation per file as produced by AssetForge.py).
+    aiAnimation* anim = scene->mAnimations[0];
+    float tps = (anim->mTicksPerSecond > 0.0)
+                    ? static_cast<float>(anim->mTicksPerSecond) : 25.0f;
+
+    auto clip = std::make_shared<AnimationClip>(
+        anim->mName.C_Str(),
+        static_cast<float>(anim->mDuration),
+        tps);
+
+    int matchedChannels = 0;
+    for (unsigned int c = 0; c < anim->mNumChannels; ++c) {
+        aiNodeAnim* ch = anim->mChannels[c];
+        std::string channelName(ch->mNodeName.C_Str());
+
+        // Only import channels whose names map to a bone in the target skeleton.
+        // This allows channels like "mixamorig:RightArm" to be matched when the
+        // skeleton stores bones by that exact name, and mismatched channels
+        // (e.g. root motion nodes or non-bone nodes) are cleanly ignored.
+        if (!targetSkeleton->getBoneByName(channelName)) continue;
+
+        BoneAnimation ba;
+        for (unsigned int k = 0; k < ch->mNumPositionKeys; ++k)
+            ba.positions.push_back({ { ch->mPositionKeys[k].mValue.x,
+                                       ch->mPositionKeys[k].mValue.y,
+                                       ch->mPositionKeys[k].mValue.z },
+                                     static_cast<float>(ch->mPositionKeys[k].mTime) });
+
+        for (unsigned int k = 0; k < ch->mNumRotationKeys; ++k) {
+            const auto& q = ch->mRotationKeys[k].mValue;
+            ba.rotations.push_back({
+                glm::quat(q.w, q.x, q.y, q.z),
+                static_cast<float>(ch->mRotationKeys[k].mTime)
+            });
+        }
+
+        for (unsigned int k = 0; k < ch->mNumScalingKeys; ++k)
+            ba.scales.push_back({ { ch->mScalingKeys[k].mValue.x,
+                                    ch->mScalingKeys[k].mValue.y,
+                                    ch->mScalingKeys[k].mValue.z },
+                                  static_cast<float>(ch->mScalingKeys[k].mTime) });
+
+        clip->channels[channelName] = std::move(ba);
+        ++matchedChannels;
+    }
+
+    if (matchedChannels == 0) {
+        std::cerr << "[AnimationLoader::loadExternalAnimation] WARNING: no channels in '"
+                  << animPath << "' matched any bone in the target skeleton ("
+                  << targetSkeleton->getBoneCount() << " bones). "
+                  << "Check that bone names match between the skin and animation files.\n";
+    } else {
+        std::cout << "[AnimationLoader::loadExternalAnimation] Loaded '"
+                  << animPath << "' (" << matchedChannels << "/"
+                  << anim->mNumChannels << " channels matched).\n";
+    }
+
+    return clip;
 }

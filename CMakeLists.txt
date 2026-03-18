@@ -171,6 +171,38 @@ find_package(Freetype REQUIRED)
 find_package(PNG REQUIRED)
 target_include_directories(client_engine PRIVATE ${PNG_INCLUDE_DIR})
 
+# =============================================================================
+# Assimp — Open Asset Import Library
+# =============================================================================
+# Default: use the system-installed Assimp package.
+# This works for standard FBX/glTF/GLB files but typically does NOT include
+# Draco mesh-compression support, because Draco must be explicitly enabled
+# at Assimp build time via -DASSIMP_BUILD_DRACO=ON.
+#
+# --- Draco support (needed for AssetForge.py-generated skins) ---
+# If your skin GLBs are Draco-compressed, the system Assimp will throw
+# "KHR_draco_mesh_compression is not supported" at load time.
+#
+# Option A — Rebuild Assimp from source with Draco ON (recommended):
+#   FetchContent_Declare(
+#       assimp
+#       GIT_REPOSITORY https://github.com/assimp/assimp.git
+#       GIT_TAG        v5.3.1
+#   )
+#   set(ASSIMP_BUILD_DRACO    ON  CACHE BOOL "" FORCE)
+#   set(ASSIMP_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+#   set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+#   FetchContent_MakeAvailable(assimp)
+#   # Then link with assimp instead of assimp::assimp below.
+#
+# Option B — Temporary workaround (no Draco recompile required):
+#   Pass -DASSIMP_BUILD_DRACO_MESHES=0 to AssetForge.py so skins are exported
+#   WITHOUT Draco compression.  Standard Assimp loads them transparently.
+#   Edit AssetForge.py and remove the draco_mesh_compression export option.
+#
+# The current default keeps find_package(assimp REQUIRED) so existing
+# non-Draco assets continue to work without any build-system changes.
+# Switch to Option A only when you need production Draco-compressed skins.
 find_package(assimp REQUIRED)
 
 add_subdirectory(deps/quill)

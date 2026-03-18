@@ -15,6 +15,7 @@
 #ifndef HEADLESS_SERVER
 #include "../ECS/Components/AssimpModelComponent.h"
 #include "../ECS/Components/AnimatedModelComponent.h"
+#include "../ECS/Components/AnimationControllerComponent.h"
 #include "../Animation/AnimationLoader.h"
 #include "../Util/FileSystem.h"
 #include <glm/gtc/matrix_transform.hpp>
@@ -162,11 +163,68 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
         const std::string meshPath = prefab["mesh"].get<std::string>();
 
         if (prefab.value("animated", false)) {
-            // --- Animated entity: load skeleton + clips, attach AnimatedModelComponent ---
-            // Resolve mesh path relative to src/Resources/ (e.g. "models/player.glb").
-            const std::string absPath = FileSystem::Scene(meshPath);
-            AnimatedModel* animModel  = AnimationLoader::load(absPath);
-            if (animModel) {
+            // ---------------------------------------------------------------
+            // Animated entity — two load scenarios:
+            //
+            // Scenario 1 (Monolithic): No "AnimationController" component, or
+            //   its "animations" object is missing/empty.  Use the legacy
+            //   AnimationLoader::load() that reads mesh, skeleton and embedded
+            //   clips from a single .glb file.
+            //
+            // Scenario 2 (Modular): "AnimationController.animations" contains
+            //   external file paths.  Call loadSkin() for the mesh/skeleton,
+            //   then loadExternalAnimation() for each clip, and store the
+            //   resulting clips in an AnimationControllerComponent.
+            // ---------------------------------------------------------------
+
+            // Determine which scenario applies.
+            const nlohmann::json* acJson = nullptr;  // AnimationController block
+            bool modularMode = false;
+            if (prefab.contains("components") &&
+                prefab["components"].contains("AnimationController")) {
+                const auto& ac = prefab["components"]["AnimationController"];
+                if (ac.contains("animations") && ac["animations"].is_object() &&
+                    !ac["animations"].empty()) {
+                    acJson      = &prefab["components"]["AnimationController"];
+                    modularMode = true;
+                }
+            }
+
+            const std::string absPath  = FileSystem::Scene(meshPath);
+
+            AnimatedModel* animModel = nullptr;
+            if (modularMode) {
+                // ----------------------------------------------------------
+                // Scenario 2: load skin + external animations
+                // ----------------------------------------------------------
+
+                // Resolve optional mesh_path override inside AnimatedModelComponent block
+                std::string skinAbsPath = absPath;
+                if (prefab.contains("components") &&
+                    prefab["components"].contains("AnimatedModelComponent")) {
+                    const auto& amcJson = prefab["components"]["AnimatedModelComponent"];
+                    if (amcJson.contains("mesh_path")) {
+                        skinAbsPath = FileSystem::Scene(
+                            amcJson["mesh_path"].get<std::string>());
+                    }
+                }
+
+                animModel = AnimationLoader::loadSkin(skinAbsPath);
+                if (!animModel) {
+                    std::cerr << "[EntityFactory] loadSkin failed: " << skinAbsPath << "\n";
+                }
+            } else {
+                // ----------------------------------------------------------
+                // Scenario 1: monolithic load (legacy path)
+                // ----------------------------------------------------------
+                animModel = AnimationLoader::load(absPath);
+            }
+
+            if (!animModel) {
+                std::cerr << "[EntityFactory] Failed to load animated model: "
+                          << absPath << "\n";
+                // Fall through; entity is created without a visual component.
+            } else {
                 auto normalizeClipName = [](const std::string& raw) -> std::string {
                     std::string lower(raw);
                     for (auto& c : lower)
@@ -183,24 +241,68 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
 
                 // Resolve optional animation_map from prefab top-level or from
                 // components.AnimatedModelComponent.animation_map.
+                // (Only used in Scenario 1 — Scenario 2 uses "AnimationController.animations".)
                 const nlohmann::json* animMapJson = nullptr;
-                if (prefab.contains("animation_map") &&
-                    prefab["animation_map"].is_object()) {
-                    animMapJson = &prefab["animation_map"];
-                } else if (prefab.contains("components") &&
-                           prefab["components"].contains("AnimatedModelComponent")) {
-                    const auto& j = prefab["components"]["AnimatedModelComponent"];
-                    if (j.contains("animation_map") && j["animation_map"].is_object())
-                        animMapJson = &j["animation_map"];
+                if (!modularMode) {
+                    if (prefab.contains("animation_map") &&
+                        prefab["animation_map"].is_object()) {
+                        animMapJson = &prefab["animation_map"];
+                    } else if (prefab.contains("components") &&
+                               prefab["components"].contains("AnimatedModelComponent")) {
+                        const auto& j = prefab["components"]["AnimatedModelComponent"];
+                        if (j.contains("animation_map") && j["animation_map"].is_object())
+                            animMapJson = &j["animation_map"];
+                    }
                 }
 
                 auto* controller = new AnimationController();
                 std::string firstStateName;
                 bool idleFound = false;
 
-                if (animMapJson) {
-                    // Explicit animation_map: exact (case-sensitive) clip name lookup.
-                    // Only clips mentioned in the map are registered.
+                if (modularMode) {
+                    // ----------------------------------------------------------
+                    // Scenario 2: load each external animation clip and register
+                    // it with the AnimationController state machine.
+                    // ----------------------------------------------------------
+                    const auto& animsJson = (*acJson)["animations"];
+                    std::string defaultState = acJson->value("default_state", "");
+
+                    // We'll build the AnimationControllerComponent alongside
+                    auto& acc = registry.emplace<AnimationControllerComponent>(entity);
+                    acc.defaultState = defaultState;
+
+                    for (auto& [stateName, animPathVal] : animsJson.items()) {
+                        const std::string animRelPath = animPathVal.get<std::string>();
+                        const std::string animAbsPath = FileSystem::Scene(animRelPath);
+
+                        auto clip = AnimationLoader::loadExternalAnimation(
+                            animAbsPath, &animModel->skeleton);
+                        if (!clip) {
+                            std::cerr << "[EntityFactory] loadExternalAnimation failed for state '"
+                                      << stateName << "': " << animAbsPath << "\n";
+                            continue;
+                        }
+
+                        acc.animations[stateName] = clip;
+                        controller->addState(stateName, clip.get());
+
+                        if (firstStateName.empty()) firstStateName = stateName;
+                        if (!idleFound && stateName == "Idle") {
+                            controller->setState("Idle");
+                            idleFound = true;
+                        }
+                    }
+
+                    // Apply default_state if explicitly specified and not already set.
+                    if (!idleFound && !defaultState.empty() &&
+                        acc.animations.count(defaultState)) {
+                        controller->setState(defaultState);
+                        idleFound = true;
+                    }
+                    acc.currentAnimationName = controller->getCurrentStateName();
+
+                } else if (animMapJson) {
+                    // Scenario 1 with explicit animation_map
                     for (auto& [stateName, clipNameVal] : animMapJson->items()) {
                         const std::string clipName = clipNameVal.get<std::string>();
                         AnimationClip* foundClip = nullptr;
@@ -222,7 +324,7 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                         }
                     }
                 } else {
-                    // No animation_map: fall back to normalizeClipName() auto-detection.
+                    // Scenario 1 with auto-detection
                     for (auto& clip : animModel->clips) {
                         const std::string normName = normalizeClipName(clip.name);
                         controller->addState(normName, &clip);
@@ -233,7 +335,8 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                         }
                     }
                 }
-                // Fall back to first clip if no Idle clip was found.
+
+                // Fall back to first clip if no Idle / default_state clip was found.
                 if (!idleFound && !firstStateName.empty())
                     controller->setState(firstStateName);
 
@@ -260,11 +363,6 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                         const float rx = j["model_rotation"].value("x", 0.0f);
                         const float ry = j["model_rotation"].value("y", 0.0f);
                         const float rz = j["model_rotation"].value("z", 0.0f);
-                        // Build a model-space rotation matrix from per-axis degree values.
-                        // Each glm::rotate post-multiplies, so rotations are applied in
-                        // extrinsic (fixed-axis) X-Y-Z order: X is applied first to the
-                        // vertices, then Y around the world Y axis, then Z around world Z.
-                        // This matches the convention of Maths::createTransformationMatrix.
                         glm::mat4 rotMat(1.0f);
                         rotMat = glm::rotate(rotMat, glm::radians(rx), glm::vec3(1.0f, 0.0f, 0.0f));
                         rotMat = glm::rotate(rotMat, glm::radians(ry), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -272,9 +370,6 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                         amc.modelRotationMat = rotMat;
                     }
                 }
-            } else {
-                std::cerr << "[EntityFactory] Failed to load animated model: "
-                          << absPath << "\n";
             }
         } else {
             // --- Static mesh: attach AssimpModelComponent ---
