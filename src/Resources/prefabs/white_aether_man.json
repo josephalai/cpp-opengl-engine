@@ -1,0 +1,51 @@
+{
+  "id": "white_aether_man",
+  "description": "White Aether entity utilizing pure consciousness advanced traversal.",
+  "model_type": "white_aether_man",
+  "animated": true,
+  "mesh": "Models/Skins/white-aether-man-2.glb",
+  "physics": {
+    "type": "character_controller",
+    "radius": 0.5,
+    "height": 1.8
+  },
+  "ai_script": "scripts/ai/guard.lua",
+  "components": {
+    "AnimatedModelComponent": {
+      "scale": 0.05,
+      "model_rotation": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "model_offset": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      }
+    },
+    "AnimationControllerComponent": {
+      "animations": {
+        "Idle": "Models/Animations/Idle.glb",
+        "Walk": "Models/Animations/Walking.glb",
+        "Run": "Models/Animations/Running.glb",
+        "Attack": "Models/Animations/Charged_Spell_Cast_2.glb",
+        "Spell": "Models/Animations/mage_soell_cast_3.glb",
+        "Hit": "Models/Animations/Hit_Reaction_1.glb",
+        "Die": "Models/Animations/Dead.glb"
+      },
+      "default_state": "Idle"
+    },
+    "NetworkSyncComponent": {
+      "interpolation_delay": 0.2,
+      "max_buffer_size": 20
+    },
+    "AIComponent": {
+      "script": "GuardAI"
+    },
+    "InteractableComponent": {
+      "script": "scripts/interactions/guard.lua",
+      "interact_range": 2.0
+    }
+  }
+}

@@ -171,7 +171,58 @@ find_package(Freetype REQUIRED)
 find_package(PNG REQUIRED)
 target_include_directories(client_engine PRIVATE ${PNG_INCLUDE_DIR})
 
-find_package(assimp REQUIRED)
+# =============================================================================
+# Assimp — Open Asset Import Library
+# =============================================================================
+# Default: use the system-installed Assimp (e.g. `brew install assimp`).
+# This is the same approach the project used before; it avoids any zlib or
+# other system-library conflicts that arise when building Assimp from source.
+#
+# If you need Draco mesh-compression support (for GLBs produced by
+# AssetForge.py with Draco enabled), you can opt-in to building Assimp from
+# source by passing -DENGINE_ASSIMP_WITH_DRACO=ON to cmake.
+#
+# IMPORTANT: the FetchContent path builds Assimp from source.  It sets
+# ASSIMP_BUILD_ZLIB=OFF so Assimp uses the same system zlib that PNG and
+# other dependencies already depend on.  If your system zlib is in an unusual
+# location you may still need to set ZLIB_ROOT or ZLIB_LIBRARY explicitly.
+#
+# Alternatively — no build changes needed — export skins from AssetForge.py
+# WITHOUT Draco compression (set export_draco_mesh_compression_enable=False).
+# Standard Assimp loads uncompressed GLBs transparently.
+option(ENGINE_ASSIMP_WITH_DRACO
+    "Build Assimp from source with Draco mesh-compression support (opt-in; see comments above)"
+    OFF)
+
+option(ENGINE_ASSIMP_WITH_DRACO
+    "Build Assimp from source with Draco mesh-compression support (opt-in)"
+    OFF)
+
+if(ENGINE_ASSIMP_WITH_DRACO)
+    FetchContent_Declare(
+        assimp
+        GIT_REPOSITORY https://github.com/assimp/assimp.git
+        GIT_TAG        v5.4.3
+        GIT_SUBMODULES "contrib/draco"
+    )
+
+    set(ASSIMP_BUILD_DRACO          ON  CACHE BOOL "" FORCE)
+    set(ASSIMP_BUILD_ZLIB           OFF CACHE BOOL "" FORCE)
+    set(ASSIMP_BUILD_TESTS          OFF CACHE BOOL "" FORCE)
+    set(ASSIMP_BUILD_ASSIMP_TOOLS   OFF CACHE BOOL "" FORCE)
+    set(ASSIMP_INSTALL              OFF CACHE BOOL "" FORCE)
+    set(ASSIMP_INSTALL_PDB          OFF CACHE BOOL "" FORCE)
+    set(ASSIMP_INJECT_DEBUG_POSTFIX OFF CACHE BOOL "" FORCE)
+    set(BUILD_SHARED_LIBS           ON  CACHE BOOL "" FORCE)  # <--- KEY CHANGE: ensures draco_shared exists
+
+    FetchContent_MakeAvailable(assimp)
+
+    if(NOT TARGET assimp::assimp)
+        add_library(assimp::assimp ALIAS assimp)
+    endif()
+else()
+    find_package(assimp REQUIRED)
+endif()
 
 add_subdirectory(deps/quill)
 
