@@ -714,6 +714,9 @@ bool SceneLoaderJson::load(
 
             auto* controller = new AnimationController();
             bool idleRegistered = false;
+            std::string firstStateName;
+            std::string defaultState    = ac.value("default_state", "");
+            bool defaultStateRegistered = false;
 
             std::cout << "[SceneLoaderJson] Loaded animated_character '" << relPath
                       << "': " << animModel->clips.size() << " clip(s), "
@@ -732,7 +735,10 @@ bool SceneLoaderJson::load(
                     }
                     if (foundClip) {
                         controller->addState(stateName, foundClip);
+                        if (firstStateName.empty()) firstStateName = stateName;
                         if (stateName == "Idle") idleRegistered = true;
+                        if (!defaultState.empty() && stateName == defaultState)
+                            defaultStateRegistered = true;
                         std::cout << "[SceneLoaderJson]   state '" << stateName
                                   << "' <- clip '" << clipName << "'\n";
                     } else {
@@ -748,13 +754,27 @@ bool SceneLoaderJson::load(
                 for (auto& clip : animModel->clips) {
                     std::string stateName = normalizeClipName(clip.name);
                     controller->addState(stateName, &clip);
+                    if (firstStateName.empty()) firstStateName = stateName;
                     if (stateName == "Idle") idleRegistered = true;
+                    if (!defaultState.empty() && stateName == defaultState)
+                        defaultStateRegistered = true;
                     std::cout << "[SceneLoaderJson]   state '" << stateName
                               << "' <- clip '" << clip.name << "'\n";
                 }
             }
 
-            if (idleRegistered) controller->setState("Idle");
+            // Select the initial animation state in priority order:
+            //   1. default_state from JSON  (if specified and the clip was registered)
+            //   2. "Idle"                   (standard fallback)
+            //   3. firstStateName           (last resort — prevents bind-pose when neither
+            //                               default_state nor an "Idle" clip was found)
+            if (defaultStateRegistered) {
+                controller->setState(defaultState);
+            } else if (idleRegistered) {
+                controller->setState("Idle");
+            } else if (!firstStateName.empty()) {
+                controller->setState(firstStateName);
+            }
 
             if (rx != 0.0f || ry != 0.0f || rz != 0.0f) {
                 glm::mat4 userRot = glm::mat4(1.0f);

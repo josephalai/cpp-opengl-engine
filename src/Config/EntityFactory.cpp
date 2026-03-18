@@ -270,6 +270,7 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                     auto& animControllerComp = registry.emplace<AnimationControllerComponent>(entity);
                     animControllerComp.defaultState = defaultState;
 
+                    // Step 1: Register ALL clips first (no state selection in this loop).
                     for (auto& [stateName, animPathVal] : animsJson.items()) {
                         const std::string animRelPath = animPathVal.get<std::string>();
                         const std::string animAbsPath = FileSystem::Scene(animRelPath);
@@ -286,18 +287,20 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                         controller->addState(stateName, clip.get());
 
                         if (firstStateName.empty()) firstStateName = stateName;
-                        if (!idleFound && stateName == "Idle") {
-                            controller->setState("Idle");
-                            idleFound = true;
-                        }
                     }
 
-                    // Apply default_state if explicitly specified and not already set.
-                    if (!idleFound && !defaultState.empty() &&
+                    // Step 2: Apply default_state with highest priority.
+                    if (!defaultState.empty() &&
                         animControllerComp.animations.count(defaultState)) {
                         controller->setState(defaultState);
                         idleFound = true;
                     }
+                    // Step 3: Fall back to "Idle" if default_state was not set or not found.
+                    else if (animControllerComp.animations.count("Idle")) {
+                        controller->setState("Idle");
+                        idleFound = true;
+                    }
+
                     animControllerComp.currentAnimationName = controller->getCurrentStateName();
 
                 } else if (animMapJson) {
@@ -336,8 +339,14 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                 }
 
                 // Fall back to first clip if no Idle / default_state clip was found.
-                if (!idleFound && !firstStateName.empty())
+                if (!idleFound && !firstStateName.empty()) {
                     controller->setState(firstStateName);
+                    // Sync AnimationControllerComponent if present (modular mode).
+                    if (registry.all_of<AnimationControllerComponent>(entity)) {
+                        registry.get<AnimationControllerComponent>(entity).currentAnimationName =
+                            controller->getCurrentStateName();
+                    }
+                }
 
                 auto& amc       = registry.emplace<AnimatedModelComponent>(entity);
                 amc.model       = animModel;
