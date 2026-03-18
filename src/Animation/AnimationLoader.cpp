@@ -417,52 +417,100 @@ std::shared_ptr<AnimationClip> AnimationLoader::loadExternalAnimation(
         static_cast<float>(anim->mDuration),
         tps);
 
-    int matchedChannels = 0;
-    for (unsigned int c = 0; c < anim->mNumChannels; ++c) {
-        aiNodeAnim* ch = anim->mChannels[c];
-        std::string channelName(ch->mNodeName.C_Str());
-
-        // Only import channels whose names map to a bone in the target skeleton.
-        // This allows channels like "mixamorig:RightArm" to be matched when the
-        // skeleton stores bones by that exact name, and mismatched channels
-        // (e.g. root motion nodes or non-bone nodes) are cleanly ignored.
-        if (!targetSkeleton->getBoneByName(channelName)) continue;
-
+    // Helper: copy all keyframe data from one aiNodeAnim channel into a BoneAnimation.
+    auto extractChannel = [](const aiNodeAnim* ch) -> BoneAnimation {
         BoneAnimation ba;
         for (unsigned int k = 0; k < ch->mNumPositionKeys; ++k)
             ba.positions.push_back({ { ch->mPositionKeys[k].mValue.x,
                                        ch->mPositionKeys[k].mValue.y,
                                        ch->mPositionKeys[k].mValue.z },
                                      static_cast<float>(ch->mPositionKeys[k].mTime) });
-
         for (unsigned int k = 0; k < ch->mNumRotationKeys; ++k) {
             const auto& q = ch->mRotationKeys[k].mValue;
-            ba.rotations.push_back({
-                glm::quat(q.w, q.x, q.y, q.z),
-                static_cast<float>(ch->mRotationKeys[k].mTime)
-            });
+            ba.rotations.push_back({ glm::quat(q.w, q.x, q.y, q.z),
+                                     static_cast<float>(ch->mRotationKeys[k].mTime) });
         }
-
         for (unsigned int k = 0; k < ch->mNumScalingKeys; ++k)
             ba.scales.push_back({ { ch->mScalingKeys[k].mValue.x,
                                     ch->mScalingKeys[k].mValue.y,
                                     ch->mScalingKeys[k].mValue.z },
                                   static_cast<float>(ch->mScalingKeys[k].mTime) });
+        return ba;
+    };
 
-        clip->channels[channelName] = std::move(ba);
+    // Pass 1 — exact channel-name → bone-name match.
+    // This handles the common case where skin and animation come from the same file.
+    int matchedChannels = 0;
+    for (unsigned int c = 0; c < anim->mNumChannels; ++c) {
+        aiNodeAnim* ch = anim->mChannels[c];
+        std::string channelName(ch->mNodeName.C_Str());
+        if (!targetSkeleton->getBoneByName(channelName)) continue;
+        clip->channels[channelName] = extractChannel(ch);
         ++matchedChannels;
     }
 
+    // Pass 2 — if no exact matches, try stripping namespace prefixes
+    // (e.g. "mixamorig:Hips" → "Hips").  This handles the very common mismatch
+    // between Meshy/Blender skin files and Mixamo animation downloads where the
+    // two sets of files use different bone-naming conventions.
     if (matchedChannels == 0) {
-        std::cerr << "[AnimationLoader::loadExternalAnimation] WARNING: no channels in '"
-                  << animPath << "' matched any bone in the target skeleton ("
-                  << targetSkeleton->getBoneCount() << " bones). "
-                  << "Check that bone names match between the skin and animation files.\n";
-    } else {
-        std::cout << "[AnimationLoader::loadExternalAnimation] Loaded '"
-                  << animPath << "' (" << matchedChannels << "/"
-                  << anim->mNumChannels << " channels matched).\n";
+        // Build a "base-name after last ':'" → bone lookup for O(1) probes.
+        // Note: in well-formed rigs no two bones share the same post-colon base name,
+        // so emplace (first-insertion-wins on collision) is safe here.
+        std::unordered_map<std::string, Bone*> bonesByBaseName;
+        for (const auto& [boneName, bonePtr] : targetSkeleton->bonesByName) {
+            auto colon = boneName.rfind(':');
+            std::string base = (colon != std::string::npos) ? boneName.substr(colon + 1) : boneName;
+            bonesByBaseName.emplace(base, bonePtr);
+        }
+
+        for (unsigned int c = 0; c < anim->mNumChannels; ++c) {
+            aiNodeAnim* ch = anim->mChannels[c];
+            std::string channelName(ch->mNodeName.C_Str());
+
+            // Strip any "prefix:" namespace from the channel name.
+            auto colon = channelName.rfind(':');
+            std::string channelBase = (colon != std::string::npos)
+                                          ? channelName.substr(colon + 1) : channelName;
+
+            // First try: stripped channel name matches an exact bone name.
+            Bone* bone = targetSkeleton->getBoneByName(channelBase);
+
+            // Second try: stripped channel name matches a bone's base name
+            // (handles both sides having a namespace prefix).
+            if (!bone) {
+                auto it = bonesByBaseName.find(channelBase);
+                if (it != bonesByBaseName.end()) bone = it->second;
+            }
+
+            if (!bone) continue;
+
+            // Store the channel under the BONE'S canonical name so that
+            // AnimationClip::interpolate() can find it via bone->name lookup.
+            clip->channels[bone->name] = extractChannel(ch);
+            ++matchedChannels;
+        }
+
+        if (matchedChannels > 0) {
+            std::cout << "[AnimationLoader::loadExternalAnimation] "
+                      << "Prefix-stripped match: '" << animPath << "' ("
+                      << matchedChannels << "/" << anim->mNumChannels
+                      << " channel(s) matched after stripping namespace prefixes).\n";
+        }
     }
+
+    if (matchedChannels == 0) {
+        std::cerr << "[AnimationLoader::loadExternalAnimation] WARNING: '"
+                  << animPath << "' — no channels matched any of the "
+                  << targetSkeleton->getBoneCount() << " skeleton bone(s) "
+                  << "(tried exact names and colon-prefix stripping). "
+                  << "Check that bone names match between the skin and animation files.\n";
+        return nullptr;
+    }
+
+    std::cout << "[AnimationLoader::loadExternalAnimation] Loaded '"
+              << animPath << "' (" << matchedChannels << "/"
+              << anim->mNumChannels << " channel(s) matched).\n";
 
     return clip;
 }
