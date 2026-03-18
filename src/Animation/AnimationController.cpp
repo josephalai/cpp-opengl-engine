@@ -47,6 +47,9 @@ void AnimationController::setStateByHash(uint32_t h) {
 // StringId-based primary API
 // ---------------------------------------------------------------------------
 
+// NOTE: state names are NOT registered when this overload is called directly;
+// use addState(const std::string&, ...) to ensure getCurrentStateName() and
+// getStateNames() return readable names rather than hash-fallback numbers.
 void AnimationController::addState(StringId id, AnimationClip* clip,
                                     float speed, bool looping) {
     uint32_t h = id.value();
