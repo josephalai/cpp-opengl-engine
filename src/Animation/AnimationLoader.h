@@ -35,7 +35,8 @@ public:
     /// Returns nullptr on failure or if no animations were found in the file.
     static std::shared_ptr<AnimationClip> loadExternalAnimation(
         const std::string& animPath,
-        Skeleton* targetSkeleton);
+        Skeleton* targetSkeleton,
+        const std::string& expectedName = "");
 };
 
 #endif // ENGINE_ANIMATIONLOADER_H

@@ -58,6 +58,12 @@ private:
     entt::entity meshGhostEntity_  = entt::null;
     std::string  meshGhostPrefabId_;
 
+    /// Animation preview state for animated mesh ghost entities.
+    /// Populated from AnimationControllerComponent::animations keys when the
+    /// ghost is created.  Empty for non-animated prefabs.
+    std::vector<std::string> ghostAnimNames_;
+    int                      ghostAnimIndex_ = -1;
+
     /// Create (or update) the mesh ghost entity for the given prefab.
     void ensureMeshGhost();
     /// Destroy the current mesh ghost entity and free its resources.

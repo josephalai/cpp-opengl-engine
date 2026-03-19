@@ -187,12 +187,19 @@ void AnimationSystem::update(float deltaTime) {
 
     // --- 3. Build temporary AnimatedEntity list for AnimatedRenderer ---
     // AnimatedRenderer still takes std::vector<AnimatedEntity*>.  We build a
-    // temporary list each frame from the ECS data — no heap allocations per
-    // entity since we store AnimatedEntity values in a local vector.
+    // temporary list each frame from the ECS data.
+    //
+    // IMPORTANT: tempStorage must be fully populated BEFORE renderList is built.
+    // Storing &tempStorage.back() while still push_back()-ing into tempStorage is
+    // undefined behaviour: any push_back() that triggers a reallocation moves all
+    // elements to a new address, invalidating every pointer already in renderList.
+    // We fix this by reserving the exact entity count upfront, then building the
+    // pointer list in a second pass once tempStorage is stable.
     std::vector<AnimatedEntity> tempStorage;
-    tempStorage.reserve(16);
-    std::vector<AnimatedEntity*> renderList;
-    renderList.reserve(16);
+    {
+        const auto count = static_cast<size_t>(view.size_hint());
+        tempStorage.reserve(count ? count : 16);
+    }
 
     for (auto entity : view) {
         const auto& amc = view.get<AnimatedModelComponent>(entity);
@@ -218,8 +225,14 @@ void AnimationSystem::update(float deltaTime) {
         ae.ownsModel    = false; 
         ae.pairedEntity = nullptr;
         tempStorage.push_back(ae);
-        renderList.push_back(&tempStorage.back());
     }
+
+    // Build the pointer list in a second pass now that tempStorage is stable
+    // (no further push_back()s, so no reallocation can invalidate the pointers).
+    std::vector<AnimatedEntity*> renderList;
+    renderList.reserve(tempStorage.size());
+    for (auto& ae : tempStorage)
+        renderList.push_back(&ae);
 
     renderer_->render(renderList, deltaTime, lights_, camera_, projectionMatrix_);
 }

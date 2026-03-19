@@ -17,6 +17,7 @@
 #include "../ECS/Components/NetworkIdComponent.h"
 #include "../ECS/Components/ColliderComponent.h"
 #include "../Config/PrefabManager.h"
+#include "../Config/EntityFactory.h"
 #include "../Entities/Entity.h"
 #include "../Util/FileSystem.h"
 #include "../RenderEngine/DisplayManager.h"
@@ -491,6 +492,76 @@ bool SceneLoaderJson::load(
             if (primaryTerrain && y == 0.0f)
                 y = primaryTerrain->getHeightOfTerrain(x, z);
 
+            StringId aliasId(alias);
+
+            // Determine whether this is an animated prefab.  Animated prefabs
+            // must be spawned via EntityFactory::spawn() so that the full
+            // animation pipeline (AnimationControllerComponent, external clips,
+            // default_state, AnimatedModelComponent) is correctly set up.
+            bool isAnimatedPrefab = !prefab.is_null() && prefab.value("animated", false);
+            if (!isAnimatedPrefab && !prefab.is_null() && prefab.contains("components")) {
+                const auto& comps = prefab["components"];
+                isAnimatedPrefab = comps.contains("AnimationControllerComponent") ||
+                                   comps.contains("AnimatedModelComponent");
+            }
+
+            // Deterministic network ID shared by both animated and static paths.
+            uint32_t staticNetId = resolveStaticId(
+                generateStaticId(x, z), staticUsedIds, x, z);
+
+            if (isAnimatedPrefab) {
+                // Animated path — EntityFactory handles skin load, external clip
+                // load, AnimationController state machine, and default_state.
+                auto ent = EntityFactory::spawn(registry, alias,
+                                               glm::vec3(x, y, z),
+                                               nullptr,
+                                               glm::vec3(0.0f, ry, 0.0f),
+                                               scale);
+                if (ent == entt::null) continue;
+
+                // Override/add the NetworkIdComponent with the deterministic
+                // static ID (EntityFactory may have created one with id=0).
+                if (registry.any_of<NetworkIdComponent>(ent)) {
+                    auto& nid   = registry.get<NetworkIdComponent>(ent);
+                    nid.id        = staticNetId;
+                    nid.modelType = alias;
+                    nid.isNPC     = false;
+                } else {
+                    registry.emplace<NetworkIdComponent>(ent,
+                        NetworkIdComponent{staticNetId, alias, false, 0});
+                }
+
+                // ColliderComponent AABB for EntityPicker — add only if
+                // EntityFactory did not already attach one.
+                if (!registry.any_of<ColliderComponent>(ent) &&
+                    !prefab.is_null() && prefab.contains("physics")) {
+                    const auto& phys = prefab["physics"];
+                    glm::vec3 physHalfExtents(0.5f);
+                    bool hasPrefabPhys = false;
+                    if (phys.contains("halfExtents") && phys["halfExtents"].is_array()
+                            && phys["halfExtents"].size() >= 3) {
+                        physHalfExtents = glm::vec3(
+                            phys["halfExtents"][0].get<float>(),
+                            phys["halfExtents"][1].get<float>(),
+                            phys["halfExtents"][2].get<float>());
+                        hasPrefabPhys = true;
+                    } else if (phys.contains("radius")) {
+                        physHalfExtents = glm::vec3(phys.value("radius", 0.5f));
+                        hasPrefabPhys = true;
+                    }
+                    if (hasPrefabPhys) {
+                        glm::vec3 scaledHalf = physHalfExtents * scale;
+                        auto* box = new BoundingBox(nullptr, glm::vec3(1.0f));
+                        box->setAABB(-scaledHalf, scaledHalf);
+                        registry.emplace<ColliderComponent>(ent, ColliderComponent{box});
+                    }
+                }
+
+                entityAliasByHandle[aliasId].push_back(ent);
+                continue;
+            }
+
+            // Static (non-animated) path — unchanged behaviour.
             auto ent = registry.create();
             auto& tc = registry.emplace<TransformComponent>(ent);
             tc.position = glm::vec3(x, y, z);
@@ -498,7 +569,6 @@ bool SceneLoaderJson::load(
             tc.scale    = scale;
 
             // Visual mesh — look up the model by alias.
-            StringId aliasId(alias);
             auto mit = modelMap.find(aliasId);
             if (mit != modelMap.end()) {
                 auto& lm = mit->second;
@@ -508,9 +578,6 @@ bool SceneLoaderJson::load(
                 smc.textureIndex = 0;
             }
 
-            // Deterministic network ID with collision resolution.
-            uint32_t staticNetId = resolveStaticId(
-                generateStaticId(x, z), staticUsedIds, x, z);
             registry.emplace<NetworkIdComponent>(ent,
                 NetworkIdComponent{staticNetId, alias, false, 0});
 

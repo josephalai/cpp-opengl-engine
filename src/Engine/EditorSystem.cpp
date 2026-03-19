@@ -7,6 +7,7 @@
 #include "../ECS/Components/InputStateComponent.h"
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/AnimatedModelComponent.h"
+#include "../ECS/Components/AnimationControllerComponent.h"
 #include "../ECS/Components/AssimpModelComponent.h"
 #include "../ECS/Components/NetworkIdComponent.h"
 #include "../ECS/Components/AIScriptComponent.h"
@@ -167,6 +168,33 @@ void EditorSystem::ensureMeshGhost() {
 
     meshGhostPrefabId_ = editorState_.selectedPrefab;
 
+    ghostAnimNames_.clear();
+    ghostAnimIndex_ = -1;
+    // Populate animation list for the preview combo.
+    // Scenario 2 (modular): state names come from AnimationControllerComponent.
+    // Scenario 1 (monolithic): state names come from the AnimationController directly.
+    if (auto* amc = registry_.try_get<AnimatedModelComponent>(meshGhostEntity_)) {
+        if (auto* acc = registry_.try_get<AnimationControllerComponent>(meshGhostEntity_)) {
+            // Modular path: use the ACC's animations map (preserves mapping to clip data).
+            for (const auto& kv : acc->animations)
+                ghostAnimNames_.push_back(kv.first);
+            std::sort(ghostAnimNames_.begin(), ghostAnimNames_.end());
+        } else if (amc->controller) {
+            // Monolithic path: query the controller directly for all registered states.
+            ghostAnimNames_ = amc->controller->getStateNames();
+        }
+        // Pre-select the currently active animation.
+        if (amc->controller) {
+            const std::string& curState = amc->controller->getCurrentStateName();
+            for (int i = 0; i < static_cast<int>(ghostAnimNames_.size()); ++i) {
+                if (ghostAnimNames_[static_cast<size_t>(i)] == curState) {
+                    ghostAnimIndex_ = i;
+                    break;
+                }
+            }
+        }
+    }
+
     // Strip every non-visual component so the ghost is inert.
     registry_.remove<InputStateComponent>(meshGhostEntity_);
     registry_.remove<InputQueueComponent>(meshGhostEntity_);
@@ -209,6 +237,8 @@ void EditorSystem::destroyMeshGhost() {
     registry_.destroy(meshGhostEntity_);
     meshGhostEntity_ = entt::null;
     meshGhostPrefabId_.clear();
+    ghostAnimNames_.clear();
+    ghostAnimIndex_ = -1;
 }
 
 // ---------------------------------------------------------------------------
@@ -317,6 +347,48 @@ void EditorSystem::renderEditorWindow() {
         }
     } else {
         ImGui::TextDisabled("No prefabs loaded");
+    }
+
+    // --- Animation Preview (only for animated mesh-based prefabs) ---
+    if (!ghostAnimNames_.empty()) {
+        ImGui::SeparatorText("Animation Preview");
+
+        // Show the currently playing animation name (read directly from the controller
+        // so it reflects the live state in both Debug and Release builds).
+        std::string curAnim;
+        if (meshGhostEntity_ != entt::null && registry_.valid(meshGhostEntity_)) {
+            if (auto* amc = registry_.try_get<AnimatedModelComponent>(meshGhostEntity_))
+                if (amc->controller)
+                    curAnim = amc->controller->getCurrentStateName();
+        }
+        ImGui::Text("Playing: %s", curAnim.empty() ? "(none)" : curAnim.c_str());
+
+        // Combo to switch animations on the ghost.
+        const char* previewAnim = (ghostAnimIndex_ >= 0 &&
+                                   ghostAnimIndex_ < static_cast<int>(ghostAnimNames_.size()))
+            ? ghostAnimNames_[static_cast<size_t>(ghostAnimIndex_)].c_str()
+            : "(select)";
+        if (ImGui::BeginCombo("Animation##ghost_anim", previewAnim)) {
+            for (int i = 0; i < static_cast<int>(ghostAnimNames_.size()); ++i) {
+                bool sel = (i == ghostAnimIndex_);
+                if (ImGui::Selectable(ghostAnimNames_[static_cast<size_t>(i)].c_str(), sel)) {
+                    ghostAnimIndex_ = i;
+                    // Apply the new animation state to the ghost entity.
+                    if (meshGhostEntity_ != entt::null && registry_.valid(meshGhostEntity_)) {
+                        if (auto* amc = registry_.try_get<AnimatedModelComponent>(meshGhostEntity_)) {
+                            if (amc->controller)
+                                amc->controller->setState(ghostAnimNames_[static_cast<size_t>(i)]);
+                        }
+                        if (auto* acc = registry_.try_get<AnimationControllerComponent>(meshGhostEntity_)) {
+                            acc->currentAnimationName = ghostAnimNames_[static_cast<size_t>(i)];
+                            acc->playbackTime = 0.0f;
+                        }
+                    }
+                }
+                if (sel) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
     }
 
     // --- Ghost controls ---

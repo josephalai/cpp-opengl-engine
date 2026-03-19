@@ -1,6 +1,7 @@
 // src/Animation/AnimationController.cpp
 
 #include "AnimationController.h"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 
@@ -26,12 +27,8 @@ void AnimationController::setStateByHash(uint32_t h) {
         return;
     }
 
-#ifndef NDEBUG
     auto it = stateNames_.find(h);
     currentStateName_ = (it != stateNames_.end()) ? it->second : std::to_string(h);
-#else
-    currentStateName_ = std::to_string(h);
-#endif
 
     states_[h].reset();
 
@@ -50,6 +47,9 @@ void AnimationController::setStateByHash(uint32_t h) {
 // StringId-based primary API
 // ---------------------------------------------------------------------------
 
+// NOTE: state names are NOT registered when this overload is called directly;
+// use addState(const std::string&, ...) to ensure getCurrentStateName() and
+// getStateNames() return readable names rather than hash-fallback numbers.
 void AnimationController::addState(StringId id, AnimationClip* clip,
                                     float speed, bool looping) {
     uint32_t h = id.value();
@@ -58,10 +58,6 @@ void AnimationController::addState(StringId id, AnimationClip* clip,
         return;
     }
     states_[h] = AnimationState("", clip, speed, looping);
-#ifndef NDEBUG
-    const std::string* name = StringId::lookupName(h);
-    if (name) stateNames_[h] = *name;
-#endif
 }
 
 void AnimationController::addTransition(StringId from, StringId to,
@@ -72,6 +68,15 @@ void AnimationController::addTransition(StringId from, StringId to,
 
 void AnimationController::setState(StringId id) {
     setStateByHash(id.value());
+}
+
+std::vector<std::string> AnimationController::getStateNames() const {
+    std::vector<std::string> names;
+    names.reserve(stateNames_.size());
+    for (const auto& kv : stateNames_)
+        names.push_back(kv.second);
+    std::sort(names.begin(), names.end());
+    return names;
 }
 
 // ---------------------------------------------------------------------------

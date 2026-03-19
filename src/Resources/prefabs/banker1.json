@@ -1,9 +1,9 @@
 {
-  "id": "white_aether_man",
-  "description": "White Aether entity utilizing pure consciousness advanced traversal.",
-  "model_type": "white_aether_man",
+  "id": "banker1",
+  "description": "Banker1 entity.",
+  "model_type": "banker1",
   "animated": true,
-  "mesh": "Models/Skins/white-aether-man-2.glb",
+  "mesh": "Models/Skins/banker1.glb",
   "physics": {
     "type": "character_controller",
     "radius": 0.5,
@@ -26,13 +26,7 @@
     },
     "AnimationControllerComponent": {
       "animations": {
-        "Idle":   "Models/Animations/Idle.glb",
-        "Walk":   "Models/Animations/Walking.glb",
-        "Run":    "Models/Animations/Running.glb",
-        "Attack": "Models/Animations/Charged_Spell_Cast_2.glb",
-        "Spell":  "Models/Animations/mage_soell_cast_3.glb",
-        "Hit":    "Models/Animations/Hit_Reaction_1.glb",
-        "Die":    "Models/Animations/Dead.glb"
+        "Idle": "Models/Animations/banker1_Idle_3.glb"
       },
       "default_state": "Idle"
     },
