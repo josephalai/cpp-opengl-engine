@@ -17,11 +17,6 @@
     "step_height": 0.35
   },
   "animation_controller": "animations/humanoid.json",
-  "animation_map": {
-    "Idle": "Armature|Idle",
-    "Walk": "Armature|Walk",
-    "Run":  "Armature|Run"
-  },
   "ai_script": "scripts/ai/banker.lua",
   "components": {
     "NetworkSyncComponent": {

@@ -4,11 +4,6 @@
   "model_type": "npc_wanderer",
   "render_mode": "instanced",
   "animated": true,
-  "animation_map": {
-    "Idle": "Armature|Idle",
-    "Walk": "Armature|Walk",
-    "Run":  "Armature|Run"
-  },
   "mesh": "Models/Characters/characters.glb",
   "physics": {
     "type": "character_controller",

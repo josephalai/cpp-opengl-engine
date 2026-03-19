@@ -17,10 +17,5 @@
     "interact_range": 2.0
   },
   "id": "npc_goblin",
-  "animation_map": {
-    "Idle": "Armature|Idle",
-    "Walk": "Armature|Walk",
-    "Run":  "Armature|Run"
-  },
   "animated": true
 }
