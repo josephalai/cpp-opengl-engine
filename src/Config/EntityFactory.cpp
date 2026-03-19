@@ -259,23 +259,25 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
 
                 if (modularMode) {
                     // ----------------------------------------------------------
-                    // Scenario 2: load each external animation clip and register
-                    // it with the AnimationController state machine.
+                    // Scenario 2: load each external animation clip...
                     // ----------------------------------------------------------
                     const auto& animsJson  = (*animControllerJson)["animations"];
-                    std::string defaultState = animControllerJson->value("default_state", "");
+                    
+                    // FIX: Normalise the default state string from JSON
+                    std::string rawDefaultState = animControllerJson->value("default_state", "");
+                    std::string defaultState = rawDefaultState.empty() ? "" : normalizeClipName(rawDefaultState);
 
-                    // Attach an AnimationControllerComponent to keep the shared_ptr
-                    // owners alive alongside the AnimationController raw pointers.
                     auto& animControllerComp = registry.emplace<AnimationControllerComponent>(entity);
                     animControllerComp.defaultState = defaultState;
 
-                    for (auto& [stateName, animPathVal] : animsJson.items()) {
+                    for (auto& [rawStateName, animPathVal] : animsJson.items()) {
+                        // FIX: Normalise the JSON key so "idle" becomes "Idle"
+                        std::string stateName = normalizeClipName(rawStateName);
                         const std::string animRelPath = animPathVal.get<std::string>();
                         const std::string animAbsPath = FileSystem::Scene(animRelPath);
 
                         auto clip = AnimationLoader::loadExternalAnimation(
-                            animAbsPath, &animModel->skeleton);
+                            animAbsPath, &animModel->skeleton, stateName);
                         if (!clip) {
                             std::cerr << "[EntityFactory] loadExternalAnimation failed for state '"
                                       << stateName << "': " << animAbsPath << "\n";

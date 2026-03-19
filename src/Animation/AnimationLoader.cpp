@@ -383,7 +383,8 @@ AnimatedModel* AnimationLoader::loadSkin(const std::string& skinPath) {
 
 std::shared_ptr<AnimationClip> AnimationLoader::loadExternalAnimation(
     const std::string& animPath,
-    Skeleton* targetSkeleton)
+    Skeleton* targetSkeleton,
+    const std::string& expectedName)
 {
     if (!targetSkeleton) {
         std::cerr << "[AnimationLoader::loadExternalAnimation] targetSkeleton is null.\n";
@@ -400,15 +401,44 @@ std::shared_ptr<AnimationClip> AnimationLoader::loadExternalAnimation(
         return nullptr;
     }
 
-    if (scene->mNumAnimations == 0) {
+if (scene->mNumAnimations == 0) {
         std::cerr << "[AnimationLoader::loadExternalAnimation] No animations found in '"
                   << animPath << "'\n";
         return nullptr;
     }
 
-    // Use the first animation track in the file (animation-only GLBs typically
-    // contain exactly one animation per file as produced by AssetForge.py).
-    aiAnimation* anim = scene->mAnimations[0];
+    // --- NEW SMART CLIP SELECTION LOGIC ---
+    aiAnimation* anim = nullptr;
+
+    // If the file has multiple animations, search for the one that matches our target state name.
+    if (!expectedName.empty() && scene->mNumAnimations > 1) {
+        std::string targetLower = expectedName;
+        std::transform(targetLower.begin(), targetLower.end(), targetLower.begin(), ::tolower);
+
+        for (unsigned int i = 0; i < scene->mNumAnimations; ++i) {
+            std::string trackName = scene->mAnimations[i]->mName.C_Str();
+            std::string trackLower = trackName;
+            std::transform(trackLower.begin(), trackLower.end(), trackLower.begin(), ::tolower);
+
+            // If the track name contains our target (e.g. "walk" matches "Armature|Walk")
+            if (trackLower.find(targetLower) != std::string::npos) {
+                anim = scene->mAnimations[i];
+                break;
+            }
+        }
+    }
+
+    // Fallback: If no match was found, or no name was provided, grab the first one.
+    if (!anim) {
+        anim = scene->mAnimations[0];
+        if (scene->mNumAnimations > 1 && !expectedName.empty()) {
+            std::cerr << "[AnimationLoader] WARNING: '" << animPath 
+                      << "' has multiple animations but none matched '" << expectedName 
+                      << "'. Defaulting to track 0: " << anim->mName.C_Str() << "\n";
+        }
+    }
+    // ---------------------------------------
+
     float tps = (anim->mTicksPerSecond > 0.0)
                     ? static_cast<float>(anim->mTicksPerSecond) : 25.0f;
 
