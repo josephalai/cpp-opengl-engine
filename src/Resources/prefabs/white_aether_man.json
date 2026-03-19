@@ -26,13 +26,13 @@
     },
     "AnimationControllerComponent": {
       "animations": {
-        "Idle":   "Models/Animations/Dead.glb",
-        "Walk":   "Models/Animations/Hit_Reaction_1.glb",
-        "Run":    "Models/Animations/Idle.glb",
+        "Idle":   "Models/Animations/Idle.glb",
+        "Walk":   "Models/Animations/Walking.glb",
+        "Run":    "Models/Animations/Running.glb",
         "Attack": "Models/Animations/Charged_Spell_Cast_2.glb",
         "Spell":  "Models/Animations/mage_soell_cast_3.glb",
-        "Hit":    "Models/Animations/Walking.glb",
-        "Die":    "Models/Animations/Running.glb"
+        "Hit":    "Models/Animations/Hit_Reaction_1.glb",
+        "Die":    "Models/Animations/Dead.glb"
       },
       "default_state": "Idle"
     },
