@@ -133,6 +133,7 @@ glm::mat4 MasterRenderer::getProjectionMatrix() {
 
 void MasterRenderer::processEntity(Entity *entity) {
     TexturedModel *entityModel = entity->getModel();
+    if (!entityModel) return;
     auto batchIterator = entities->find(entityModel);
     if (batchIterator != entities->end()) {
         batchIterator->second.push_back(entity);

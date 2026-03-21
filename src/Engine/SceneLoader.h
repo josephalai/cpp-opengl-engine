@@ -140,6 +140,7 @@ private:
 
     struct PlayerDef {
         std::string alias;
+        std::string prefab;
         float x = 0, y = 0, z = 0;
         float rx = 0, ry = 0, rz = 0;
         float scale = 1.0f;

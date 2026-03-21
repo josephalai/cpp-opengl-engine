@@ -638,22 +638,75 @@ bool SceneLoaderJson::load(
     // -----------------------------------------------------------------------
     if (root.contains("player") && root["player"].is_object()) {
         auto& p = root["player"];
-        std::string alias = p.value("alias", "");
-        StringId aliasId(alias);
-        auto it = modelMap.find(aliasId);
-        if (it != modelMap.end()) {
-            auto& lm = it->second;
-            player = new Player(
-                registry,
-                lm.model,
-                new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
-                glm::vec3(p.value("x", 0.0f), p.value("y", 0.0f), p.value("z", 0.0f)),
-                glm::vec3(p.value("rx", 0.0f), p.value("ry", 0.0f), p.value("rz", 0.0f)),
-                p.value("scale", 1.0f));
-            InteractiveModel::setInteractiveBox(player);
-            playerCamera = new PlayerCamera(player);
-        } else {
-            std::cerr << "[SceneLoaderJson] player references unknown alias '" << alias << "'\n";
+        std::string prefabId = p.value("prefab", "");
+        std::string alias    = p.value("alias", "");
+
+        float px = p.value("x", 0.0f);
+        float pz = p.value("z", 0.0f);
+        float yOff = 0.0f;
+        float py = p.contains("y") ? parseJsonY(p["y"], yOff) : 0.0f;
+        float yVal = (py == SceneLoader::kSnapY && primaryTerrain)
+            ? primaryTerrain->getHeightOfTerrain(px, pz) + yOff : py;
+        float prx    = p.value("rx", 0.0f);
+        float pry    = p.value("ry", 0.0f);
+        float prz    = p.value("rz", 0.0f);
+        float pscale = p.value("scale", 1.0f);
+
+        bool usedPrefab = false;
+
+        // --- Prefab path (animated / modular) ---
+        if (!prefabId.empty() && PrefabManager::get().hasPrefab(prefabId)) {
+            auto ent = EntityFactory::spawn(
+                registry, prefabId,
+                glm::vec3(px, yVal, pz),
+                nullptr,
+                glm::vec3(prx, pry, prz),
+                pscale);
+
+            if (ent != entt::null) {
+                if (registry.any_of<AnimatedModelComponent>(ent)) {
+                    registry.get<AnimatedModelComponent>(ent).isLocalPlayer = true;
+                }
+
+                // Create a minimal Player* for legacy Engine code (camera, physics,
+                // position tracking). The actual rendering is handled by the ECS
+                // AnimatedModelComponent on the spawned entity above.
+                StringId aliasId(alias.empty() ? prefabId : alias);
+                auto it = modelMap.find(aliasId);
+                TexturedModel* playerModel = (it != modelMap.end()) ? it->second.model : nullptr;
+                BoundingBox* playerBox = (it != modelMap.end())
+                    ? new BoundingBox(it->second.bbox, BoundingBoxIndex::genUniqueId())
+                    : new BoundingBox(nullptr, BoundingBoxIndex::genUniqueId());
+
+                player = new Player(
+                    registry, playerModel, playerBox,
+                    glm::vec3(px, yVal, pz),
+                    glm::vec3(prx, pry, prz),
+                    pscale);
+                InteractiveModel::setInteractiveBox(player);
+                playerCamera = new PlayerCamera(player);
+                usedPrefab = true;
+            }
+        }
+
+        // --- Legacy alias path (unchanged) ---
+        if (!usedPrefab && !alias.empty()) {
+            StringId aliasId(alias);
+            auto it = modelMap.find(aliasId);
+            if (it != modelMap.end()) {
+                auto& lm = it->second;
+                player = new Player(
+                    registry, lm.model,
+                    new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
+                    glm::vec3(px, yVal, pz),
+                    glm::vec3(prx, pry, prz),
+                    pscale);
+                InteractiveModel::setInteractiveBox(player);
+                playerCamera = new PlayerCamera(player);
+            } else {
+                std::cerr << "[SceneLoaderJson] player references unknown alias '"
+                          << alias << "'\n";
+            }
         }
     }
 

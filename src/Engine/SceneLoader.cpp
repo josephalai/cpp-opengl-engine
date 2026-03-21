@@ -12,7 +12,7 @@
 //         [shininess=F] [reflectivity=F]
 //   entity <alias> <x> [terrain[+offset]|<y>] <z> [rx ry rz] [scale=F]
 //   random <alias> <count> [scaleMin=F] [scaleMax=F] [atlas]
-//   player <alias> <x> <y> <z> [rx ry rz] [scale=F]
+//   player <alias> <x> <y> <z> [rx ry rz] [scale=F] [prefab=<id>]
 //   assimp <path> [random[+offset]|<x> <y> <z>] [scaleMin=F scaleMax=F]
 //   gui <textureFile> <x> <y> <w> <h>
 //   text <font> <size> <x> <y> [maxWidth=F] [color=R,G,B] [centered] "message"
@@ -30,6 +30,12 @@
 #include "../Toolbox/Color.h"
 #include "../Animation/AnimationLoader.h"
 #include "StringId.h"
+
+#ifndef HEADLESS_SERVER
+#include "../Config/EntityFactory.h"
+#include "../Config/PrefabManager.h"
+#include "../ECS/Components/AnimatedModelComponent.h"
+#endif
 
 #include <fstream>
 #include <sstream>
@@ -340,7 +346,7 @@ bool SceneLoader::load(
             }
         }
         // ----------------------------------------------------------------
-        // player <alias> <x> <y> <z> [rx ry rz] [scale=F]
+        // player <alias> <x> <y> <z> [rx ry rz] [scale=F] [prefab=<id>]
         else if (cmd == "player") {
             if (tokens.size() >= 5) {
                 playerDef.alias = tokens[1];
@@ -359,6 +365,8 @@ bool SceneLoader::load(
                 for (; i < tokens.size(); ++i) {
                     auto v = optVal(tokens[i], "scale");
                     if (!v.empty()) playerDef.scale = std::stof(v);
+                    auto pv = optVal(tokens[i], "prefab");
+                    if (!pv.empty()) playerDef.prefab = pv;
                 }
                 hasPlayer = true;
             }
@@ -728,22 +736,65 @@ bool SceneLoader::load(
     // Pass 8: player
     // -----------------------------------------------------------------------
     if (hasPlayer) {
-        auto it = modelMap.find(StringId(playerDef.alias));
-        if (it != modelMap.end()) {
-            auto& lm = it->second;
-            player = new Player(
-                registry,
-                lm.model,
-                new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
+        bool usedPrefab = false;
+
+#ifndef HEADLESS_SERVER
+        // --- Prefab path (animated / modular) ---
+        if (!playerDef.prefab.empty() &&
+            PrefabManager::get().hasPrefab(playerDef.prefab)) {
+            auto ent = EntityFactory::spawn(
+                registry, playerDef.prefab,
                 glm::vec3(playerDef.x, playerDef.y, playerDef.z),
+                nullptr,
                 glm::vec3(playerDef.rx, playerDef.ry, playerDef.rz),
                 playerDef.scale);
-            InteractiveModel::setInteractiveBox(player);
-            entities.push_back(player);
-            playerCamera = new PlayerCamera(player);
-        } else {
-            std::cerr << "[SceneLoader] player references unknown model alias '"
-                      << playerDef.alias << "'\n";
+
+            if (ent != entt::null) {
+                if (registry.any_of<AnimatedModelComponent>(ent)) {
+                    registry.get<AnimatedModelComponent>(ent).isLocalPlayer = true;
+                }
+
+                // Create a minimal Player* for legacy Engine code (camera, physics,
+                // position tracking). Actual rendering uses the ECS AnimatedModelComponent.
+                StringId aliasId(playerDef.alias.empty() ? playerDef.prefab : playerDef.alias);
+                auto it = modelMap.find(aliasId);
+                TexturedModel* playerModel = (it != modelMap.end()) ? it->second.model : nullptr;
+                BoundingBox* playerBox = (it != modelMap.end())
+                    ? new BoundingBox(it->second.bbox, BoundingBoxIndex::genUniqueId())
+                    : new BoundingBox(nullptr, BoundingBoxIndex::genUniqueId());
+
+                player = new Player(
+                    registry, playerModel, playerBox,
+                    glm::vec3(playerDef.x, playerDef.y, playerDef.z),
+                    glm::vec3(playerDef.rx, playerDef.ry, playerDef.rz),
+                    playerDef.scale);
+                InteractiveModel::setInteractiveBox(player);
+                entities.push_back(player);
+                playerCamera = new PlayerCamera(player);
+                usedPrefab = true;
+            }
+        }
+#endif
+
+        // --- Legacy alias path (unchanged) ---
+        if (!usedPrefab) {
+            auto it = modelMap.find(StringId(playerDef.alias));
+            if (it != modelMap.end()) {
+                auto& lm = it->second;
+                player = new Player(
+                    registry,
+                    lm.model,
+                    new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
+                    glm::vec3(playerDef.x, playerDef.y, playerDef.z),
+                    glm::vec3(playerDef.rx, playerDef.ry, playerDef.rz),
+                    playerDef.scale);
+                InteractiveModel::setInteractiveBox(player);
+                entities.push_back(player);
+                playerCamera = new PlayerCamera(player);
+            } else {
+                std::cerr << "[SceneLoader] player references unknown model alias '"
+                          << playerDef.alias << "'\n";
+            }
         }
     }
 
