@@ -113,6 +113,16 @@ private:
     bool  blending_      = false;
     float blendElapsed_  = 0.0f;
     float blendDuration_ = 0.3f;
+
+    /// Seconds elapsed since the last automatic (condition-driven) or programmatic
+    /// state transition.  Used by update() to enforce kMinAutoTransitionInterval,
+    /// preventing rapid Walk↔Idle flip-flops that restart animation clips.
+    float timeSinceLastTransition_ = 0.0f;
+
+    /// Minimum time (seconds) a state must be active before an automatic
+    /// condition-driven transition may fire.  Programmatic requestTransition()
+    /// calls (from game logic) bypass this guard so they always take effect.
+    static constexpr float kMinAutoTransitionInterval = 0.1f;
 };
 
 #endif // ENGINE_ANIMATIONCONTROLLER_H

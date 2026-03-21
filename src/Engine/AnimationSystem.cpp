@@ -74,37 +74,61 @@ void AnimationSystem::update(float deltaTime) {
                 amc.wasSnappedBack = false;
             }
 
-            // While a server-authoritative LERP reconciliation is in progress
-            // AND the player is holding a movement key, treat the entity as
-            // moving regardless of the XZ delta (which points toward the
-            // reconcile target rather than the input direction).  This prevents
-            // the walk↔idle flip-flop during auto-walk and post-spawn settling.
-            if (amc.suppressDeltaAnimation && anyKeyDown) {
+            // While a server-authoritative LERP reconciliation is in progress,
+            // treat the entity as moving regardless of key state.  This covers:
+            //   • Keyboard + reconcile: anyKeyDown==true → use keyboard yaw.
+            //   • Auto-walk reconcile: anyKeyDown==false → derive yaw from delta
+            //     when a real delta exists, but NEVER flip isMoving to false due
+            //     to a near-zero single-frame delta from warpPlayer().
+            if (amc.suppressDeltaAnimation) {
                 amc.isMoving     = true;
-                amc.lastPosition = tc.position; // Keep baseline current
-                amc.useAutoWalkYaw = false;     // Keyboard yaw already correct
+                amc.lastPosition = tc.position;
+                if (anyKeyDown) {
+                    amc.useAutoWalkYaw = false;  // keyboard yaw already correct
+                    amc.lastInputYaw   = tc.rotation.y;
+                } else if (deltaSq > 1e-4f) {
+                    glm::vec3 dir = glm::normalize(deltaPos);
+                    amc.autoWalkYaw    = glm::degrees(std::atan2(dir.x, dir.z));
+                    amc.useAutoWalkYaw = true;
+                }
                 if (amc.controller) amc.controller->requestTransition("Walk");
-                continue; // Skip delta-based direction logic for this frame
+                continue; // Skip remaining delta-based direction logic
             }
 
-            // isMoving drives the Walk animation condition in the lambda wired
-            // in Engine::loadScene (via setupDefaultTransitions).  It is true
-            // whenever a movement key is held OR the character is actually
-            // displacing (click-to-walk / server-authoritative auto-walk).
-            amc.isMoving = anyKeyDown || (deltaSq > 1e-4f);
+            // --- Bug 1 fix: keyboard movement ---
+            // When any WASD key is held, PlayerMovementSystem already sets
+            // tc.rotation.y = atan2(totalDx, totalDz) (facing direction).
+            // Skip the delta-based yaw derivation entirely to avoid a one-frame
+            // conflict between the two systems that caused visible micro-vibration.
+            if (anyKeyDown) {
+                amc.isMoving       = true;
+                amc.useAutoWalkYaw = false;
+                amc.lastInputYaw   = tc.rotation.y;
+                amc.lastPosition   = tc.position;
+                // Keep movingTimer positive so hysteresis holds after key release.
+                amc.movingTimer = 0.15f;
+                continue; // Trust PlayerMovementSystem's rotation — nothing else to do
+            }
 
-            // --- Face direction of travel ---
-            // For keyboard movement PlayerMovementSystem already sets tc.rotation.y
-            // to atan2(totalDx, totalDz), so the model faces the correct direction
-            // for W, S, A, D, and all diagonals without overriding here.
-            // For click-to-walk (no keys pressed) we derive the yaw from the
-            // position delta so the character faces where it is walking.
-            if (deltaSq > 1e-4f && !anyKeyDown) {
+            // --- Auto-walk (click-to-walk, no keys held) ---
+            // Bug 2 fix: use a hysteresis timer so a single near-zero delta frame
+            // (e.g. from warpPlayer collision response) doesn't flip isMoving→false
+            // and restart the Walk clip.
+            if (deltaSq > 1e-4f) {
+                amc.isMoving    = true;
+                amc.movingTimer = 0.15f;  // Reset hold-open window while moving
                 glm::vec3 dir = glm::normalize(deltaPos);
-                float yaw = glm::degrees(std::atan2(dir.x, dir.z));
-                amc.autoWalkYaw = yaw;
+                amc.autoWalkYaw    = glm::degrees(std::atan2(dir.x, dir.z));
                 amc.useAutoWalkYaw = true;
             } else {
+                // No significant movement this frame — count down hysteresis timer.
+                amc.movingTimer -= deltaTime;
+                if (amc.movingTimer <= 0.0f) {
+                    amc.movingTimer = 0.0f;
+                    amc.isMoving    = false;
+                }
+                // If timer is still positive, isMoving stays true from the previous
+                // frame — prevents single-frame idle transitions from restarting clips.
                 amc.useAutoWalkYaw = false;
             }
             amc.lastPosition = tc.position;

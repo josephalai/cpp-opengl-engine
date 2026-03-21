@@ -21,9 +21,10 @@ void AnimationController::setStateByHash(uint32_t h) {
     currentStateHash_  = h;
 
     if (h == 0) {
-        currentStateName_ = "";
-        blending_         = false;
-        blendElapsed_     = 0.0f;
+        currentStateName_          = "";
+        blending_                  = false;
+        blendElapsed_              = 0.0f;
+        timeSinceLastTransition_   = 0.0f;
         return;
     }
 
@@ -39,8 +40,9 @@ void AnimationController::setStateByHash(uint32_t h) {
             break;
         }
     }
-    blending_     = (previousStateHash_ != 0);
-    blendElapsed_ = 0.0f;
+    blending_                  = (previousStateHash_ != 0);
+    blendElapsed_              = 0.0f;
+    timeSinceLastTransition_   = 0.0f;
 }
 
 // ---------------------------------------------------------------------------
@@ -84,9 +86,16 @@ std::vector<std::string> AnimationController::getStateNames() const {
 // ---------------------------------------------------------------------------
 
 std::vector<glm::mat4> AnimationController::update(float deltaTime, Skeleton& skeleton) {
+    // Advance the minimum-transition-interval guard each frame.
+    timeSinceLastTransition_ += deltaTime;
+
     // Check automatic transitions — handles bind-pose (hash=0) → movement and back.
+    // Gate each condition-driven transition behind kMinAutoTransitionInterval to
+    // prevent rapid Walk↔Idle flip-flops (caused by single-frame deltaSq flicker
+    // during warpPlayer reconciliation) from restarting animation clips.
     for (const auto& t : transitions_) {
         if (t.from == currentStateHash_ && t.condition && t.condition()) {
+            if (timeSinceLastTransition_ < kMinAutoTransitionInterval) continue;
             setStateByHash(t.to);
             break;
         }
