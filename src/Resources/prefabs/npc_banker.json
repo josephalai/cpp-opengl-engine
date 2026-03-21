@@ -1,7 +1,7 @@
 {
   "id": "npc_banker",
   "model_type": "npc_banker",
-  "render_mode": "instanced",
+  "render_mode": "animated",
   "is_npc": true,
   "mesh": "Models/Characters/characters.glb",
   "actions": [

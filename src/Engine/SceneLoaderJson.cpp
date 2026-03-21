@@ -633,27 +633,211 @@ bool SceneLoaderJson::load(
         }
     }
 
+    // normalizeClipName is used by both the player section and the
+    // animated_characters section — define it once here in shared scope.
+    auto normalizeClipName = [](const std::string& raw) -> std::string {
+        static const char* known[] = {"Idle", "Walk", "Run", "Jump", nullptr};
+        for (int i = 0; known[i]; ++i) {
+            if (raw.size() == std::strlen(known[i])) {
+                bool same = true;
+                for (size_t k = 0; k < raw.size(); ++k)
+                    same = same && (std::tolower((unsigned char)raw[k]) ==
+                                    std::tolower((unsigned char)known[i][k]));
+                if (same) return known[i];
+            }
+        }
+        std::string lower(raw);
+        for (auto& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (lower.find("idle") != std::string::npos) return "Idle";
+        if (lower.find("walk") != std::string::npos) return "Walk";
+        if (lower.find("run")  != std::string::npos) return "Run";
+        if (lower.find("jump") != std::string::npos) return "Jump";
+        std::string out = raw;
+        if (!out.empty()) out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+        return out;
+    };
+
     // -----------------------------------------------------------------------
     // Player
     // -----------------------------------------------------------------------
     if (root.contains("player") && root["player"].is_object()) {
         auto& p = root["player"];
-        std::string alias = p.value("alias", "");
-        StringId aliasId(alias);
-        auto it = modelMap.find(aliasId);
-        if (it != modelMap.end()) {
-            auto& lm = it->second;
-            player = new Player(
-                registry,
-                lm.model,
-                new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
-                glm::vec3(p.value("x", 0.0f), p.value("y", 0.0f), p.value("z", 0.0f)),
-                glm::vec3(p.value("rx", 0.0f), p.value("ry", 0.0f), p.value("rz", 0.0f)),
-                p.value("scale", 1.0f));
-            InteractiveModel::setInteractiveBox(player);
-            playerCamera = new PlayerCamera(player);
-        } else {
-            std::cerr << "[SceneLoaderJson] player references unknown alias '" << alias << "'\n";
+        std::string prefabId = p.value("prefab", "");
+        std::string alias    = p.value("alias", "");
+        std::string path     = p.value("path", "");  // animated model path
+
+        float px = p.value("x", 0.0f);
+        float pz = p.value("z", 0.0f);
+        float yOff = 0.0f;
+        float py = p.contains("y") ? parseJsonY(p["y"], yOff) : 0.0f;
+        float yVal = (py == SceneLoader::kSnapY && primaryTerrain)
+            ? primaryTerrain->getHeightOfTerrain(px, pz) + yOff : py;
+        float prx    = p.value("rx", 0.0f);
+        float pry    = p.value("ry", 0.0f);
+        float prz    = p.value("rz", 0.0f);
+        float pscale = p.value("scale", 1.0f);
+
+        bool loaded = false;
+
+        // --- Animated model path (path + optional animation_map) ---
+        // Matches the animated_characters pipeline exactly, but marks the
+        // resulting AnimatedModelComponent as isLocalPlayer=true and creates
+        // the Player* + PlayerCamera* that Engine code depends on.
+        if (!path.empty()) {
+            std::string absPath = FileSystem::Path("/src/Resources/Models/" + path);
+            AnimatedModel* animModel = AnimationLoader::load(absPath);
+
+            bool usingFallback = false;
+            if (!animModel && p.contains("fallback_path")) {
+                const std::string fbRel = p.value("fallback_path", "");
+                const std::string fbAbs = FileSystem::Path("/src/Resources/Models/" + fbRel);
+                std::cerr << "[SceneLoaderJson] Player primary path '" << path
+                          << "' failed; trying fallback '" << fbRel << "'\n";
+                animModel = AnimationLoader::load(fbAbs);
+                if (animModel) { usingFallback = true; }
+            }
+
+            if (animModel) {
+                // Model-space rotation correction (same semantics as the "rot"
+                // sub-object in animated_characters entries).
+                float mrx = 0, mry = 0, mrz = 0;
+                if (p.contains("rot") && p["rot"].is_object()) {
+                    mrx = p["rot"].value("rx", 0.0f);
+                    mry = p["rot"].value("ry", 0.0f);
+                    mrz = p["rot"].value("rz", 0.0f);
+                }
+                float ox = 0, oy = 0, oz = 0;
+                if (p.contains("offset") && p["offset"].is_object()) {
+                    ox = p["offset"].value("ox", 0.0f);
+                    oy = p["offset"].value("oy", 0.0f);
+                    oz = p["offset"].value("oz", 0.0f);
+                }
+                if (mrx != 0.0f || mry != 0.0f || mrz != 0.0f) {
+                    glm::mat4 userRot = glm::mat4(1.0f);
+                    userRot = glm::rotate(userRot, glm::radians(mrx), glm::vec3(1, 0, 0));
+                    userRot = glm::rotate(userRot, glm::radians(mry), glm::vec3(0, 1, 0));
+                    userRot = glm::rotate(userRot, glm::radians(mrz), glm::vec3(0, 0, 1));
+                    animModel->coordinateCorrection = userRot * animModel->coordinateCorrection;
+                }
+
+                auto* controller = new AnimationController();
+                bool idleRegistered = false;
+
+                std::cout << "[SceneLoaderJson] Loaded player model '" << path
+                          << "': " << animModel->clips.size() << " clip(s), "
+                          << animModel->skeleton.getBoneCount() << " bone(s).\n";
+
+                if (!usingFallback && p.contains("animation_map") && p["animation_map"].is_object()) {
+                    const auto& amap = p["animation_map"];
+                    for (auto& [stateName, clipNameVal] : amap.items()) {
+                        const std::string clipName = clipNameVal.get<std::string>();
+                        AnimationClip* foundClip = nullptr;
+                        for (auto& clip : animModel->clips)
+                            if (clip.name == clipName) { foundClip = &clip; break; }
+                        if (foundClip) {
+                            controller->addState(stateName, foundClip);
+                            if (stateName == "Idle") idleRegistered = true;
+                            std::cout << "[SceneLoaderJson]   state '" << stateName
+                                      << "' <- clip '" << clipName << "'\n";
+                        } else {
+                            std::cerr << "[SceneLoaderJson]   WARNING: animation_map"
+                                         " entry '" << stateName << "' references clip '"
+                                      << clipName << "' not found in '" << path << "'\n";
+                        }
+                    }
+                } else {
+                    for (auto& clip : animModel->clips) {
+                        std::string stateName = normalizeClipName(clip.name);
+                        controller->addState(stateName, &clip);
+                        if (stateName == "Idle") idleRegistered = true;
+                    }
+                }
+                if (idleRegistered) controller->setState("Idle");
+
+                entt::entity animEnt = registry.create();
+                auto& tc    = registry.emplace<TransformComponent>(animEnt);
+                tc.position = glm::vec3(px, yVal, pz);
+                tc.rotation = glm::vec3(mrx, mry, mrz);
+                tc.scale    = pscale;
+                auto& amc       = registry.emplace<AnimatedModelComponent>(animEnt);
+                amc.model       = animModel;
+                amc.controller  = controller;
+                amc.modelOffset = glm::vec3(ox, oy, oz);
+                amc.scale       = pscale;
+                amc.ownsModel   = true;
+                amc.isLocalPlayer = true;  // explicitly the local player
+                amc.modelRotationMat = animModel->coordinateCorrection;
+
+                // Player* is a thin legacy wrapper used for camera, physics binding,
+                // and InputStateComponent. It has no OBJ model — rendering comes
+                // entirely from the AnimatedModelComponent above.
+                player = new Player(registry, nullptr,
+                    new BoundingBox(nullptr, BoundingBoxIndex::genUniqueId()),
+                    glm::vec3(px, yVal, pz),
+                    glm::vec3(prx, pry, prz),
+                    pscale);
+                InteractiveModel::setInteractiveBox(player);
+                playerCamera = new PlayerCamera(player);
+                loaded = true;
+            } else {
+                std::cerr << "[SceneLoaderJson] Failed to load player model: "
+                          << absPath << "\n";
+            }
+        }
+
+        // --- Prefab path (EntityFactory::spawn) ---
+        if (!loaded && !prefabId.empty() && PrefabManager::get().hasPrefab(prefabId)) {
+            auto ent = EntityFactory::spawn(
+                registry, prefabId,
+                glm::vec3(px, yVal, pz),
+                nullptr,
+                glm::vec3(prx, pry, prz),
+                pscale);
+
+            if (ent != entt::null) {
+                if (registry.any_of<AnimatedModelComponent>(ent)) {
+                    registry.get<AnimatedModelComponent>(ent).isLocalPlayer = true;
+                }
+
+                // Create a minimal Player* for legacy Engine code (camera, physics,
+                // position tracking). The actual rendering is handled by the ECS
+                // AnimatedModelComponent on the spawned entity above.
+                StringId aliasId(alias.empty() ? prefabId : alias);
+                auto it = modelMap.find(aliasId);
+                TexturedModel* playerModel = (it != modelMap.end()) ? it->second.model : nullptr;
+                BoundingBox* playerBox = (it != modelMap.end())
+                    ? new BoundingBox(it->second.bbox, BoundingBoxIndex::genUniqueId())
+                    : new BoundingBox(nullptr, BoundingBoxIndex::genUniqueId());
+
+                player = new Player(
+                    registry, playerModel, playerBox,
+                    glm::vec3(px, yVal, pz),
+                    glm::vec3(prx, pry, prz),
+                    pscale);
+                InteractiveModel::setInteractiveBox(player);
+                playerCamera = new PlayerCamera(player);
+                loaded = true;
+            }
+        }
+
+        // --- Legacy alias path (static OBJ model) ---
+        if (!loaded && !alias.empty()) {
+            StringId aliasId(alias);
+            auto it = modelMap.find(aliasId);
+            if (it != modelMap.end()) {
+                auto& lm = it->second;
+                player = new Player(
+                    registry, lm.model,
+                    new BoundingBox(lm.bbox, BoundingBoxIndex::genUniqueId()),
+                    glm::vec3(px, yVal, pz),
+                    glm::vec3(prx, pry, prz),
+                    pscale);
+                InteractiveModel::setInteractiveBox(player);
+                playerCamera = new PlayerCamera(player);
+            } else {
+                std::cerr << "[SceneLoaderJson] player references unknown alias '"
+                          << alias << "'\n";
+            }
         }
     }
 
@@ -711,28 +895,6 @@ bool SceneLoaderJson::load(
     // -----------------------------------------------------------------------
     // Animated characters
     // -----------------------------------------------------------------------
-    auto normalizeClipName = [](const std::string& raw) -> std::string {
-        static const char* known[] = {"Idle", "Walk", "Run", "Jump", nullptr};
-        for (int i = 0; known[i]; ++i) {
-            if (raw.size() == std::strlen(known[i])) {
-                bool same = true;
-                for (size_t k = 0; k < raw.size(); ++k)
-                    same = same && (std::tolower((unsigned char)raw[k]) ==
-                                    std::tolower((unsigned char)known[i][k]));
-                if (same) return known[i];
-            }
-        }
-        std::string lower(raw);
-        for (auto& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        if (lower.find("idle") != std::string::npos) return "Idle";
-        if (lower.find("walk") != std::string::npos) return "Walk";
-        if (lower.find("run")  != std::string::npos) return "Run";
-        if (lower.find("jump") != std::string::npos) return "Jump";
-        std::string out = raw;
-        if (!out.empty()) out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
-        return out;
-    };
-
     if (root.contains("animated_characters") && root["animated_characters"].is_array()) {
         for (auto& ac : root["animated_characters"]) {
             std::string relPath = ac.value("path", "");

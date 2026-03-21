@@ -1,32 +1,6 @@
 {
   "_comment": "scene.json — JSON equivalent of scene.cfg. Loaded by SceneLoaderJson.",
-  "animated_characters": [
-    {
-      "animation_map": {
-        "Idle": "Idle",
-        "Patrol": "Walking",
-        "Run": "Running",
-        "Sprint": "Run_03",
-        "Walk": "Casual_Walk"
-      },
-      "fallback_path": "Characters/characters.glb",
-      "offset": {
-        "ox": 0.0,
-        "oy": 0.0,
-        "oz": 0.0
-      },
-      "path": "Characters/man-1.glb",
-      "rot": {
-        "rx": 0.0,
-        "ry": 0.0,
-        "rz": 0.0
-      },
-      "scale": 0.05,
-      "x": 100.0,
-      "y": "terrain",
-      "z": -80.0
-    }
-  ],
+  "animated_characters": [],
   "assimp": [
     {
       "path": "Backpack/backpack",
@@ -266,13 +240,28 @@
     }
   ],
   "player": {
-    "alias": "stall",
-    "rx": 0.0,
-    "ry": 180.0,
-    "rz": 0.0,
-    "scale": 0.0,
+    "path": "Characters/man-1.glb",
+    "fallback_path": "Characters/characters.glb",
+    "animation_map": {
+      "Idle": "Idle",
+      "Patrol": "Walking",
+      "Run": "Running",
+      "Sprint": "Run_03",
+      "Walk": "Casual_Walk"
+    },
+    "offset": {
+      "ox": 0.0,
+      "oy": 0.0,
+      "oz": 0.0
+    },
+    "rot": {
+      "rx": 0.0,
+      "ry": 0.0,
+      "rz": 0.0
+    },
+    "scale": 0.05,
     "x": 100.0,
-    "y": 3.0,
+    "y": "terrain",
     "z": -80.0
   },
   "random": [

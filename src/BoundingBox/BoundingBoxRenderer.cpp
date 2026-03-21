@@ -28,6 +28,7 @@ void BoundingBoxRenderer::render(std::map<RawBoundingBox *, std::vector<Entity *
 
         // bind the VAO of the box
         pRawBox = itEntityMap->first;
+        if (!pRawBox) { ++itEntityMap; continue; }  // skip null models (e.g. animated-path player)
         prepareRawBoundingBox(pRawBox);
 
 //        std::vector<Entity *> batch = entities->find(pRawBox)->second;

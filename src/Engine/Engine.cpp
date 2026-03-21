@@ -240,14 +240,26 @@ void Engine::loadScene() {
         }
     }
 
-    // All animated entities loaded at startup belong to the local player's
-    // character(s).  Mark them so AnimationSystem syncs their position from
-    // the physics-driven Player* rather than from NetworkInterpolationSystem.
+    // Mark animated entities as isLocalPlayer=true for the local player's
+    // visual body.  The new scene.json player block sets isLocalPlayer=true
+    // explicitly when "path" or "prefab" is used.  This fallback only fires
+    // when NO entity has been marked yet — preserving backward compatibility
+    // with the legacy scene.cfg path where the player's animated body came
+    // from an animated_character line and relied on this blanket assignment.
+    // NPC animated characters (isLocalPlayer=false) are unaffected once the
+    // player's entity is properly marked by the loader.
     {
         auto animView = registry.view<AnimatedModelComponent>();
+        bool hasExplicitPlayer = false;
         for (auto e : animView) {
-            auto& amc     = animView.get<AnimatedModelComponent>(e);
-            amc.isLocalPlayer = true;
+            if (animView.get<AnimatedModelComponent>(e).isLocalPlayer) {
+                hasExplicitPlayer = true;
+                break;
+            }
+        }
+        if (!hasExplicitPlayer) {
+            for (auto e : animView)
+                animView.get<AnimatedModelComponent>(e).isLocalPlayer = true;
         }
         if (!animView.empty())
             std::cout << "[Engine] " << animView.size()

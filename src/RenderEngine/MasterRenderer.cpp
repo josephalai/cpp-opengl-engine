@@ -133,6 +133,7 @@ glm::mat4 MasterRenderer::getProjectionMatrix() {
 
 void MasterRenderer::processEntity(Entity *entity) {
     TexturedModel *entityModel = entity->getModel();
+    if (!entityModel) return;
     auto batchIterator = entities->find(entityModel);
     if (batchIterator != entities->end()) {
         batchIterator->second.push_back(entity);
@@ -316,7 +317,9 @@ void MasterRenderer::renderSceneFromRegistry(entt::registry&                  re
 
 void MasterRenderer::renderBoundingBoxesFromRegistry(entt::registry& /*registry*/, Entity* player) {
     // Only the Player participates in object picking; render its bounding box only.
-    if (player && player->getBoundingBox()) {
+    // Guard against null RawBoundingBox (e.g. animated-path player has no OBJ mesh).
+    if (player && player->getBoundingBox() &&
+        player->getBoundingBox()->getRawBoundingBox()) {
         processBoundingBox(player);
     }
     render();
