@@ -68,6 +68,11 @@ struct AnimatedModelComponent {
     /// the Walk animation fires for all directions and click-to-walk, not
     /// just when W is held.
     bool                 isMoving = false;
+    /// Hysteresis timer (seconds) that keeps isMoving=true for a short window
+    /// after the last detected movement input or position delta.  Prevents
+    /// single-frame deltaSq flicker (especially during warpPlayer reconciliation)
+    /// from rapidly toggling Walk↔Idle and restarting the animation clip.
+    float                movingTimer = 0.0f;
     float                scale       = 1.0f;
     /// True only for the local client's own character (marked by Engine after load).
     /// False for remote entities so AnimationSystem does not overwrite their
