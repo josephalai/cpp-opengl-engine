@@ -317,7 +317,9 @@ void MasterRenderer::renderSceneFromRegistry(entt::registry&                  re
 
 void MasterRenderer::renderBoundingBoxesFromRegistry(entt::registry& /*registry*/, Entity* player) {
     // Only the Player participates in object picking; render its bounding box only.
-    if (player && player->getBoundingBox()) {
+    // Guard against null RawBoundingBox (e.g. animated-path player has no OBJ mesh).
+    if (player && player->getBoundingBox() &&
+        player->getBoundingBox()->getRawBoundingBox()) {
         processBoundingBox(player);
     }
     render();

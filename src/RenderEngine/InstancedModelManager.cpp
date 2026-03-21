@@ -30,6 +30,12 @@ void InstancedModelManager::init(Loader* loader) {
         std::string renderMode = prefab.value("render_mode", "");
         if (renderMode != "instanced") continue;
 
+        // Animated prefabs (animated: true or mesh path present) are rendered by
+        // AnimatedRenderer / AnimationSystem, not by InstancedModelManager.
+        // Skip them so we don't emit a spurious warning for animated characters
+        // that correctly omit a static-OBJ "model" block.
+        if (prefab.value("animated", false) || prefab.contains("mesh")) continue;
+
         // Read model OBJ and texture from the prefab's "model" block.
         if (!prefab.contains("model")) {
             std::cerr << "[InstancedModelManager] Prefab '" << id

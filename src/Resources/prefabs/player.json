@@ -1,7 +1,7 @@
 {
   "id": "player",
   "model_type": "player",
-  "render_mode": "instanced",
+  "render_mode": "animated",
   "is_npc": false,
   "animated": true,
   "mesh": "Models/Characters/characters.glb",

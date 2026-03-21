@@ -1,6 +1,6 @@
 {
   "model_type": "npc_goblin",
-  "render_mode": "instanced",
+  "render_mode": "animated",
   "is_npc": true,
   "mesh": "Models/Characters/characters.glb",
   "physics": {
