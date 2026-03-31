@@ -611,6 +611,7 @@ void Engine::onNetworkDespawn(uint32_t /*networkId*/, entt::entity e) {
 
     // Release AnimatedModelComponent resources if present.
     if (auto* amc = registry.try_get<AnimatedModelComponent>(e)) {
+        amc->cleanUpModularParts();
         if (amc->ownsModel && amc->model) {
             amc->model->cleanUp();
             delete amc->model;
@@ -945,6 +946,7 @@ void Engine::shutdown() {
         auto animView = registry.view<AnimatedModelComponent>();
         for (auto e : animView) {
             auto& amc = animView.get<AnimatedModelComponent>(e);
+            amc.cleanUpModularParts();
             if (amc.ownsModel && amc.model) {
                 amc.model->cleanUp();
                 delete amc.model;

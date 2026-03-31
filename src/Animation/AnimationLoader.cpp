@@ -496,3 +496,155 @@ if (scene->mNumAnimations == 0) {
 
     return clip;
 }
+
+// ---- modular equipment mesh loader ------------------------------------------
+
+/// Helper: set up OpenGL VAO/VBO/EBO for a standalone AnimatedMesh.
+/// Mirrors AnimatedModel::setupMesh() exactly.
+static void setupAnimatedMeshGL(AnimatedMesh& mesh) {
+    glGenVertexArrays(1, &mesh.VAO);
+    glGenBuffers(1, &mesh.VBO);
+    glGenBuffers(1, &mesh.EBO);
+
+    glBindVertexArray(mesh.VAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.VBO);
+    glBufferData(GL_ARRAY_BUFFER,
+                 static_cast<GLsizeiptr>(mesh.vertices.size() * sizeof(AnimatedVertex)),
+                 mesh.vertices.data(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                 static_cast<GLsizeiptr>(mesh.indices.size() * sizeof(unsigned int)),
+                 mesh.indices.data(), GL_STATIC_DRAW);
+
+    // location 0: position
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(AnimatedVertex),
+                          reinterpret_cast<void*>(offsetof(AnimatedVertex, position)));
+    // location 1: normal
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(AnimatedVertex),
+                          reinterpret_cast<void*>(offsetof(AnimatedVertex, normal)));
+    // location 2: texCoords
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(AnimatedVertex),
+                          reinterpret_cast<void*>(offsetof(AnimatedVertex, texCoords)));
+    // location 3: boneIDs (ivec4)
+    glEnableVertexAttribArray(3);
+    glVertexAttribIPointer(3, 4, GL_INT, sizeof(AnimatedVertex),
+                           reinterpret_cast<void*>(offsetof(AnimatedVertex, boneIDs)));
+    // location 4: boneWeights
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(AnimatedVertex),
+                          reinterpret_cast<void*>(offsetof(AnimatedVertex, boneWeights)));
+
+    glBindVertexArray(0);
+}
+
+std::vector<AnimatedMesh> AnimationLoader::loadModularPart(
+    const std::string& path,
+    const Skeleton& masterSkeleton)
+{
+    std::vector<AnimatedMesh> result;
+
+    Assimp::Importer importer;
+    const aiScene* scene = importer.ReadFile(path,
+        aiProcess_Triangulate | aiProcess_GenSmoothNormals |
+        aiProcess_FlipUVs     | aiProcess_CalcTangentSpace);
+
+    if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode) {
+        std::cerr << "[AnimationLoader::loadModularPart] Assimp error for '"
+                  << path << "': " << importer.GetErrorString() << "\n";
+        return result;
+    }
+
+    const std::string directory = path.substr(0, path.find_last_of('/'));
+
+    // For each Assimp mesh, build a local→master bone remap and process vertices.
+    for (unsigned int m = 0; m < scene->mNumMeshes; ++m) {
+        aiMesh* aiM = scene->mMeshes[m];
+
+        // 1) Build local bone-name → local-index map AND remap table.
+        //    localIndex → masterIndex.  -1 means "bone not found in master".
+        std::unordered_map<std::string, int> localBoneMap;
+        std::unordered_map<int, int> remapTable;   // localID → masterID
+
+        for (unsigned int b = 0; b < aiM->mNumBones; ++b) {
+            std::string boneName(aiM->mBones[b]->mName.C_Str());
+            int localID = static_cast<int>(b);  // Assimp bone index within this mesh
+            localBoneMap[boneName] = localID;
+
+            // Look up master skeleton
+            const Bone* masterBone = masterSkeleton.getBoneByName(boneName);
+            if (masterBone) {
+                remapTable[localID] = masterBone->id;
+            } else {
+                remapTable[localID] = 0;  // fallback to bone 0
+                std::cerr << "[AnimationLoader::loadModularPart] WARNING: bone '"
+                          << boneName << "' in '" << path
+                          << "' has no match in master skeleton.\n";
+            }
+        }
+
+        // 2) Process vertices
+        AnimatedMesh mesh;
+        mesh.vertices.resize(aiM->mNumVertices);
+        for (unsigned int i = 0; i < aiM->mNumVertices; ++i) {
+            AnimatedVertex& v = mesh.vertices[i];
+            v.position = { aiM->mVertices[i].x, aiM->mVertices[i].y, aiM->mVertices[i].z };
+            if (aiM->HasNormals())
+                v.normal = { aiM->mNormals[i].x, aiM->mNormals[i].y, aiM->mNormals[i].z };
+            if (aiM->mTextureCoords[0])
+                v.texCoords = { aiM->mTextureCoords[0][i].x, aiM->mTextureCoords[0][i].y };
+            v.boneIDs     = glm::ivec4(0);
+            v.boneWeights = glm::vec4(0.0f);
+        }
+
+        // 3) Indices
+        for (unsigned int i = 0; i < aiM->mNumFaces; ++i)
+            for (unsigned int j = 0; j < aiM->mFaces[i].mNumIndices; ++j)
+                mesh.indices.push_back(aiM->mFaces[i].mIndices[j]);
+
+        // 4) Bone weights — remapped to master skeleton indices
+        for (unsigned int b = 0; b < aiM->mNumBones; ++b) {
+            aiBone* bone = aiM->mBones[b];
+            int localID = static_cast<int>(b);
+            int masterID = remapTable.count(localID) ? remapTable[localID] : 0;
+
+            for (unsigned int w = 0; w < bone->mNumWeights; ++w) {
+                unsigned int vertIdx = bone->mWeights[w].mVertexId;
+                float        weight  = bone->mWeights[w].mWeight;
+                if (vertIdx >= mesh.vertices.size()) continue;
+
+                AnimatedVertex& v = mesh.vertices[vertIdx];
+                for (int slot = 0; slot < 4; ++slot) {
+                    if (v.boneWeights[slot] == 0.0f) {
+                        v.boneIDs[slot]     = masterID;
+                        v.boneWeights[slot] = weight;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 5) Texture
+        if (aiM->mMaterialIndex < scene->mNumMaterials) {
+            aiMaterial* mat = scene->mMaterials[aiM->mMaterialIndex];
+            if (mat->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
+                aiString texPath;
+                mat->GetTexture(aiTextureType_DIFFUSE, 0, &texPath);
+                mesh.textureID = loadTextureFromFile(texPath.C_Str(), directory, scene);
+            }
+        }
+
+        // 6) Upload to GPU
+        setupAnimatedMeshGL(mesh);
+
+        result.push_back(std::move(mesh));
+    }
+
+    std::cout << "[AnimationLoader::loadModularPart] Loaded '" << path
+              << "': " << result.size() << " sub-mesh(es), remapped to master skeleton.\n";
+    return result;
+}

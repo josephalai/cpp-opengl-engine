@@ -225,6 +225,7 @@ void EditorSystem::destroyMeshGhost() {
 
     // Clean up owned AnimatedModel / AnimationController resources.
     if (auto* amc = registry_.try_get<AnimatedModelComponent>(meshGhostEntity_)) {
+        amc->cleanUpModularParts();
         if (amc->ownsModel && amc->model) {
             amc->model->cleanUp();
             delete amc->model;

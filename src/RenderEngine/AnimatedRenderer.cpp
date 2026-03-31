@@ -54,8 +54,17 @@ void AnimatedRenderer::render(const std::vector<AnimatedEntity*>& entities,
             * ae->modelRotationMat;
         shader->loadTransformationMatrix(transform);
 
-        for (const AnimatedMesh& mesh : ae->model->meshes) {
-            renderMesh(mesh, boneMatrices);
+        // ---- Render meshes ----
+        // Modular path: use the pre-built active mesh list (naked + equipment).
+        // Legacy path : iterate model->meshes directly.
+        if (ae->isModular && !ae->activeMeshes.empty()) {
+            for (const AnimatedMesh* mesh : ae->activeMeshes) {
+                renderMesh(*mesh, boneMatrices);
+            }
+        } else {
+            for (const AnimatedMesh& mesh : ae->model->meshes) {
+                renderMesh(mesh, boneMatrices);
+            }
         }
     }
 

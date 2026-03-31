@@ -17,6 +17,7 @@
 #include "../ECS/Components/AnimatedModelComponent.h"
 #include "../ECS/Components/AnimationControllerComponent.h"
 #include "../Animation/AnimationLoader.h"
+#include "../Animation/EquipmentSlot.h"
 #include "../Util/FileSystem.h"
 #include <glm/gtc/matrix_transform.hpp>
 #endif
@@ -369,6 +370,41 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                         rotMat = glm::rotate(rotMat, glm::radians(ry), glm::vec3(0.0f, 1.0f, 0.0f));
                         rotMat = glm::rotate(rotMat, glm::radians(rz), glm::vec3(0.0f, 0.0f, 1.0f));
                         amc.modelRotationMat = rotMat;
+                    }
+
+                    // ---- Modular Equipment System (opt-in) ----
+                    if (j.value("is_modular", false)) {
+                        amc.isModular = true;
+
+                        // Load naked body parts
+                        if (j.contains("naked_parts") && j["naked_parts"].is_object()) {
+                            std::vector<std::pair<EquipmentSlot, std::string>> nakedEntries;
+                            for (auto& [slotName, pathVal] : j["naked_parts"].items()) {
+                                EquipmentSlot slot = equipmentSlotFromString(slotName);
+                                if (slot == EquipmentSlot::Count) {
+                                    std::cerr << "[EntityFactory] Unknown equipment slot '"
+                                              << slotName << "' in naked_parts\n";
+                                    continue;
+                                }
+                                nakedEntries.emplace_back(
+                                    slot, FileSystem::Scene(pathVal.get<std::string>()));
+                            }
+                            amc.setNakedParts(nakedEntries);
+                        }
+
+                        // Load default equipment
+                        if (j.contains("default_equipment") && j["default_equipment"].is_object()) {
+                            for (auto& [slotName, pathVal] : j["default_equipment"].items()) {
+                                EquipmentSlot slot = equipmentSlotFromString(slotName);
+                                if (slot == EquipmentSlot::Count) {
+                                    std::cerr << "[EntityFactory] Unknown equipment slot '"
+                                              << slotName << "' in default_equipment\n";
+                                    continue;
+                                }
+                                amc.equipPart(slot,
+                                    FileSystem::Scene(pathVal.get<std::string>()));
+                            }
+                        }
                     }
                 }
             }
