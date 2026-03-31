@@ -20,6 +20,7 @@ struct ModularMeshPart {
     /// Release OpenGL resources for every sub-mesh owned by this part.
     void cleanUp() {
         for (auto& m : meshes) {
+            if (m.textureID) { glDeleteTextures(1, &m.textureID); m.textureID = 0; }
             if (m.VAO) { glDeleteVertexArrays(1, &m.VAO); m.VAO = 0; }
             if (m.VBO) { glDeleteBuffers(1, &m.VBO);      m.VBO = 0; }
             if (m.EBO) { glDeleteBuffers(1, &m.EBO);      m.EBO = 0; }

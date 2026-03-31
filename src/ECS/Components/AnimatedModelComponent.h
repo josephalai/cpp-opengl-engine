@@ -107,8 +107,12 @@ struct AnimatedModelComponent {
 
     /// Equip a part in the given slot.  Loads the mesh from @p assetPath,
     /// remaps its bone indices to the master skeleton, and stores it.
+    /// @param hidesNaked  When true (default), the naked body part in this slot
+    ///                    is hidden.  Pass false for accessories/jewelry that
+    ///                    should render on top of the naked geometry.
     /// Requires model->skeleton to be the master skeleton.
-    void equipPart(EquipmentSlot slot, const std::string& assetPath);
+    void equipPart(EquipmentSlot slot, const std::string& assetPath,
+                   bool hidesNaked = true);
 
     /// Remove the equipped part from a slot (reverts to naked geometry).
     void unequipPart(EquipmentSlot slot);

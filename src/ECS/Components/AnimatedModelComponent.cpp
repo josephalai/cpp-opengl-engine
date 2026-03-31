@@ -13,7 +13,8 @@
 // equipPart — load + remap a new equipment mesh and store it in the slot
 // ---------------------------------------------------------------------------
 void AnimatedModelComponent::equipPart(EquipmentSlot slot,
-                                        const std::string& assetPath) {
+                                        const std::string& assetPath,
+                                        bool hidesNaked) {
     if (!isModular || !model) {
         std::cerr << "[AnimatedModelComponent::equipPart] Cannot equip: "
                   << (isModular ? "model is null" : "entity is not modular") << "\n";
@@ -40,7 +41,7 @@ void AnimatedModelComponent::equipPart(EquipmentSlot slot,
     part->assetPath  = assetPath;
     part->slot       = slot;
     part->meshes     = std::move(meshes);
-    part->hidesNakedPart = true;
+    part->hidesNakedPart = hidesNaked;
     equippedArmor[idx] = part;
 }
 

@@ -580,10 +580,18 @@ std::vector<AnimatedMesh> AnimationLoader::loadModularPart(
             if (masterBone) {
                 remapTable[localID] = masterBone->id;
             } else {
-                remapTable[localID] = 0;  // fallback to bone 0
+                // Bone not found in master skeleton — zero out its weight
+                // contribution by mapping to bone 0 with a logged warning.
+                // This is intentional: the vertex will still deform with
+                // bone 0's transform, which is typically the root/hips and
+                // produces a "collapsed to root" visual artefact that makes
+                // the mismatch obvious during development.
+                remapTable[localID] = 0;
                 std::cerr << "[AnimationLoader::loadModularPart] WARNING: bone '"
                           << boneName << "' in '" << path
-                          << "' has no match in master skeleton.\n";
+                          << "' has no match in master skeleton — "
+                          << "vertices weighted to this bone will follow bone 0 (root). "
+                          << "Ensure bone names match between the part and master skeleton.\n";
             }
         }
 
