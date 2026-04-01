@@ -27,8 +27,6 @@ void EquipmentPanel::render() {
         }
     }
 
-    if (!playerAmc) return;
-
     ImGui::SetNextWindowSize(ImVec2(260, 0), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(10, 400), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Equipment", &visible_, ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -42,7 +40,15 @@ void EquipmentPanel::render() {
     ImVec2 wSize = ImGui::GetWindowSize();
     UiMaster::registerUiRegion(wPos.x, wPos.y, wSize.x, wSize.y);
 
-    ImGui::TextUnformatted("Toggle armor pieces:");
+    if (!playerAmc) {
+        ImGui::TextColored(ImVec4(1, 0.6f, 0, 1),
+            "No modular player found.\n"
+            "Ensure scene.json uses a modular prefab.");
+        ImGui::End();
+        return;
+    }
+
+    ImGui::TextUnformatted("Toggle armor pieces (or use keys 1-5):");
     ImGui::Separator();
 
     // Iterate over all equipment slots.

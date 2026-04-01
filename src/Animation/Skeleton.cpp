@@ -14,7 +14,7 @@ Bone* Skeleton::getBoneByName(const std::string& name) const {
 
 std::vector<glm::mat4> Skeleton::computeBoneMatrices() const {
     std::vector<glm::mat4> result(bones.size(), glm::mat4(1.0f));
-    if (root) computeRecursive(root, glm::mat4(1.0f), result);
+    if (root) computeRecursive(root, rootTransform, result);
     return result;
 }
 

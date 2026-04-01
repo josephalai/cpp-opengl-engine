@@ -97,7 +97,8 @@ static unsigned int loadTextureFromFile(const std::string& path,
 
 static void buildBoneHierarchy(const aiNode* aiNode,
                                 Bone* parent,
-                                Skeleton& skeleton) {
+                                Skeleton& skeleton,
+                                const glm::mat4& nonBoneAccum = glm::mat4(1.0f)) {
     std::string nodeName(aiNode->mName.C_Str());
     Bone* current = skeleton.getBoneByName(nodeName);
 
@@ -112,13 +113,28 @@ static void buildBoneHierarchy(const aiNode* aiNode,
         // Attach to parent if one exists
         if (parent) {
             parent->children.push_back(current);
-        } else if (!skeleton.root) {
-            skeleton.root = current;
+        } else {
+            // First bone encountered — it's the skeleton root.
+            // Store the accumulated non-bone ancestor transforms (e.g. Armature
+            // node rotation) so computeBoneMatrices() can apply them.
+            skeleton.rootTransform = nonBoneAccum;
+            if (!skeleton.root) {
+                skeleton.root = current;
+            }
         }
-    }
 
-    for (unsigned int i = 0; i < aiNode->mNumChildren; ++i) {
-        buildBoneHierarchy(aiNode->mChildren[i], current ? current : parent, skeleton);
+        // Children of bone nodes: reset non-bone accumulation to identity
+        for (unsigned int i = 0; i < aiNode->mNumChildren; ++i) {
+            buildBoneHierarchy(aiNode->mChildren[i], current, skeleton, glm::mat4(1.0f));
+        }
+    } else {
+        // Non-bone node (e.g. Scene Root, Armature) — accumulate its transform
+        // and pass down to children so that when we reach the first bone,
+        // all ancestor transforms are preserved.
+        glm::mat4 newAccum = nonBoneAccum * toGlm(aiNode->mTransformation);
+        for (unsigned int i = 0; i < aiNode->mNumChildren; ++i) {
+            buildBoneHierarchy(aiNode->mChildren[i], parent, skeleton, newAccum);
+        }
     }
 }
 

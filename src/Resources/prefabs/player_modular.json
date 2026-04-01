@@ -32,11 +32,6 @@
     "AnimatedModelComponent": {
       "master_skeleton": "Models/Characters/player_modular/Animations/Meshy_AI_Iron_Armor_T_Pose_Sta_biped_Idle_4.glb",
       "is_modular": true,
-      "model_rotation": {
-        "x": -90.0,
-        "y": 0.0,
-        "z": 0.0
-      },
       "naked_parts": {
         "Hands": "Models/Characters/player_modular/Meshes/Man_Naked/SK_Man_Hands_Naked.glb",
         "Feet": "Models/Characters/player_modular/Meshes/Man_Naked/SK_Man_Feet_Naked.glb",

@@ -18,6 +18,15 @@ public:
     std::vector<Bone*>                      bones;       ///< Flat array indexed by bone ID.
     std::unordered_map<std::string, Bone*>  bonesByName;
 
+    /// Accumulated transform from non-bone ancestor nodes (e.g. Scene Root,
+    /// Armature) that sit above the root bone in the Assimp node hierarchy.
+    /// buildBoneHierarchy() populates this; computeBoneMatrices() uses it as
+    /// the initial parent transform so bone matrices are in the correct
+    /// coordinate space.  For models whose Armature node carries a -90° X
+    /// rotation (common in Blender/Meshy exports to convert Z-up → Y-up),
+    /// this ensures the model stands upright without a manual model_rotation.
+    glm::mat4 rootTransform = glm::mat4(1.0f);
+
     int    getBoneCount()                      const { return static_cast<int>(bones.size()); }
     Bone*  getBone(int id)                     const;
     Bone*  getBoneByName(const std::string& n) const;

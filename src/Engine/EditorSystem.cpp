@@ -81,6 +81,9 @@ void EditorSystem::update(float /*deltaTime*/) {
         bool gNow = InputMaster::isKeyDown(G);
         if (gNow && !prevGKey && !ImGui::GetIO().WantCaptureKeyboard) {
             EquipmentPanel::instance().toggle();
+            std::cout << "[EditorSystem] Equipment panel toggled "
+                      << (EquipmentPanel::instance().isVisible() ? "ON" : "OFF")
+                      << " (G key)\n";
         }
         prevGKey = gNow;
     }
