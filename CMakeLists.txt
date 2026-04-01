@@ -354,47 +354,49 @@ target_link_libraries(asset_baker PRIVATE
 # =============================================================================
 # Unit Tests (GoogleTest — headless, no OpenGL required)
 # =============================================================================
-FetchContent_Declare(
-    googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG        v1.14.0
-)
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+option(ENGINE_BUILD_TESTS "Build the engine_tests target (GoogleTest)" OFF)
 
-enable_testing()
+if(ENGINE_BUILD_TESTS)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.14.0
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
 
-# Test source files
-file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/tests/*.cpp")
+    enable_testing()
 
-# The tests need a few animation source files (compiled without OpenGL).
-set(TEST_ANIMATION_SOURCES
-    "${CMAKE_SOURCE_DIR}/src/Animation/Skeleton.cpp"
-    "${CMAKE_SOURCE_DIR}/src/Animation/Bone.cpp"
-    "${CMAKE_SOURCE_DIR}/src/Animation/AnimationController.cpp"
-    "${CMAKE_SOURCE_DIR}/src/Animation/AnimationBlender.cpp"
-    "${CMAKE_SOURCE_DIR}/src/Animation/AnimationClip.cpp"
-    "${CMAKE_SOURCE_DIR}/src/Animation/AnimationState.cpp"
-)
+    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/tests/*.cpp")
 
-add_executable(engine_tests ${TEST_SOURCES} ${TEST_ANIMATION_SOURCES})
+    set(TEST_ANIMATION_SOURCES
+        "${CMAKE_SOURCE_DIR}/src/Animation/Skeleton.cpp"
+        "${CMAKE_SOURCE_DIR}/src/Animation/Bone.cpp"
+        "${CMAKE_SOURCE_DIR}/src/Animation/AnimationController.cpp"
+        "${CMAKE_SOURCE_DIR}/src/Animation/AnimationBlender.cpp"
+        "${CMAKE_SOURCE_DIR}/src/Animation/AnimationClip.cpp"
+        "${CMAKE_SOURCE_DIR}/src/Animation/AnimationState.cpp"
+    )
 
-target_include_directories(engine_tests PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${glm_SOURCE_DIR}
-)
+    add_executable(engine_tests ${TEST_SOURCES} ${TEST_ANIMATION_SOURCES})
 
-target_compile_definitions(engine_tests PRIVATE
-    HEADLESS_SERVER
-    RESOURCE_ROOT="${CMAKE_SOURCE_DIR}"
-)
+    target_include_directories(engine_tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${glm_SOURCE_DIR}
+    )
 
-target_link_libraries(engine_tests PRIVATE
-    GTest::gtest_main
-)
+    target_compile_definitions(engine_tests PRIVATE
+        HEADLESS_SERVER
+        RESOURCE_ROOT="${CMAKE_SOURCE_DIR}"
+    )
 
-include(GoogleTest)
-gtest_discover_tests(engine_tests)
+    target_link_libraries(engine_tests PRIVATE
+        GTest::gtest_main
+    )
+
+    include(GoogleTest)
+    gtest_discover_tests(engine_tests)
+endif()
 
 # =============================================================================
 # Sol2 + Lua Linking (for both Server and Client)
