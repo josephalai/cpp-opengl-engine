@@ -17,6 +17,7 @@
 #include "../Input/InputMaster.h"
 #include "../Toolbox/TerrainPicker.h"
 #include "../Physics/PhysicsSystem.h"
+#include "../Guis/Equipment/EquipmentPanel.h"
 
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
@@ -51,6 +52,9 @@ void EditorSystem::update(float /*deltaTime*/) {
         std::sort(prefabIds_.begin(), prefabIds_.end());
     }
 
+    // Ensure the Equipment Panel always has the registry reference.
+    EquipmentPanel::instance().setRegistry(&registry_);
+
     // --- Start ImGui frame ---
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -69,6 +73,17 @@ void EditorSystem::update(float /*deltaTime*/) {
     UiMaster::renderChatBox();       // Phase 3: Spatial chat box
     UiMaster::renderInventory();     // Phase 4: Inventory grid
     UiMaster::renderSkillsPanel();   // Phase 5: Skills / XP panel
+    UiMaster::renderEquipmentPanel(); // Phase 6: Equipment toggle panel
+
+    // --- Toggle Equipment Panel with 'G' key (rising edge) ---
+    {
+        static bool prevGKey = false;
+        bool gNow = InputMaster::isKeyDown(G);
+        if (gNow && !prevGKey && !ImGui::GetIO().WantCaptureKeyboard) {
+            EquipmentPanel::instance().toggle();
+        }
+        prevGKey = gNow;
+    }
 
     if (editorState_.isEditorMode) {
         handleGhostPreview();

@@ -14,6 +14,7 @@
 #include "Chat/ChatBox.h"
 #include "Inventory/InventoryGrid.h"
 #include "Skills/SkillsPanel.h"
+#include "Equipment/EquipmentPanel.h"
 #include "../Input/InputMaster.h"
 
 GuiComponent *UiMaster::masterContainer;
@@ -282,4 +283,12 @@ void UiMaster::renderInventory() {
 
 void UiMaster::renderSkillsPanel() {
     SkillsPanel::instance().render();
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6 — Equipment panel render
+// ---------------------------------------------------------------------------
+
+void UiMaster::renderEquipmentPanel() {
+    EquipmentPanel::instance().render();
 }

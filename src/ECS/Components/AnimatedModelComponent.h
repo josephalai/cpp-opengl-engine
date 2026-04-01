@@ -7,6 +7,8 @@
 #include "../../Animation/AnimationController.h"
 #include "../../Animation/EquipmentSlot.h"
 #include "../../Animation/ModularMeshPart.h"
+#include <string>
+#include <unordered_map>
 
 /// ECS component that holds all state for a skeletal-mesh character.
 /// Replaces the legacy AnimatedEntity struct for the ECS rendering pipeline.
@@ -103,6 +105,11 @@ struct AnimatedModelComponent {
 
     /// One-shot log guard so buildActiveMeshes() only prints once per entity.
     mutable bool activeMeshesLoggedOnce_ = false;
+
+    /// Default equipment asset paths (keyed by EquipmentSlot int).
+    /// Stored at load time from the prefab's "default_equipment" so that
+    /// the EquipmentPanel can re-equip a slot after unequipping it.
+    std::unordered_map<int, std::string> defaultEquipmentPaths;
 
     // -----------------------------------------------------------------
     // Runtime Equipment API

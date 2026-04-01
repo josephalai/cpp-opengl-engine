@@ -436,8 +436,11 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                                               << slotName << "' in default_equipment\n";
                                     continue;
                                 }
-                                amc.equipPart(slot,
-                                    FileSystem::Scene(pathVal.get<std::string>()));
+                                const std::string absEquipPath =
+                                    FileSystem::Scene(pathVal.get<std::string>());
+                                amc.equipPart(slot, absEquipPath);
+                                // Remember the path so the EquipmentPanel can re-equip later.
+                                amc.defaultEquipmentPaths[static_cast<int>(slot)] = absEquipPath;
                                 ++equipCount;
                             }
                             std::cout << "[EntityFactory]   Equipped " << equipCount
