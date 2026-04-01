@@ -213,7 +213,9 @@ if(ENGINE_ASSIMP_WITH_DRACO)
     set(ASSIMP_INSTALL              OFF CACHE BOOL "" FORCE)
     set(ASSIMP_INSTALL_PDB          OFF CACHE BOOL "" FORCE)
     set(ASSIMP_INJECT_DEBUG_POSTFIX OFF CACHE BOOL "" FORCE)
-    set(BUILD_SHARED_LIBS           ON  CACHE BOOL "" FORCE)  # <--- KEY CHANGE: ensures draco_shared exists
+    set(BUILD_SHARED_LIBS           ON  CACHE BOOL "" FORCE)
+    # Add this line below to fix the compilation error
+    set(ASSIMP_WARNINGS_AS_ERRORS   OFF CACHE BOOL "" FORCE)
 
     FetchContent_MakeAvailable(assimp)
 
