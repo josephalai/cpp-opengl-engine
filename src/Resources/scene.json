@@ -18,6 +18,14 @@
       "x": 96.0,
       "y": -2.4419403076171875,
       "z": -76.0
+    },
+    {
+      "alias": "modular_player",
+      "ry": 0.0,
+      "scale": 1.0,
+      "x": 102.0,
+      "y": 0.0,
+      "z": -78.0
     }
   ],
   "entities": [
@@ -240,14 +248,13 @@
     }
   ],
   "player": {
-    "path": "Characters/man-1.glb",
-    "fallback_path": "Characters/characters.glb",
+    "prefab": "player_modular",
     "animation_map": {
       "Idle": "Idle",
-      "Patrol": "Walking",
-      "Run": "Running",
-      "Sprint": "Run_03",
-      "Walk": "Casual_Walk"
+      "Patrol": "Walk",
+      "Run": "Run",
+      "Sprint": "Run",
+      "Walk": "Walk"
     },
     "offset": {
       "ox": 0.0,
@@ -259,7 +266,6 @@
       "ry": 0.0,
       "rz": 0.0
     },
-    "scale": 0.05,
     "x": 100.0,
     "y": "terrain",
     "z": -80.0

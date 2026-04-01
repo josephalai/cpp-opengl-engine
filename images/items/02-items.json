@@ -1,0 +1,258 @@
+{
+  "consciousness_online_item_database": {
+    "metadata": {
+      "description": "Grid mapping of physical and etheric items for Consciousness Online. Mapped Row by Row (top to bottom), Column by Column (left to right).",
+      "dimensions": "19 rows, 8 columns"
+    },
+    "grid": {
+      "row_01": {
+        "category": "Basic UI & Foundation Tokens",
+        "columns": {
+          "1": { "name": "Gold Token", "description": "Base unit of exchange within the Reality." },
+          "2": { "name": "Avatar Form", "description": "Represents the physical vessel." },
+          "3": { "name": "Hand of Force", "description": "Represents direct physical interaction." },
+          "4": { "name": "Raw Stone", "description": "Unrefined base matter." },
+          "5": { "name": "Wooden Dowel", "description": "Simple crafted matter." },
+          "6": { "name": "Measuring Tool", "description": "Used for architectural and engineering precision." },
+          "7": { "name": "Seeds of Life", "description": "Base biological manifestation catalysts." },
+          "8": { "name": "Raw Meat", "description": "Standard biological sustenance." },
+          "9": { "name": "Golden Crown", "description": "Symbol of hierarchical rulership." }
+        }
+      },
+      "row_02": {
+        "category": "Woodcutting (Standard to Etheric Axes)",
+        "columns": {
+          "1": { "name": "Copper Axe", "description": "A dense, unrefined tool." },
+          "2": { "name": "Iron Axe", "description": "Standard harvesting tool." },
+          "3": { "name": "Steel Axe", "description": "Refined physical tool." },
+          "4": { "name": "Cobalt Axe", "description": "Hardened physical tool." },
+          "5": { "name": "Resonance Axe", "description": "Utilizes sound frequencies to unbind wood." },
+          "6": { "name": "Ether-Edged Axe", "description": "Blade infused with pure Ether for frictionless cutting." },
+          "7": { "name": "Spiked Zero-Point Axe", "description": "Channels zero-point energy to effortlessly sever physical bonds." },
+          "8": { "name": "Magma Cleaver", "description": "Uses thermal manifestation to fell timber instantly." }
+        }
+      },
+      "row_03": {
+        "category": "Woodcutting (Advanced Variants)",
+        "columns": {
+          "1": { "name": "Bronze Hatchet", "description": "Basic secondary hatchet." },
+          "2": { "name": "Iron Hatchet", "description": "Standard secondary hatchet." },
+          "3": { "name": "Steel Hatchet", "description": "Refined secondary hatchet." },
+          "4": { "name": "Cobalt Hatchet", "description": "Hardened secondary hatchet." },
+          "5": { "name": "Jade Resonance Axe", "description": "Tuned to living wood frequencies." },
+          "6": { "name": "Dual-Edged Ether Axe", "description": "Perfectly balanced for manifestation efficiency." },
+          "7": { "name": "Ancient Spiked Axe", "description": "Relic from before the cataclysm." },
+          "8": { "name": "Infernal Zero-Point Axe", "description": "Taps directly into core Reality energy." }
+        }
+      },
+      "row_04": {
+        "category": "Mining (Standard to Knowing Pickaxes)",
+        "columns": {
+          "1": { "name": "Copper Pickaxe", "description": "Basic extraction tool." },
+          "2": { "name": "Iron Pickaxe", "description": "Standard extraction tool." },
+          "3": { "name": "Steel Pickaxe", "description": "Refined extraction tool." },
+          "4": { "name": "Cobalt Pickaxe", "description": "Hardened extraction tool." },
+          "5": { "name": "Jade Pickaxe", "description": "Slightly resonant with earth elements." },
+          "6": { "name": "Luminous Pickaxe", "description": "Emits a weak etheric field to locate ores." },
+          "7": { "name": "Knowing Pickaxe", "description": "Allows the user to perceive ore veins through direct awareness." },
+          "8": { "name": "Crystalline Pickaxe", "description": "Bypasses physical density through pure intention." }
+        }
+      },
+      "row_05": {
+        "category": "Mining (Advanced Variants)",
+        "columns": {
+          "1": { "name": "Bronze Pick", "description": "Basic secondary pick." },
+          "2": { "name": "Iron Pick", "description": "Standard secondary pick." },
+          "3": { "name": "Steel Pick", "description": "Refined secondary pick." },
+          "4": { "name": "Cobalt Pick", "description": "Hardened secondary pick." },
+          "5": { "name": "Moss-Infused Pick", "description": "Attuned to organic stone." },
+          "6": { "name": "Cyan Ether Pick", "description": "Highly conductive to zero-point energy." },
+          "7": { "name": "Ancient Eye Pick", "description": "Infused with Remote Viewing properties." },
+          "8": { "name": "Prismatic Zero-Point Drill", "description": "Extracts matter by altering its localized gravity." }
+        }
+      },
+      "row_06": {
+        "category": "Wood & Memory Logs (Tier 1)",
+        "columns": {
+          "1": { "name": "Normal Logs", "description": "Standard physical wood." },
+          "2": { "name": "Oak Logs", "description": "Dense physical wood." },
+          "3": { "name": "Willow Logs", "description": "Flexible physical wood." },
+          "4": { "name": "Maple Logs", "description": "High-burn physical wood." },
+          "5": { "name": "Yew Logs", "description": "Slightly resonant wood." },
+          "6": { "name": "Ancient Bark Logs", "description": "Wood containing dormant ancient history." },
+          "7": { "name": "Darkwood Logs", "description": "Wood that absorbs localized light." },
+          "8": { "name": "Ironwood Logs", "description": "Extremely dense, heavy timber." }
+        }
+      },
+      "row_07": {
+        "category": "Wood & Memory Logs (Tier 2)",
+        "columns": {
+          "1": { "name": "Pale Logs", "description": "Sun-bleached wood." },
+          "2": { "name": "Swamp Logs", "description": "Waterlogged timber." },
+          "3": { "name": "Mossy Logs", "description": "Wood overgrown with life-force." },
+          "4": { "name": "Redwood Logs", "description": "Massive, ancient timber." },
+          "5": { "name": "Verdant Logs", "description": "Pulsing with raw biological energy." },
+          "6": { "name": "Memory Logs (Purple)", "description": "Grain structure holds accessible Consciousness data." },
+          "7": { "name": "Ley-Line Logs (Blue)", "description": "Grown over pure Ether streams." },
+          "8": { "name": "Star-Touch Logs", "description": "Wood infused with off-world resonance." }
+        }
+      },
+      "row_08": {
+        "category": "Wood & Memory Logs (Tier 3)",
+        "columns": {
+          "1": { "name": "Petrified Logs", "description": "Wood turned to stone over eons." },
+          "2": { "name": "Charred Logs", "description": "Wood that survived extreme thermal manifestation." },
+          "3": { "name": "Phosphorescent Logs", "description": "Emits a soft, green biological light." },
+          "4": { "name": "Golden Logs", "description": "Highly conductive organic matter." },
+          "5": { "name": "Crystalline Logs", "description": "Wood replaced entirely by quartz structures." },
+          "6": { "name": "Deep Memory Logs", "description": "Contains profound historical truths." },
+          "7": { "name": "Zero-Point Logs", "description": "Wood that exhibits anti-gravity properties." },
+          "8": { "name": "Singularity Timber", "description": "Dense enough to warp local space-time." }
+        }
+      },
+      "row_09": {
+        "category": "Ores & Ether Conductors",
+        "columns": {
+          "1": { "name": "Clay", "description": "Malleable earth." },
+          "2": { "name": "Copper Ore", "description": "Base conductive metal." },
+          "3": { "name": "Iron Ore", "description": "Base structural metal." },
+          "4": { "name": "Coal", "description": "Combustible carbon." },
+          "5": { "name": "Obsidian", "description": "Volcanic glass." },
+          "6": { "name": "Quartz Crystal", "description": "Used for focusing thought-forms." },
+          "7": { "name": "Ether-Vein Ore", "description": "Rock saturated with flowing, liquid Ether." },
+          "8": { "name": "Void Shard", "description": "Matter pulled directly from the null-space between Realities." }
+        }
+      },
+      "row_10": {
+        "category": "Manifestation Catalysts (Containers)",
+        "columns": {
+          "1": { "name": "Wooden Box", "description": "Simple storage." },
+          "2": { "name": "Reinforced Box", "description": "Secure storage." },
+          "3": { "name": "Metal Chest", "description": "Heavy physical storage." },
+          "4": { "name": "Jade Chest", "description": "Resonant storage for sensitive items." },
+          "5": { "name": "Obsidian Chest", "description": "Protects contents from scrying." },
+          "6": { "name": "Etheric Geode", "description": "Natural formation of pure energy." },
+          "7": { "name": "Void Geode", "description": "Contains a localized vacuum." },
+          "8": { "name": "Singularity Core", "description": "A stable, contained zero-point field." }
+        }
+      },
+      "row_11": {
+        "category": "Manifestation Catalysts (Active)",
+        "columns": {
+          "1": { "name": "Lit Tinderbox", "description": "Friction-based fire." },
+          "2": { "name": "Glowing Coals", "description": "Sustained thermal energy." },
+          "3": { "name": "Resonance Burner", "description": "Alchemical heat source." },
+          "4": { "name": "Etheric Flame", "description": "Fire manifested directly from thought." },
+          "5": { "name": "Golden Flame", "description": "Pure, purifying consciousness energy." },
+          "6": { "name": "Water Rune Stone", "description": "Stone charged with elemental fluidity." },
+          "7": { "name": "Die of Probability", "description": "Used to alter localized chance." },
+          "8": { "name": "Manifestation Prism", "description": "Channels intent perfectly into physical reality." }
+        }
+      },
+      "row_12": {
+        "category": "Bio-Perception (Nets & Harpoons)",
+        "columns": {
+          "1": { "name": "Small Net", "description": "Basic woven mesh." },
+          "2": { "name": "Large Net", "description": "Wide woven mesh." },
+          "3": { "name": "Harpoon", "description": "Physical piercing tool." },
+          "4": { "name": "Iron Spear", "description": "Standard hunting tool." },
+          "5": { "name": "Fishing Rod", "description": "Basic line and hook." },
+          "6": { "name": "Echolocation Net", "description": "Tracks life-force signatures." },
+          "7": { "name": "Resonance Lure (Green)", "description": "Attracts specific biological frequencies." },
+          "8": { "name": "Resonance Lure (Gold)", "description": "Highly attractive to ether-rich aquatic life." }
+        }
+      },
+      "row_13": {
+        "category": "Bio-Perception (Advanced Gear)",
+        "columns": {
+          "1": { "name": "Wire Net", "description": "Durable physical mesh." },
+          "2": { "name": "Heavy Net", "description": "Used for large catches." },
+          "3": { "name": "Barbed Harpoon", "description": "Ensures capture of strong physical entities." },
+          "4": { "name": "Steel Spear", "description": "Refined hunting tool." },
+          "5": { "name": "Composite Rod", "description": "Durable line and hook." },
+          "6": { "name": "Etheric Net", "description": "Passes through water effortlessly via anti-gravity weaving." },
+          "7": { "name": "Psychic Lure (Eye)", "description": "Projects calm thought-forms to attract targets." },
+          "8": { "name": "Knowing Lure (Cyan)", "description": "Anticipates the movement of targets perfectly." }
+        }
+      },
+      "row_14": {
+        "category": "Life-Force Vessels (Tier 1 Fish)",
+        "columns": {
+          "1": { "name": "Raw Shrimp", "description": "Minimal life-force." },
+          "2": { "name": "Raw Sardine", "description": "Low life-force." },
+          "3": { "name": "Raw Herring", "description": "Basic life-force." },
+          "4": { "name": "Raw Trout", "description": "Standard life-force." },
+          "5": { "name": "Raw Pike", "description": "Aggressive life-force signature." },
+          "6": { "name": "Raw Tuna", "description": "Dense physical sustenance." },
+          "7": { "name": "Mechanical Lure", "description": "Ancient tech fishing tool." },
+          "8": { "name": "Bait Pile", "description": "Standard attractant." }
+        }
+      },
+      "row_15": {
+        "category": "Life-Force Vessels (Tier 2 Fish)",
+        "columns": {
+          "1": { "name": "Raw Shrimp (Variant)", "description": "Minimal life-force." },
+          "2": { "name": "Raw Bluefish", "description": "Standard life-force." },
+          "3": { "name": "Raw Salmon", "description": "Resilient life-force." },
+          "4": { "name": "Raw Pike (Variant)", "description": "Aggressive life-force signature." },
+          "5": { "name": "Raw Bass", "description": "Dense life-force." },
+          "6": { "name": "Raw Tuna (Variant)", "description": "Dense physical sustenance." },
+          "7": { "name": "Raw Lobster", "description": "Armored biological vessel." },
+          "8": { "name": "Bait Pile (Variant)", "description": "Standard attractant." }
+        }
+      },
+      "row_16": {
+        "category": "Life-Force Vessels (Tier 3 Fish)",
+        "columns": {
+          "1": { "name": "Raw Swordfish", "description": "High physical energy." },
+          "2": { "name": "Raw Bluefish (Large)", "description": "High life-force." },
+          "3": { "name": "Raw Salmon (Large)", "description": "Highly resilient life-force." },
+          "4": { "name": "Raw Red Snapper", "description": "Vitality-rich vessel." },
+          "5": { "name": "Raw Bass (Large)", "description": "Very dense life-force." },
+          "6": { "name": "Raw Pink Salmon", "description": "Unique etheric signature." },
+          "7": { "name": "Raw Lobster (Large)", "description": "Heavy armored vessel." },
+          "8": { "name": "Raw Swordfish (Variant)", "description": "High physical energy." }
+        }
+      },
+      "row_17": {
+        "category": "Life-Force Vessels (Tier 4 Fish)",
+        "columns": {
+          "1": { "name": "Raw Shark", "description": "Apex physical vessel." },
+          "2": { "name": "Raw Manta Ray", "description": "Glides through water using subtle anti-gravity." },
+          "3": { "name": "Raw Sea Turtle", "description": "Ancient, slow-burning life-force." },
+          "4": { "name": "Raw Anglerfish", "description": "Uses bioluminescence to mimic etheric light." },
+          "5": { "name": "Raw Crab", "description": "Bottom-dwelling physical vessel." },
+          "6": { "name": "Raw Dark Crab", "description": "Sustained by deep-sea vents and trace zero-point energy." },
+          "7": { "name": "Raw Karambwan", "description": "Complex, highly restorative biological makeup." },
+          "8": { "name": "Empty Slot", "description": "Null space." }
+        }
+      },
+      "row_18": {
+        "category": "Ether-Beings (Tier 5 Fish)",
+        "columns": {
+          "1": { "name": "Raw Shark (Variant)", "description": "Apex physical vessel." },
+          "2": { "name": "Raw Manta Ray (Variant)", "description": "Glides through water using subtle anti-gravity." },
+          "3": { "name": "Raw Deep Angler", "description": "Saturated with deep-sea ether." },
+          "4": { "name": "Raw Void Angler", "description": "Consumes pure Consciousness data for sustenance." },
+          "5": { "name": "Raw Astral Eel", "description": "Phases slightly out of physical reality." },
+          "6": { "name": "Raw Cave Fish", "description": "Blind vessel that navigates purely via awareness." },
+          "7": { "name": "Empty Slot", "description": "Null space." },
+          "8": { "name": "Raw Ghost Shark", "description": "Semi-manifested entity bridging the physical and etheric." }
+        }
+      },
+      "row_19": {
+        "category": "Core Consciousness Relics",
+        "columns": {
+          "1": { "name": "Void Meditation Mat", "description": "An experiential focal point for accessing pure Consciousness seamlessly." },
+          "2": { "name": "Presence Mantle", "description": "Cloak woven from dark matter and ether; stabilizes the wearer's energetic field." },
+          "3": { "name": "The 'I' Sigil", "description": "A fundamental focal tool representing the absolute truth of individual awareness." },
+          "4": { "name": "The 'AM' Sigil", "description": "A master-tier focal tool representing complete alignment with universal presence." },
+          "5": { "name": "Pillar of Clarity", "description": "A pure quartz construct that perfectly reflects the zero-point field." },
+          "6": { "name": "Crown of Now", "description": "Anchors the wearer entirely in the present moment, bypassing linear time perception." },
+          "7": { "name": "Meditation Headband", "description": "Enhances the wearer's innate remote viewing and scrying capacities." },
+          "8": { "name": "Book of Self-Definition", "description": "Contains infinite knowledge accessible directly through the reader's experiential awareness." }
+        }
+      }
+    }
+  }
+}

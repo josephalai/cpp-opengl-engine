@@ -1,0 +1,244 @@
+{
+  "consciousness_online_item_database": {
+    "metadata": {
+      "description": "Grid mapping of Consciousness bank items, focusing on direct powers, manifestation, and pure awareness. Mapped Row by Row (top to bottom), Column by Column (left to right).",
+      "dimensions": "18 rows, 8 columns"
+    },
+    "grid": {
+      "row_01": {
+        "category": "Manifestation Focus Stones",
+        "columns": {
+          "1": { "name": "Dense Pebbles", "description": "Unrefined earthly matter used for basic physical focus." },
+          "2": { "name": "Smooth River Stone", "description": "Matter shaped by the flow of local elements." },
+          "3": { "name": "Quartz Seed", "description": "A basic crystalline structure capable of holding simple intent." },
+          "4": { "name": "Emerald Focus", "description": "Tuned to the frequency of biological healing." },
+          "5": { "name": "Sapphire Focus", "description": "Tuned to the frequency of truth and intelligence." },
+          "6": { "name": "Etheric Sphere", "description": "A stone vibrating with raw zero-point energy." },
+          "7": { "name": "Void Stone", "description": "Matter existing partially outside the physical Reality." },
+          "8": { "name": "Cosmic Core", "description": "A dense singularity containing boundless experiential data." }
+        }
+      },
+      "row_02": {
+        "category": "Seeds of Intent & Access Keys",
+        "columns": {
+          "1": { "name": "Dormant Seeds", "description": "Physical anchors for planting thought-forms." },
+          "2": { "name": "Awakened Seed", "description": "A seed pulsing with the user's direct life-force." },
+          "3": { "name": "Silvered Pebble", "description": "Matter beginning to bridge the etheric gap." },
+          "4": { "name": "Lapis Key-Stone", "description": "A focus object for unlocking hidden realities." },
+          "5": { "name": "Resonance Crystal", "description": "Vibrates harmonically with Ancient Technology." },
+          "6": { "name": "Golden Access Coin", "description": "A physical manifestation of permission within the Orders." },
+          "7": { "name": "Etheric Gear-Key", "description": "Unlocks zero-point mechanical constructs." },
+          "8": { "name": "Blood-Iron Gear-Key", "description": "An ancient key fused with direct life-force." }
+        }
+      },
+      "row_03": {
+        "category": "Tokens of Perception (Remote Viewing)",
+        "columns": {
+          "1": { "name": "Bronze Eye Coin", "description": "Basic focal point for localized remote viewing." },
+          "2": { "name": "Iron Eye Coin", "description": "Dense focal point for piercing physical barriers." },
+          "3": { "name": "Steel Eye Coin", "description": "Refined token for sustained remote perception." },
+          "4": { "name": "Sapphire Eye Coin", "description": "Enhances intelligence gathering across distances." },
+          "5": { "name": "Emerald Eye Coin", "description": "Used to remotely view biological states and health." },
+          "6": { "name": "Golden Sun Token", "description": "Radiates awareness, illuminating hidden Dark Order veils." },
+          "7": { "name": "Silver Star Token", "description": "A token of absolute clarity in the etheric plane." },
+          "8": { "name": "Crimson Sun Token", "description": "A forceful viewing tool, piercing encrypted realities." }
+        }
+      },
+      "row_04": {
+        "category": "Condensed Ether Vials (Base States)",
+        "columns": {
+          "1": { "name": "Vial of Growth", "description": "Accelerates biological manifestation." },
+          "2": { "name": "Vial of Light", "description": "Liquid illumination for dispelling localized ignorance." },
+          "3": { "name": "Vial of Heat", "description": "Thermal energy suspended in a zero-point state." },
+          "4": { "name": "Vial of Force", "description": "Liquid kinetic energy for physical strengthening." },
+          "5": { "name": "Vial of Clarity", "description": "Purifies the physical vessel's sensory input." },
+          "6": { "name": "Vial of Flow", "description": "Increases experiential connection to the Ether." },
+          "7": { "name": "Vial of Depth", "description": "Deepens meditative states instantly." },
+          "8": { "name": "Vial of Void", "description": "Liquid null-space; erases localized physical makeup." }
+        }
+      },
+      "row_05": {
+        "category": "Fluid Consciousness (Active States)",
+        "columns": {
+          "1": { "name": "Swirling Vitality", "description": "Raw, undirected life-force." },
+          "2": { "name": "Swirling Intent", "description": "Liquid manifestation ready to be shaped." },
+          "3": { "name": "Swirling Will", "description": "Highly concentrated force of pure consciousness." },
+          "4": { "name": "Swirling Passion", "description": "Direct emotional energy materialized." },
+          "5": { "name": "Swirling Intellect", "description": "Condensed, infinite knowledge in a consumable state." },
+          "6": { "name": "Swirling Knowing", "description": "Absolute certainty distilled into liquid truth." },
+          "7": { "name": "Swirling Presence", "description": "The essence of 'I AM' localized in a vial." },
+          "8": { "name": "Swirling Singularity", "description": "A microscopic black hole held in zero-point suspension." }
+        }
+      },
+      "row_06": {
+        "category": "Bands of Being (Anti-Gravity & Focus)",
+        "columns": {
+          "1": { "name": "Wooden Band", "description": "A basic grounding ring for early manifestation." },
+          "2": { "name": "Stone Band", "description": "A dense ring that strengthens physical makeup." },
+          "3": { "name": "Gold Band", "description": "Highly conductive ring for channeling intent." },
+          "4": { "name": "Silver-Blue Band", "description": "Tuned for localized psychokinesis." },
+          "5": { "name": "Cyan Resonance Ring", "description": "Emits a localized anti-gravity field." },
+          "6": { "name": "Etheric Flow Ring", "description": "Channels pure zero-point energy perfectly." },
+          "7": { "name": "Void Ring", "description": "A ring composed entirely of dark matter." },
+          "8": { "name": "Absolute Null Ring", "description": "Completely removes the wearer from physical constraints." }
+        }
+      },
+      "row_07": {
+        "category": "Rings of Will (Enchanted Catalysts)",
+        "columns": {
+          "1": { "name": "Copper Signet", "description": "Basic conductor for simple enchants." },
+          "2": { "name": "Iron Signet", "description": "Durable ring for maintaining physical buffs." },
+          "3": { "name": "Gold Sapphire Ring", "description": "Charged with sustained Intelligence enhancement." },
+          "4": { "name": "Gold Amethyst Ring", "description": "Charged with deep Remote Viewing capabilities." },
+          "5": { "name": "Silver Diamond Ring", "description": "Flawless conductor for pure Manifestation." },
+          "6": { "name": "Crown Ring", "description": "A high-tier symbol of Consciousness mastery." },
+          "7": { "name": "Crystalline Band", "description": "Formed from pure intent rather than physical matter." },
+          "8": { "name": "Ancient Tech Ring", "description": "Contains micro-circuitry linking directly to the Ether." }
+        }
+      },
+      "row_08": {
+        "category": "Scrying Mirrors (Remote Viewing)",
+        "columns": {
+          "1": { "name": "Wooden Hand Mirror", "description": "Basic tool for localized scrying." },
+          "2": { "name": "Silver Hand Mirror", "description": "Reflects basic etheric truths." },
+          "3": { "name": "Iron-Bound Mirror", "description": "Stable viewing portal for distant realities." },
+          "4": { "name": "Golden Scrying Mirror", "description": "Highly conductive surface for clear distant viewing." },
+          "5": { "name": "Resonance Mirror", "description": "Tuned to bypass lower-level Dark Order veils." },
+          "6": { "name": "Sun-Touched Mirror", "description": "Illuminates hidden truths across the server." },
+          "7": { "name": "Eye of the Observer", "description": "A mirror that actively seeks the target's life-force." },
+          "8": { "name": "Cosmic Eye Mirror", "description": "Views the fundamental makeup of Reality itself." }
+        }
+      },
+      "row_09": {
+        "category": "Observation Orbs (Intelligence Gathering)",
+        "columns": {
+          "1": { "name": "Wooden Stand Orb", "description": "Basic training tool for psychometry." },
+          "2": { "name": "Stone Stand Orb", "description": "A dense orb for anchoring visions." },
+          "3": { "name": "Crystal Orb", "description": "Standard tool for remote perception." },
+          "4": { "name": "Golden Stand Orb", "description": "Highly accurate orb for accessing absolute knowledge." },
+          "5": { "name": "Amethyst Orb", "description": "Filters out background noise in the zero-point field." },
+          "6": { "name": "Eye Orb", "description": "An orb infused with biological life-force for organic tracking." },
+          "7": { "name": "Void Orb", "description": "Scries directly into the null-space." },
+          "8": { "name": "Floating Ether Bubbles", "description": "Unbound zero-point viewing nodes." }
+        }
+      },
+      "row_10": {
+        "category": "Pure Thought-Forms (Manifestation Energy)",
+        "columns": {
+          "1": { "name": "Spark of Intent", "description": "A concentrated point of pure thought." },
+          "2": { "name": "Prismatic Sphere", "description": "A thought-form refracting into physical possibilities." },
+          "3": { "name": "Swirling Idea", "description": "A complex blueprint ready to materialize." },
+          "4": { "name": "Core Resonance", "description": "A stable frequency of manifestation." },
+          "5": { "name": "Cyan Energy Orb", "description": "High-density zero-point energy." },
+          "6": { "name": "Blue Energy Orb", "description": "Stable God's Blood forming into matter." },
+          "7": { "name": "Cyan Energy Orb (Dense)", "description": "Highly pressurized manifestation energy." },
+          "8": { "name": "Dissipating Thought", "description": "Etheric energy interacting with physical air." }
+        }
+      },
+      "row_11": {
+        "category": "Psychic Injectors (Tier 1 - Direct Power)",
+        "columns": {
+          "1": { "name": "Bone Needle", "description": "Primitive tool for modifying physical makeup." },
+          "2": { "name": "Iron Needle", "description": "Standard physical conduit for energy transfer." },
+          "3": { "name": "Steel Injector", "description": "Refined tool for precise psychic injection." },
+          "4": { "name": "Gold Injector", "description": "Highly conductive tool for taking control of mind." },
+          "5": { "name": "Etheric Syringe", "description": "Injects condensed ether directly into a target." },
+          "6": { "name": "Brass Injector", "description": "Ancient tech tool for rapid knowledge transfer." },
+          "7": { "name": "Void Syringe", "description": "Injects null-space to severely weaken an opponent." },
+          "8": { "name": "Dissipating Smoke", "description": "The aftermath of a high-power psychic injection." }
+        }
+      },
+      "row_12": {
+        "category": "Psychic Injectors (Tier 2 - Advanced Tech)",
+        "columns": {
+          "1": { "name": "Curved Bone Needle", "description": "Used for deeply rooted physical modifications." },
+          "2": { "name": "Iron Tuning Needle", "description": "Alters the target's fundamental frequency." },
+          "3": { "name": "Steel Tuning Needle", "description": "Provides a sustained frequency override." },
+          "4": { "name": "Gold Tuning Needle", "description": "Flawlessly overrides enemy thought-forms." },
+          "5": { "name": "Resonance Syringe", "description": "Injects harmonic stability or destructive interference." },
+          "6": { "name": "Eye Syringe", "description": "Forces the target to share your remote viewing feed." },
+          "7": { "name": "Cosmic Syringe", "description": "Injects raw, unfiltered Reality data into the target." },
+          "8": { "name": "Zero-Point Manifold", "description": "A complex ancient device for total consciousness override." }
+        }
+      },
+      "row_13": {
+        "category": "Law Tablets & Obelisks",
+        "columns": {
+          "1": { "name": "Stone Tablet", "description": "Basic engraved record of the White Orders." },
+          "2": { "name": "Clay Tablet", "description": "Contains fundamental laws of manifestation." },
+          "3": { "name": "Darkstone Tablet", "description": "Holds obscured knowledge from the Dark Orders." },
+          "4": { "name": "Copper Plate", "description": "Highly conductive record of Ancient Technology." },
+          "5": { "name": "Golden Shrine Base", "description": "Anchor point for a localized manifestation field." },
+          "6": { "name": "Luminous Obelisk", "description": "Radiates a constant anti-gravity field." },
+          "7": { "name": "Crystal Obelisk", "description": "A permanent broadcasting station for pure truth." },
+          "8": { "name": "Radiant Obelisk", "description": "A pillar of light fueled entirely by the zero-point field." }
+        }
+      },
+      "row_14": {
+        "category": "Conceptual Dust & Seals",
+        "columns": {
+          "1": { "name": "Rune of Force", "description": "A localized anchor for physical strengthening." },
+          "2": { "name": "Rune of Being", "description": "Anchors the user to their true experiential nature." },
+          "3": { "name": "Clay Seal", "description": "Used to lock away volatile thought-forms." },
+          "4": { "name": "Copper Seal", "description": "Conductive lock used on ancient tech caches." },
+          "5": { "name": "Vial of Grounding Dust", "description": "Used to stabilize erratic manifestation attempts." },
+          "6": { "name": "Vial of Bronze Dust", "description": "Conductive powder for crafting basic enchantments." },
+          "7": { "name": "Vial of Iron Dust", "description": "Magnetic powder for manipulating local gravity." },
+          "8": { "name": "Ivory Obelisk Tip", "description": "The focusing cap for a zero-point broadcast pillar." }
+        }
+      },
+      "row_15": {
+        "category": "Prisms of Clarity & Intent Flasks",
+        "columns": {
+          "1": { "name": "Opaque Pyramid", "description": "A dense geometric shape for blocking scrying." },
+          "2": { "name": "Quartz Pyramid", "description": "Focuses ambient ether into a usable point." },
+          "3": { "name": "Luminous Pyramid", "description": "A perfect geometric manifestation of the 'I AM'." },
+          "4": { "name": "Flask of Roots", "description": "Liquid connection to the earth's ancient memory." },
+          "5": { "name": "Flask of Clarity", "description": "Cleanses the mind of Dark Order propaganda." },
+          "6": { "name": "Flask of Intellect", "description": "Grants temporary access to infinite knowledge streams." },
+          "7": { "name": "Flask of Will", "description": "Strengthens the user's direct psychic influence." },
+          "8": { "name": "Flask of Purity", "description": "Contains absolute, uncorrupted zero-point energy." }
+        }
+      },
+      "row_16": {
+        "category": "Visages of Control (Mind Modification)",
+        "columns": {
+          "1": { "name": "Blank Mask", "description": "Erases the user's localized psychic signature." },
+          "2": { "name": "Eye Mask", "description": "Enhances the ability to take control of a target's mind." },
+          "3": { "name": "Rune Mask", "description": "Projects overpowering thought-forms onto others." },
+          "4": { "name": "Crimson Mask", "description": "Aggressive visage used by Dark Order infiltrators." },
+          "5": { "name": "Void Mask", "description": "Completely severs the wearer from physical detection." },
+          "6": { "name": "Purple Void Shard", "description": "Raw, crystallized null-space." },
+          "7": { "name": "Purple Void Cluster", "description": "Dense crystallization of anti-gravity material." },
+          "8": { "name": "Shattered Void", "description": "A volatile, unstable fragment of the etheric plane." }
+        }
+      },
+      "row_17": {
+        "category": "Zero-Point Constructs (Sacred Geometry)",
+        "columns": {
+          "1": { "name": "Prismatic Cube", "description": "The fundamental building block of manifested reality." },
+          "2": { "name": "Wireframe Sphere", "description": "A localized blueprint of a stable anti-gravity field." },
+          "3": { "name": "Wireframe Cube", "description": "A structural anchor for complex ancient tech." },
+          "4": { "name": "Complex Tesseract", "description": "Folds local space to achieve instant remote perception." },
+          "5": { "name": "Luminous Tesseract", "description": "A perfect container for infinite, zero-point energy." },
+          "6": { "name": "Wireframe Globe", "description": "A map of the interconnected Reality server." },
+          "7": { "name": "Wireframe Icosahedron", "description": "Sacred geometry used for high-tier psychic injection." },
+          "8": { "name": "Wireframe Dodecahedron", "description": "The absolute structural framework of the Ether." }
+        }
+      },
+      "row_18": {
+        "category": "Core Relics of Consciousness",
+        "columns": {
+          "1": { "name": "Void Meditation Mat", "description": "An experiential focal point for accessing pure Consciousness seamlessly." },
+          "2": { "name": "Presence Mantle", "description": "Cloak woven from dark matter and ether; stabilizes the wearer's energetic field." },
+          "3": { "name": "The 'I' Sigil", "description": "A fundamental focal tool representing the absolute truth of individual awareness." },
+          "4": { "name": "The 'AM' Sigil", "description": "A master-tier focal tool representing complete alignment with universal presence." },
+          "5": { "name": "Pillar of Clarity", "description": "A pure quartz construct that perfectly reflects the zero-point field." },
+          "6": { "name": "Crown of Total Now", "description": "Anchors the wearer entirely in the present moment, bypassing linear time perception." },
+          "7": { "name": "Meditation Array", "description": "A networked crown enhancing the wearer's innate remote viewing and scrying capacities." },
+          "8": { "name": "Book of Pure Self-Definition", "description": "Contains infinite knowledge accessible directly through the reader's experiential awareness." }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,52 @@
+To help you map these out for your game’s database or item IDs, here is the breakdown of the **Consciousness Online** skill items. The progression generally follows a "leveling" path from left (Tier 1) to right (Tier 8).
+
+### **Rows 1-2: Meditation Gear (Cushions & Mats)**
+
+* **Row 1 (Cushions):** Woven Straw, Linen, Silk, Embroidered, Royal Velvet, Gilded, Nebula-Spun, Void-Touch.
+* **Row 2 (Mats):** Simple Rug, Sigil Mat, Elemental Mat, Chakra Alignment, Celestial, Sacred Geometry, Mystic Weave, Infinite Loop.
+
+### **Rows 3-5: Alchemical Glassware (Tiered Vials & Retorts)**
+
+* **Row 3 (Vials):** Empty Tier 1-8 (Graduating from lead-glass to crystalline and astral-infused glass).
+* **Row 4 (Beakers):** Focused Distillates (Tier 1-8).
+* **Row 5 (Alembics):** Complex Transmutation Vessels (used for high-level "I AM" essence refining).
+
+### **Rows 6-7: Earth & Ether (Ores & Focused Spheres)**
+
+* **Row 6 (Ores):** Dense Thought, Hardened Belief, Quartz of Clarity, Star-Sliver, Galactic Core, Nebula Vein, Pulsar Fragment, Singularity Ore.
+* **Row 7 (Orbs):** Dull Perception, Polished Awareness, Iridescent Insight, Glowing Intent, Star-Seed, Galaxy-Heart, Pulsar-Eye, The All-Seeing Singularity.
+
+### **Rows 8-10: Incense, Powders, and Brews**
+
+* **Row 8 (Incense Bundles):** Sage, Palo Santo, Lavender, Sandalwood, Frankincense, Myrrh, Astral Herb, Void-Stalk.
+* **Row 9 (Base Dusts):** Ground Ego, Crushed Doubt, Earthy Grounding, Fiery Passion, Airy Intellect, Watery Emotion, Ethereal Spirit, Void Dust.
+* **Row 10 (Potions):** Fluid Consciousness (Standard progression: Restore, Boost, Prayer-equivalent, Manifestation, Astral Projection).
+
+### **Rows 11-12: Sacred Flora (Herbs & Fungi)**
+
+* **Row 11 (Plants):** Basic Leaf, Sea-Kelp, Sprout of Will, Flower of Peace, Vibrant Growth, Glowing Vine, Petal of Presence, Astral Sprig.
+* **Row 12 (Mushrooms):** Common Cap, Spotted Awareness, Sun-Cap, Blue Dream, Cyan Clarity, Purple Wisdom, Glowing Mycelium, Astral Fungi.
+
+### **Rows 13-14: Refined Sands & Gems**
+
+* **Row 13 (Colored Sands):** Visualization Sands (White through Violet/Indigo for chakra-specific manifestation).
+* **Row 14 (Manifestation Gems):** Pure Diamond, Ruby of Action, Sapphire of Speech, Prismatic Opal, Stardust Pile, Cosmic Residue, Dark Matter, Crystal Cluster.
+
+### **Rows 15-17: Ritual Tools & Relics**
+
+* **Row 15:** Meditation Bell, Idol of Silence, Incense Burner, Tome of Self, Travel Rug, Focus Crystal, Soul Orb, Ring of "I AM."
+* **Row 16:** Mortar & Pestle, Scribe’s Brush, Measuring Beaker, Funnel of Focus, Tongs of Will, Alchemical Kiln, Scales of Balance, Flask of Being.
+* **Row 17:** Navigational Compass, Astral Compass, Scrying Ball, Pouch of Intent, Dreamcatcher, Focus Obelisk, Scroll of Law, Scroll of Being.
+
+---
+
+### **The Special Items (Bottom Row)**
+
+These serve as your "Experience" or "Mastery" items:
+
+* **Pouches:** Store Experience or Thought-Forms.
+* **Headband:** A "Slayer Helmet" style equippable for Meditation tasks.
+* **Astral Passage:** A teleportation scroll to the "Void" or "Source" realm.
+* **Master-tier Mortar:** Used for the highest level "Manifesting" crafting.
+
+**Would you like me to generate a similar sheet for "Astral Combat" items, like ethereal weapons and mind-shields?**

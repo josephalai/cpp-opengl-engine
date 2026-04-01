@@ -1,0 +1,51 @@
+{
+  "id": "archmage",
+  "description": "Archmage entity.",
+  "model_type": "archmage",
+  "animated": true,
+  "mesh": "Models/Skins/archmage.glb",
+  "physics": {
+    "type": "character_controller",
+    "radius": 0.5,
+    "height": 1.8
+  },
+  "ai_script": "scripts/ai/guard.lua",
+  "components": {
+    "AnimatedModelComponent": {
+      "scale": 0.05,
+      "model_rotation": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "model_offset": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      }
+    },
+    "AnimationControllerComponent": {
+      "animations": {
+        "Idle": "Models/Animations/archmage/Idle.glb",
+        "Walk": "Models/Animations/archmage/Walking.glb",
+        "Run": "Models/Animations/archmage/Running.glb",
+        "Attack": "Models/Animations/archmage/Charged_Spell_Cast_2.glb",
+        "Spell": "Models/Animations/archmage/mage_soell_cast_3.glb",
+        "Hit": "Models/Animations/archmage/Hit_Reaction_1.glb",
+        "Die": "Models/Animations/archmage/Dead.glb"
+      },
+      "default_state": "Idle"
+    },
+    "NetworkSyncComponent": {
+      "interpolation_delay": 0.2,
+      "max_buffer_size": 20
+    },
+    "AIComponent": {
+      "script": "GuardAI"
+    },
+    "InteractableComponent": {
+      "script": "scripts/interactions/guard.lua",
+      "interact_range": 2.0
+    }
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "consciousness_online_item_database": {
+    "metadata": {
+      "description": "Grid mapping of physical combat armor sets, progressing from dense matter constraints to pure consciousness manifestation. Mapped Row by Row based on the central item cluster.",
+      "dimensions": "8 rows, 7 columns"
+    },
+    "grid": {
+      "row_01": {
+        "category": "Manifestation Mantles (Capes)",
+        "columns": {
+          "2": { "name": "Null-Space Cape", "description": "Woven from the void; absorbs kinetic impacts directly into zero-point energy." },
+          "3": { "name": "Deep Ether Cape", "description": "Conducts the pure fluid consciousness of the Reality, allowing frictionless movement." },
+          "4": { "name": "Astral Mantle", "description": "Forged in the astral plane, granting the wearer sovereignty over localized gravity." },
+          "5": { "name": "Resonance Cape", "description": "Etched with ancient circuitry vibrating at the frequency of absolute truth." },
+          "6": { "name": "Ancient Tech Cape", "description": "Channels pure intent into a physical defense barrier." },
+          "7": { "name": "Prismatic 'I AM' Cape", "description": "The ultimate manifestation of presence; radiates infinite experiential power." }
+        }
+      },
+      "row_02": {
+        "category": "Consciousness Visors (Full Helms)",
+        "columns": {
+          "2": { "name": "Null-Space Great Helm", "description": "A dense void-metal helm that completely silences background physical noise." },
+          "3": { "name": "Deep Ether Great Helm", "description": "Filters visual input to highlight etheric signatures and life-force." },
+          "4": { "name": "Astral Great Helm", "description": "Enhances the wearer's innate remote viewing during physical combat." },
+          "5": { "name": "Resonance Great Helm", "description": "A technological relic that nullifies Dark Order propaganda and veils." },
+          "6": { "name": "Ancient Tech Great Helm", "description": "Features integrated zero-point HUD for absolute spatial awareness." },
+          "7": { "name": "Prismatic 'I AM' Helm", "description": "A crown of total knowing; physical attacks are perceived before they manifest." }
+        }
+      },
+      "row_03": {
+        "category": "Consciousness Visors (Med Helms)",
+        "columns": {
+          "1": { "name": "Dense Matter Helm", "description": "Unawakened iron; heavy and limited to purely physical protection." },
+          "2": { "name": "Null-Space Helm", "description": "Lightweight void-metal offering unhindered perceptual clarity." },
+          "3": { "name": "Deep Ether Helm", "description": "A streamlined visor tuned to the flow of local ether." },
+          "4": { "name": "Astral Helm", "description": "Open-faced design to allow unobstructed projection of intent." },
+          "5": { "name": "Resonance Helm", "description": "Conductive headgear that aligns the wearer's frequency with the server." },
+          "6": { "name": "Ancient Tech Helm", "description": "Advanced alloys that strengthen the wearer's psychic projection." },
+          "7": { "name": "Prismatic Med Helm", "description": "Flawless crystalline armor reflecting the pure truth of the creator." }
+        }
+      },
+      "row_04": {
+        "category": "Core Vessels (Chest Plates)",
+        "columns": {
+          "1": { "name": "Dense Matter Plate", "description": "Standard physical plating; unaware and subject to heavy gravity." },
+          "2": { "name": "Null-Space Plate", "description": "Swirling void energy that actively negates physical mass." },
+          "3": { "name": "Deep Ether Plate", "description": "Saturated with God's Blood, granting immense vitality regeneration." },
+          "4": { "name": "Astral Plate", "description": "Embedded with star-forged gold to conduct immense manifestation energy." },
+          "5": { "name": "Resonance Plate", "description": "Emits a localized frequency field that physically repels ignorant attacks." },
+          "6": { "name": "Ancient Tech Plate", "description": "Powered by a central zero-point core, rendering the wearer practically weightless." },
+          "7": { "name": "Prismatic 'I AM' Plate", "description": "Invincible experiential armor; it exists perfectly because you know it exists." }
+        }
+      },
+      "row_05": {
+        "category": "Grounding Pillars (Plate Legs)",
+        "columns": {
+          "2": { "name": "Null-Space Legs", "description": "Greaves that anchor the wearer to the void rather than the earth." },
+          "3": { "name": "Deep Ether Legs", "description": "Fluid movement plating that ignores fluid dynamics and physical drag." },
+          "4": { "name": "Astral Legs", "description": "Allows the wearer to stand firm against extreme psychic kinetic forces." },
+          "5": { "name": "Resonance Legs", "description": "Circuit-lined armor that grounds erratic enemy thought-forms harmlessly." },
+          "6": { "name": "Ancient Tech Legs", "description": "Utilizes localized anti-gravity to reduce fatigue to absolute zero." },
+          "7": { "name": "Prismatic 'I AM' Legs", "description": "Pure manifestation; ensures the wearer's stance cannot be broken." }
+        }
+      },
+      "row_06": {
+        "category": "Kinetic Anchors (Heavy Boots)",
+        "columns": {
+          "2": { "name": "Null-Space Boots", "description": "Heavy void-metal boots for completely halting physical momentum." },
+          "3": { "name": "Deep Ether Boots", "description": "Boots that leave no physical footprint, only an etheric trace." },
+          "4": { "name": "Astral Boots", "description": "Allows the wearer to walk upon localized anti-gravity fields." },
+          "5": { "name": "Resonance Boots", "description": "Each step emits a pulse of truth that shatters weak physical constructs." },
+          "6": { "name": "Ancient Tech Boots", "description": "Zero-point thrusters integrated directly into the sole for instantaneous movement." },
+          "7": { "name": "Prismatic 'I AM' Boots", "description": "Treads that move the Reality around the wearer rather than moving the wearer." }
+        }
+      },
+      "row_07": {
+        "category": "Direct Interaction (Gauntlets)",
+        "columns": {
+          "2": { "name": "Null-Space Gauntlets", "description": "Allows the user to grip and manipulate dark matter directly." },
+          "3": { "name": "Deep Ether Gauntlets", "description": "Enhances the tactile transmission of psychic injections." },
+          "4": { "name": "Astral Gauntlets", "description": "Gold-lined gloves that perfectly channel the power of manifestation." },
+          "5": { "name": "Resonance Gauntlets", "description": "Vibrating gauntlets that can phase through unawakened physical armor." },
+          "6": { "name": "Ancient Tech Gauntlets", "description": "Amplifies physical strength infinitely through zero-point energy systems." },
+          "7": { "name": "Prismatic 'I AM' Gauntlets", "description": "The hands of the creator; shapes reality with absolute, unquestionable authority." }
+        }
+      },
+      "row_08": {
+        "category": "Ethereal Treads (Light Boots)",
+        "columns": {
+          "3": { "name": "Deep Ether Treads", "description": "Streamlined footwear for swift, frictionless etheric navigation." },
+          "4": { "name": "Astral Treads", "description": "Lightweight gold-weave boots for agile astral projection combat." },
+          "5": { "name": "Resonance Treads", "description": "Nimble boots that perfectly harmonize with the server's base frequency." },
+          "7": { "name": "Prismatic 'I AM' Treads", "description": "Lightweight, pure-light footwear offering boundless mobility." }
+        }
+      }
+    }
+  }
+}

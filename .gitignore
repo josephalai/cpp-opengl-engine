@@ -47,3 +47,7 @@ src/Resources/baked_chunks/*.dat
 .gitmessage
 .gitmessage*
 data.pak
+
+# Runtime/generated
+output.log.txt
+imgui.ini

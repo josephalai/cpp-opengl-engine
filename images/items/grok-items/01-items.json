@@ -1,0 +1,246 @@
+{
+  "realities_item_database": {
+    "metadata": {
+      "description": "Grid mapping of bank items in the game 'Realities', sorted by skill progression. Items themed around ancient consciousness technology, cataclysm remnants, hidden orders, and awakened life-force. Mapped row-by-row (top to bottom), column-by-column (left to right). Slight ethereal purple/blue auras, runes, and God’s-blood accents applied to all icons.",
+      "dimensions": "18 rows, 8 columns (144 total slots)",
+      "game_context": "OSRS-style bank interface for gathering, production, and consciousness skills in a world of veiled knowledge and awakening power.",
+      "date_generated": "March 16, 2026"
+    },
+    "grid": {
+      "row_01": {
+        "category": "Fishing - Basic & Common Catches",
+        "columns": {
+          "1": { "name": "Glowing Shrimp", "description": "Small crustacean pulsing with faint consciousness energy." },
+          "2": { "name": "Anchovy", "description": "Tiny silver fish with subtle purple scale runes." },
+          "3": { "name": "Sardine", "description": "Common coastal fish carrying remnant life-force." },
+          "4": { "name": "Herring", "description": "Striped fish with soft ethereal glow." },
+          "5": { "name": "Trout", "description": "Freshwater catch with faint cataclysm vein patterns." },
+          "6": { "name": "Salmon", "description": "Powerful migratory fish radiating gentle awareness." },
+          "7": { "name": "Tuna", "description": "Large ocean fish marked by ancient order symbols." },
+          "8": { "name": "Lobster", "description": "Armored sea creature with glowing purple claws." }
+        }
+      },
+      "row_02": {
+        "category": "Fishing - Mid & High-Tier Catches",
+        "columns": {
+          "1": { "name": "Swordfish", "description": "Sleek predator with sharp consciousness-edged blade." },
+          "2": { "name": "Shark", "description": "Apex ocean hunter infused with deep remnant power." },
+          "3": { "name": "Manta Ray", "description": "Graceful glider with starry purple aura." },
+          "4": { "name": "Anglerfish", "description": "Deep-sea lure fish glowing with inner light." },
+          "5": { "name": "Remnant Eel", "description": "Electric serpent carrying fragments of lost tech." },
+          "6": { "name": "Voidfin", "description": "Dark abyssal fish with cataclysm-fractured scales." },
+          "7": { "name": "Aether Carp", "description": "Floating freshwater catch with anti-gravity shimmer." },
+          "8": { "name": "Godsblood Salmon", "description": "Rare high-tier catch pulsing with red life-force." }
+        }
+      },
+      "row_03": {
+        "category": "Fishing - Tools & Equipment",
+        "columns": {
+          "1": { "name": "Small Fishing Net", "description": "Basic net etched with faint intent runes." },
+          "2": { "name": "Large Fishing Net", "description": "Reinforced net for deeper consciousness catches." },
+          "3": { "name": "Fishing Rod", "description": "Simple pole with glowing line of awareness." },
+          "4": { "name": "Fly Fishing Rod", "description": "Light rod tuned to subtle energy flows." },
+          "5": { "name": "Harpoon", "description": "Barbed tool with purple energy tip." },
+          "6": { "name": "Lobster Pot", "description": "Cage radiating soft remnant vibrations." },
+          "7": { "name": "Fish Cage", "description": "Reinforced trap for high-tier sea life." },
+          "8": { "name": "Rune-etched Bait", "description": "Consciousness-charged lure for rare catches." }
+        }
+      },
+      "row_04": {
+        "category": "Fishing - Rare & Special Catches",
+        "columns": {
+          "1": { "name": "Abyssal Remnant", "description": "Ancient deep-sea entity with glowing core." },
+          "2": { "name": "Starscale Leviathan", "description": "Massive fish with cosmic purple scales." },
+          "3": { "name": "Ethereal Koi", "description": "Floating ornamental fish of pure intent." },
+          "4": { "name": "Cataclysm Crab", "description": "Fractured crustacean carrying lost knowledge." },
+          "5": { "name": "Bloodline Marlin", "description": "Spearfish with vivid God’s-blood red accents." },
+          "6": { "name": "Void Ray", "description": "Dark glider existing partially outside reality." },
+          "7": { "name": "Awakened Angler", "description": "Lure fish whose light reveals hidden truths." },
+          "8": { "name": "Prime Remnant Shark", "description": "Elite predator infused with full life-force." }
+        }
+      },
+      "row_05": {
+        "category": "Cooking - Basic & Mid-Tier Foods",
+        "columns": {
+          "1": { "name": "Cooked Shrimp", "description": "Steamed with faint purple steam particles." },
+          "2": { "name": "Cooked Anchovy", "description": "Grilled small fish with rune-marked skin." },
+          "3": { "name": "Cooked Herring", "description": "Simple cooked fish emitting consciousness aroma." },
+          "4": { "name": "Cooked Trout", "description": "Baked freshwater catch with soft glow." },
+          "5": { "name": "Cooked Salmon", "description": "Flaky fillet radiating gentle energy." },
+          "6": { "name": "Cooked Tuna", "description": "Seared steak with ancient order seasoning." },
+          "7": { "name": "Lobster", "description": "Boiled shell-cracker with purple steam." },
+          "8": { "name": "Swordfish Steak", "description": "Grilled blade-fish with energy char marks." }
+        }
+      },
+      "row_06": {
+        "category": "Cooking - High-Tier & Specialty Foods",
+        "columns": {
+          "1": { "name": "Shark Supreme", "description": "Elite cooked predator with red life-force glaze." },
+          "2": { "name": "Manta Wing", "description": "Delicate grilled portion with starry aura." },
+          "3": { "name": "Angler Lantern", "description": "Baked lure-fish glowing from within." },
+          "4": { "name": "Remnant Stew", "description": "Hearty mix of catches with purple broth." },
+          "5": { "name": "Consciousness Pie", "description": "Savory pastry infused with intent essence." },
+          "6": { "name": "Godsblood Roast", "description": "Rare high-tier dish pulsing with vitality." },
+          "7": { "name": "Ethereal Cake", "description": "Sweet treat charged with manifestation power." },
+          "8": { "name": "Awakened Broth", "description": "Soup radiating pure awareness energy." }
+        }
+      },
+      "row_07": {
+        "category": "Cooking - Final Foods & Platters",
+        "columns": {
+          "1": { "name": "Prime Shark Steak", "description": "Masterfully cooked apex catch." },
+          "2": { "name": "Voidfin Fillet", "description": "Dark fish cooked with ethereal flames." },
+          "3": { "name": "Aether Carp Platter", "description": "Floating dish of levitating portions." },
+          "4": { "name": "Cataclysm Seafood Mix", "description": "Assortment with fractured glowing pieces." },
+          "5": { "name": "Rune-Seasoned Feast", "description": "Large platter etched with order symbols." },
+          "6": { "name": "Life-Force Banquet", "description": "Grand meal infused with God’s blood." },
+          "7": { "name": "Conscious Pie Slice", "description": "Portion of intent-charged pastry." },
+          "8": { "name": "Awakening Roast", "description": "Final high-tier dish of pure power." }
+        }
+      },
+      "row_08": {
+        "category": "Woodcutting - Basic & Mid Logs",
+        "columns": {
+          "1": { "name": "Remnant Log", "description": "Basic wood with faint purple consciousness wisps." },
+          "2": { "name": "Veined Log", "description": "Cataclysm-fractured timber glowing green." },
+          "3": { "name": "Starry Log", "description": "Night-infused wood with cosmic sparkles." },
+          "4": { "name": "Purpleheart Log", "description": "Deep violet timber pulsing with energy." },
+          "5": { "name": "Rune-Etched Log", "description": "Ancient order symbols carved naturally." },
+          "6": { "name": "Aether Timber", "description": "Light wood with subtle anti-gravity lift." },
+          "7": { "name": "Blood-Oak Log", "description": "Dark wood accented with red life-force." },
+          "8": { "name": "Prime Remnant Log", "description": "High-quality log of full awareness." }
+        }
+      },
+      "row_09": {
+        "category": "Woodcutting - Tools & High Logs",
+        "columns": {
+          "1": { "name": "Basic Hatchet", "description": "Simple axe with glowing purple edge." },
+          "2": { "name": "Rune Hatchet", "description": "Tool etched with ancient consciousness runes." },
+          "3": { "name": "Maker’s Mark Axe", "description": "High-tier hatchet bearing order sigil." },
+          "4": { "name": "Ethereal Chopper", "description": "Axe trailing energy wisps when swung." },
+          "5": { "name": "Cataclysm Cleaver", "description": "Fractured blade for tough remnant wood." },
+          "6": { "name": "Godsblood Axe", "description": "Powerful tool infused with red vitality." },
+          "7": { "name": "Ancient Log Stack", "description": "Bundle of high-tier remnant timber." },
+          "8": { "name": "Voidwood Log", "description": "Darkest wood existing partly outside reality." }
+        }
+      },
+      "row_10": {
+        "category": "Firemaking - Basic Fires",
+        "columns": {
+          "1": { "name": "Burning Log", "description": "Ordinary wood ablaze with purple consciousness flame." },
+          "2": { "name": "Veined Campfire", "description": "Green-fractured log burning with energy sparks." },
+          "3": { "name": "Starry Pyre", "description": "Cosmic wood fire with twinkling embers." },
+          "4": { "name": "Purpleheart Blaze", "description": "Violet timber producing radiant purple fire." },
+          "5": { "name": "Rune Kindling", "description": "Etched sticks fueling intent-charged flames." },
+          "6": { "name": "Aether Fire", "description": "Levitated burning log with anti-gravity glow." },
+          "7": { "name": "Bloodflame Log", "description": "Red-accented wood burning with life-force." },
+          "8": { "name": "Tinderbox", "description": "Rune-marked starter with ethereal spark." }
+        }
+      },
+      "row_11": {
+        "category": "Firemaking - Advanced & Ethereal Flames",
+        "columns": {
+          "1": { "name": "Prime Consciousness Bonfire", "description": "High-tier fire radiating pure awareness." },
+          "2": { "name": "Cataclysm Pyre", "description": "Fractured logs burning with chaotic energy." },
+          "3": { "name": "Voidfire", "description": "Dark flame existing partially outside reality." },
+          "4": { "name": "Godsblood Inferno", "description": "Intense blaze infused with red life-force." },
+          "5": { "name": "Manifestation Campfire", "description": "Fire that helps shape thought into form." },
+          "6": { "name": "Awakened Flame", "description": "Self-sustaining fire of pure consciousness." },
+          "7": { "name": "Rune Bonfire", "description": "Etched logs producing harmonic energy." },
+          "8": { "name": "Eternal Ember", "description": "Never-extinguishing spark of ancient power." }
+        }
+      },
+      "row_12": {
+        "category": "Mining - Basic & Mid Ores",
+        "columns": {
+          "1": { "name": "Consciousness Copper", "description": "Basic ore with faint inner purple glow." },
+          "2": { "name": "Veined Tin", "description": "Cataclysm-fractured ore pulsing green." },
+          "3": { "name": "Iron Shard", "description": "Common metal with soft awareness aura." },
+          "4": { "name": "Rune Coal", "description": "Black rock etched with ancient symbols." },
+          "5": { "name": "Gold Vein", "description": "Precious ore radiating golden consciousness." },
+          "6": { "name": "Mithril Fragment", "description": "Light blue ore with energy tendrils." },
+          "7": { "name": "Teal Crystal Ore", "description": "High-tier shard glowing with pure power." },
+          "8": { "name": "Maker’s Mark Rock", "description": "Ore bearing faint order sigil." }
+        }
+      },
+      "row_13": {
+        "category": "Mining - Tools & High Ores",
+        "columns": {
+          "1": { "name": "Basic Pickaxe", "description": "Simple tool with glowing purple tip." },
+          "2": { "name": "Rune Pickaxe", "description": "Etched axe pulsing with consciousness." },
+          "3": { "name": "Cataclysm Pick", "description": "Fractured-head tool for tough remnants." },
+          "4": { "name": "Godsblood Drill", "description": "Powerful pick with red life-force core." },
+          "5": { "name": "Prime Teal Ore", "description": "Elite crystal shard of full awareness." },
+          "6": { "name": "Voidstone Chunk", "description": "Dark ore existing partly outside reality." },
+          "7": { "name": "Aether Vein", "description": "Levitated ore with anti-gravity shimmer." },
+          "8": { "name": "Awakened Core", "description": "Rare ore pulsing with God’s blood." }
+        }
+      },
+      "row_14": {
+        "category": "Smithing - Basic & Mid Bars",
+        "columns": {
+          "1": { "name": "Bronze Bar", "description": "Alloy with faint purple consciousness sheen." },
+          "2": { "name": "Iron Bar", "description": "Solid metal glowing softly with intent." },
+          "3": { "name": "Steel Ingot", "description": "Strengthened bar etched with runes." },
+          "4": { "name": "Gold Bar", "description": "Precious metal radiating golden aura." },
+          "5": { "name": "Mithril Bar", "description": "Light blue ingot with energy tendrils." },
+          "6": { "name": "Rune Bar", "description": "Dark metal pulsing with ancient power." },
+          "7": { "name": "Teal Consciousness Bar", "description": "High-tier alloy glowing pure blue." },
+          "8": { "name": "Maker’s Mark Ingot", "description": "Bar bearing order craftsmanship sigil." }
+        }
+      },
+      "row_15": {
+        "category": "Smithing - Tools & Forged Items",
+        "columns": {
+          "1": { "name": "Smithing Hammer", "description": "Tool with glowing purple head." },
+          "2": { "name": "Anvil", "description": "Rune-etched surface for shaping intent." },
+          "3": { "name": "Unfinished Blade", "description": "Half-forged weapon trailing energy." },
+          "4": { "name": "Rune Plate", "description": "Armor piece pulsing with consciousness." },
+          "5": { "name": "Godsblood Ingot", "description": "Red-accented bar of pure life-force." },
+          "6": { "name": "Aether Forge Piece", "description": "Levitated component for anti-gravity work." },
+          "7": { "name": "Void Ingot", "description": "Dark metal existing partly outside form." },
+          "8": { "name": "Prime Anvil", "description": "Elite forging surface of full awareness." }
+        }
+      },
+      "row_16": {
+        "category": "Consciousness - Passive & Meditation Items",
+        "columns": {
+          "1": { "name": "Enlightenment Orb", "description": "Glowing sphere for basic meditation focus." },
+          "2": { "name": "Remote Viewing Crystal", "description": "Clear quartz attuned to distant sight." },
+          "3": { "name": "Scrying Mirror Shard", "description": "Fragment pulsing with viewing energy." },
+          "4": { "name": "Psychometry Stone", "description": "Rock holding memories of touched objects." },
+          "5": { "name": "Premonition Gem", "description": "Jewel that flickers with future glimpses." },
+          "6": { "name": "Intelligence Focus", "description": "Sapphire-like orb enhancing knowing." },
+          "7": { "name": "Manifestation Seed", "description": "Anchor for planting conscious thought-forms." },
+          "8": { "name": "Awakened Orb", "description": "Pulsing sphere of pure life-force awareness." }
+        }
+      },
+      "row_17": {
+        "category": "Consciousness - Direct & Enchanting Powers",
+        "columns": {
+          "1": { "name": "Anti-Gravity Ring", "description": "Jewelry trailing levitation energy lines." },
+          "2": { "name": "Mind Control Amulet", "description": "Pendant capable of psychic injection." },
+          "3": { "name": "Strengthen Talisman", "description": "Charm pulsing with enhancement power." },
+          "4": { "name": "Enchantment Mirror", "description": "Small looking glass charged with intent." },
+          "5": { "name": "Remote Viewing Necklace", "description": "Chain with eye-like gem for distant sight." },
+          "6": { "name": "Manifestation Essence", "description": "Pure orb of creative consciousness." },
+          "7": { "name": "Godsblood Crystal", "description": "Red life-force shard of divine power." },
+          "8": { "name": "Order Key Stone", "description": "Ancient relic unlocking hidden knowledge." }
+        }
+      },
+      "row_18": {
+        "category": "Consciousness - High & Master Items",
+        "columns": {
+          "1": { "name": "Prime Manifestation Core", "description": "Elite essence for shaping reality." },
+          "2": { "name": "Void Awareness Orb", "description": "Dark sphere existing partly outside form." },
+          "3": { "name": "Eternal Enlightenment Gem", "description": "Never-dimming jewel of pure knowing." },
+          "4": { "name": "Blood-Iron Talisman", "description": "Fused relic of life-force and ancient tech." },
+          "5": { "name": "Cosmic Consciousness Shard", "description": "Fragment containing boundless data." },
+          "6": { "name": "White Order Sigil", "description": "Emblem protecting open knowledge." },
+          "7": { "name": "Dark Order Veil Stone", "description": "Obsidian relic for concealing truth." },
+          "8": { "name": "Awakened Godsblood Core", "description": "Ultimate item pulsing with full divine life-force." }
+        }
+      }
+    }
+  }
+}
