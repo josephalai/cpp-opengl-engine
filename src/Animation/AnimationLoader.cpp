@@ -570,7 +570,7 @@ std::vector<AnimatedMesh> AnimationLoader::loadModularPart(
         for (unsigned int b = 0; b < aiM->mNumBones; ++b) {
             aiBone* bone = aiM->mBones[b];
             int localID = static_cast<int>(b);
-            int masterID = remapTable.count(localID) ? remapTable[localID] : 0;
+            int masterID = remapTable[localID];  // always populated in loop above
 
             for (unsigned int w = 0; w < bone->mNumWeights; ++w) {
                 unsigned int vertIdx = bone->mWeights[w].mVertexId;

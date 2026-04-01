@@ -97,7 +97,7 @@ struct AnimatedModelComponent {
     /// Null entries mean the slot has no naked geometry.
     ModularMeshPart* nakedParts[static_cast<int>(EquipmentSlot::Count)] = {};
 
-    /// Currently equipped armour/equipment per slot.
+    /// Currently equipped armor/equipment per slot.
     /// Null entries mean nothing is equipped in that slot.
     ModularMeshPart* equippedArmor[static_cast<int>(EquipmentSlot::Count)] = {};
 
