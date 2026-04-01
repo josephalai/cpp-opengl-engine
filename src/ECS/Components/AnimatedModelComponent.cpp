@@ -48,6 +48,10 @@ void AnimatedModelComponent::equipPart(EquipmentSlot slot,
               << idx << " with '" << assetPath << "' ("
               << part->meshes.size() << " mesh(es), hidesNaked="
               << (hidesNaked ? "yes" : "no") << ").\n";
+    std::cout << "[AnimatedModelComponent::equipPart]   Slot " << idx
+              << " (" << equipmentSlotToString(slot) << "): "
+              << part->meshes.size() << " mesh(es) loaded, "
+              << "master skeleton bones=" << model->skeleton.getBoneCount() << ".\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -63,6 +67,10 @@ void AnimatedModelComponent::unequipPart(EquipmentSlot slot) {
         equippedArmor[idx]->cleanUp();
         delete equippedArmor[idx];
         equippedArmor[idx] = nullptr;
+    }
+    else {
+        std::cout << "[AnimatedModelComponent::unequipPart] Slot " << idx
+                  << " (" << equipmentSlotToString(slot) << ") was already empty.\n";
     }
 }
 
@@ -124,6 +132,25 @@ std::vector<const AnimatedMesh*> AnimatedModelComponent::buildActiveMeshes() con
             // No armour — render naked geometry.
             for (const auto& m : nakedParts[i]->meshes)
                 active.push_back(&m);
+        }
+    }
+
+    // One-shot summary — prints only once per entity lifetime.
+    if (!activeMeshesLoggedOnce_) {
+        std::cout << "[AnimatedModelComponent::buildActiveMeshes] Slot breakdown:\n";
+        for (int i = 0; i < static_cast<int>(EquipmentSlot::Count); ++i) {
+            auto slot = static_cast<EquipmentSlot>(i);
+            const char* name = equipmentSlotToString(slot);
+            bool hasArmor = (equippedArmor[i] != nullptr);
+            bool hasNaked = (nakedParts[i] != nullptr);
+            if (hasArmor || hasNaked) {
+                std::cout << "  [" << name << "] armor="
+                          << (hasArmor ? std::to_string(equippedArmor[i]->meshes.size()) + " mesh(es)" : "none")
+                          << ", naked="
+                          << (hasNaked ? std::to_string(nakedParts[i]->meshes.size()) + " mesh(es)" : "none")
+                          << (hasArmor && equippedArmor[i]->hidesNakedPart ? " (naked hidden)" : "")
+                          << "\n";
+            }
         }
     }
 

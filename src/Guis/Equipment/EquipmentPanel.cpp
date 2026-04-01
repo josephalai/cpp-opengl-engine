@@ -27,6 +27,20 @@ void EquipmentPanel::render() {
         }
     }
 
+    // Log the search result (one-shot per visibility toggle)
+    {
+        static bool loggedSearch = false;
+        if (!loggedSearch) {
+            if (playerAmc) {
+                std::cout << "[EquipmentPanel::render] Found local modular player with "
+                          << playerAmc->defaultEquipmentPaths.size() << " default equipment path(s).\n";
+            }
+            loggedSearch = true;
+        }
+        // Reset when panel becomes hidden
+        if (!visible_) loggedSearch = false;
+    }
+
     ImGui::SetNextWindowSize(ImVec2(260, 0), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(10, 400), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Equipment", &visible_, ImGuiWindowFlags_AlwaysAutoResize)) {

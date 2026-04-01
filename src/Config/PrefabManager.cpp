@@ -61,6 +61,8 @@ void PrefabManager::loadFile(const std::string& filePath) {
         return;
     }
 
+    std::cout << "[PrefabManager::loadFile] Parsed '" << filePath << "'.\n";
+
     // Determine the prefab ID.  Prefer the explicit "id" field; fall back to
     // the filename stem (e.g. "npc_guard" from "npc_guard.json").
     std::string id;
@@ -71,6 +73,12 @@ void PrefabManager::loadFile(const std::string& filePath) {
     }
 
     prefabs_[id] = std::move(root);
+
+    std::cout << "[PrefabManager::loadFile]   Registered prefab id='" << id << "'"
+              << (prefabs_[id].contains("id") ? " (explicit)" : " (from filename)")
+              << ", animated=" << prefabs_[id].value("animated", false)
+              << ", has mesh=" << prefabs_[id].contains("mesh")
+              << ".\n";
 }
 
 // -------------------------------------------------------------------------
@@ -81,6 +89,7 @@ const nlohmann::json& PrefabManager::getPrefab(const std::string& id) const {
     auto it = prefabs_.find(id);
     if (it != prefabs_.end()) return it->second;
     static const nlohmann::json kEmpty;
+    std::cerr << "[PrefabManager::getPrefab] Prefab '" << id << "' not found.\n";
     return kEmpty;
 }
 

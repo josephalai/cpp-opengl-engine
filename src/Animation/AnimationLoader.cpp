@@ -98,6 +98,13 @@ static unsigned int loadTextureFromFile(const std::string& path,
 static void buildBoneHierarchy(const aiNode* aiNode,
                                 Bone* parent,
                                 Skeleton& skeleton) {
+    static bool loggedFirst = false;
+    if (!loggedFirst && !parent) {
+        std::cout << "[AnimationLoader::buildBoneHierarchy] Starting hierarchy walk from root node '"
+                  << aiNode->mName.C_Str() << "' (skeleton has "
+                  << skeleton.getBoneCount() << " registered bone(s)).\n";
+        loggedFirst = true;
+    }
     std::string nodeName(aiNode->mName.C_Str());
     Bone* current = skeleton.getBoneByName(nodeName);
 
@@ -114,6 +121,8 @@ static void buildBoneHierarchy(const aiNode* aiNode,
             parent->children.push_back(current);
         } else if (!skeleton.root) {
             skeleton.root = current;
+            std::cout << "[AnimationLoader::buildBoneHierarchy] Root bone identified: '"
+                      << current->name << "' (id=" << current->id << ").\n";
         }
     }
 
@@ -127,6 +136,11 @@ static void buildBoneHierarchy(const aiNode* aiNode,
 static AnimatedMesh processMesh(aiMesh* mesh, const aiScene* scene,
                                   const std::string& directory,
                                   std::unordered_map<std::string, int>& boneIndexMap) {
+    std::cout << "[AnimationLoader::processMesh] Processing mesh '"
+              << mesh->mName.C_Str() << "': " << mesh->mNumVertices << " verts, "
+              << mesh->mNumFaces << " faces, " << mesh->mNumBones << " bone(s), "
+              << "hasNormals=" << (mesh->HasNormals() ? "yes" : "no")
+              << ", hasUVs=" << (mesh->mTextureCoords[0] ? "yes" : "no") << ".\n";
     AnimatedMesh result;
 
     // Vertices
@@ -176,6 +190,17 @@ static AnimatedMesh processMesh(aiMesh* mesh, const aiScene* scene,
         }
     }
 
+    // Log bone weight coverage
+    {
+        int skinnedVerts = 0;
+        for (const auto& v : result.vertices) {
+            if (v.boneWeights.x > 0.0f) ++skinnedVerts;
+        }
+        std::cout << "[AnimationLoader::processMesh]   Bone weights: "
+                  << skinnedVerts << "/" << result.vertices.size()
+                  << " vertices have at least one bone influence.\n";
+    }
+
     // Texture
     if (mesh->mMaterialIndex < scene->mNumMaterials) {
         aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
@@ -185,6 +210,11 @@ static AnimatedMesh processMesh(aiMesh* mesh, const aiScene* scene,
             result.textureID = loadTextureFromFile(texPath.C_Str(), directory, scene);
         }
     }
+
+    std::cout << "[AnimationLoader::processMesh]   Texture: "
+              << (result.textureID ? "loaded (GL id=" + std::to_string(result.textureID) + ")"
+                                    : "none (will use fallback white)")
+              << ", indices=" << result.indices.size() << ".\n";
 
     return result;
 }
@@ -234,6 +264,10 @@ AnimatedModel* AnimationLoader::load(const std::string& path) {
 
     // 2) Build bone hierarchy from the scene node tree
     buildBoneHierarchy(scene->mRootNode, nullptr, model->skeleton);
+
+    std::cout << "[AnimationLoader::load]   Bone hierarchy built: root="
+              << (model->skeleton.root ? ("'" + model->skeleton.root->name + "'") : "null")
+              << ", total bones=" << model->skeleton.getBoneCount() << ".\n";
 
     // If no root bone was identified (no named bones matched nodes), use first
     if (!model->skeleton.root && !model->skeleton.bones.empty()) {
@@ -321,6 +355,14 @@ AnimatedModel* AnimationLoader::load(const std::string& path) {
         }
     }
 
+    {
+        bool isIdentity = (model->coordinateCorrection == glm::mat4(1.0f));
+        std::cout << "[AnimationLoader::load]   Coordinate correction: "
+                  << (isIdentity ? "identity (Y-up, no correction needed)"
+                                  : "applied (non-identity matrix)")
+                  << ".\n";
+    }
+
     // 6) Upload to GPU
     model->setupMeshes();
 
@@ -383,6 +425,11 @@ AnimatedModel* AnimationLoader::loadSkin(const std::string& skinPath) {
     if (!model->skeleton.root && !model->skeleton.bones.empty())
         model->skeleton.root = model->skeleton.bones[0];
 
+    std::cout << "[AnimationLoader::loadSkin]   Bone hierarchy built: root="
+              << (model->skeleton.root ? ("'" + model->skeleton.root->name + "'") : "null")
+              << ", total bones=" << model->skeleton.getBoneCount()
+              << ", bone limit reached=" << (boneLimitReached ? "yes" : "no") << ".\n";
+
     // 3) Process meshes
     for (unsigned int m = 0; m < scene->mNumMeshes; ++m) {
         aiMesh* aiM = scene->mMeshes[m];
@@ -410,6 +457,13 @@ AnimatedModel* AnimationLoader::loadSkin(const std::string& skinPath) {
                 glm::rotate(glm::mat4(1.0f), angle, glm::vec3(1.0f, 0.0f, 0.0f));
             std::cout << "[AnimationLoader::loadSkin] Z-up model detected — applying coordinate correction.\n";
         }
+    }
+
+    {
+        bool isIdentity = (model->coordinateCorrection == glm::mat4(1.0f));
+        std::cout << "[AnimationLoader::loadSkin]   Coordinate correction: "
+                  << (isIdentity ? "identity (Y-up)" : "applied (non-identity)")
+                  << ".\n";
     }
 
     // 6) Upload to GPU
@@ -447,6 +501,11 @@ if (scene->mNumAnimations == 0) {
         return nullptr;
     }
 
+    std::cout << "[AnimationLoader::loadExternalAnimation] Opening '" << animPath
+              << "': " << scene->mNumAnimations << " animation track(s), "
+              << "expectedName='" << expectedName << "', targetSkeleton has "
+              << targetSkeleton->getBoneCount() << " bone(s).\n";
+
     // --- NEW SMART CLIP SELECTION LOGIC ---
     aiAnimation* anim = nullptr;
 
@@ -478,6 +537,12 @@ if (scene->mNumAnimations == 0) {
         }
     }
     // ---------------------------------------
+
+    std::cout << "[AnimationLoader::loadExternalAnimation]   Selected track: '"
+              << anim->mName.C_Str() << "' (" << anim->mNumChannels
+              << " channels, duration=" << anim->mDuration
+              << ", tps=" << (anim->mTicksPerSecond > 0.0 ? anim->mTicksPerSecond : 25.0)
+              << ").\n";
 
     float tps = (anim->mTicksPerSecond > 0.0)
                     ? static_cast<float>(anim->mTicksPerSecond) : 25.0f;
@@ -595,6 +660,16 @@ std::vector<AnimatedMesh> AnimationLoader::loadModularPart(
             }
         }
 
+        {
+            int matched = 0, mismatched = 0;
+            for (const auto& [lid, mid] : remapTable) {
+                if (mid != 0 || lid == 0) ++matched; else ++mismatched;
+            }
+            std::cout << "[AnimationLoader::loadModularPart]   Bone remap: "
+                      << matched << " matched, " << mismatched << " fallback-to-root, "
+                      << remapTable.size() << " total.\n";
+        }
+
         // 2) Process vertices
         AnimatedMesh mesh;
         mesh.vertices.resize(aiM->mNumVertices);
@@ -645,6 +720,10 @@ std::vector<AnimatedMesh> AnimationLoader::loadModularPart(
                 mesh.textureID = loadTextureFromFile(texPath.C_Str(), directory, scene);
             }
         }
+
+        std::cout << "[AnimationLoader::loadModularPart]   Sub-mesh " << m << ": "
+                  << mesh.vertices.size() << " verts, " << mesh.indices.size() << " indices, "
+                  << "textureID=" << mesh.textureID << ".\n";
 
         // 6) Upload to GPU
         AnimatedModel::setupMesh(mesh);

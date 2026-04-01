@@ -9,6 +9,7 @@
 #include "../Animation/EquipmentSlot.h"
 #include "../Input/InputMaster.h"
 #include <iostream>
+#include <unordered_set>
 
 AnimationSystem::AnimationSystem(AnimatedRenderer*    renderer,
                                   entt::registry&      registry,
@@ -324,6 +325,23 @@ void AnimationSystem::update(float deltaTime) {
         }
 
         tempStorage.push_back(ae);
+
+        // One-shot detailed entity log
+        {
+            static std::unordered_set<const void*> loggedEntities;
+            if (loggedEntities.find(amc.model) == loggedEntities.end()) {
+                loggedEntities.insert(amc.model);
+                std::cout << "[AnimationSystem] Building render entity: "
+                          << "isLocalPlayer=" << amc.isLocalPlayer
+                          << ", isModular=" << amc.isModular
+                          << ", scale=" << amc.scale
+                          << ", modelOffset=(" << amc.modelOffset.x << ", "
+                          << amc.modelOffset.y << ", " << amc.modelOffset.z << ")"
+                          << ", activeMeshes=" << (amc.isModular ? static_cast<int>(ae.activeMeshes.size()) : static_cast<int>(amc.model->meshes.size()))
+                          << ", bones=" << amc.model->skeleton.getBoneCount()
+                          << ".\n";
+            }
+        }
     }
 
     // Build the pointer list in a second pass now that tempStorage is stable

@@ -38,6 +38,11 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
     const auto& prefab = PrefabManager::get().getPrefab(prefabId);
     if (prefab.is_null()) return entt::null;
 
+    std::cout << "[EntityFactory::spawn] Prefab '" << prefabId << "' found, "
+              << "position=(" << position.x << ", " << position.y << ", " << position.z << "), "
+              << "animated=" << prefab.value("animated", false)
+              << ", hasMesh=" << prefab.contains("mesh") << ".\n";
+
     entt::entity entity = registry.create();
 
     auto& tc = registry.emplace<TransformComponent>(entity);
@@ -176,6 +181,8 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
         if (amcJson.value("is_modular", false) && amcJson.contains("master_skeleton")) {
             meshPath = amcJson["master_skeleton"].get<std::string>();
             hasMesh = true;
+            std::cout << "[EntityFactory::spawn]   Modular prefab: using master_skeleton as mesh source: '"
+                      << meshPath << "'.\n";
         }
     }
 
@@ -234,11 +241,17 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                 }
                 loadedFromPath = skinAbsPath;
                 animModel = AnimationLoader::loadSkin(skinAbsPath);
+                std::cout << "[EntityFactory::spawn]   loadSkin() result: "
+                          << (animModel ? "success" : "FAILED")
+                          << " (path='" << skinAbsPath << "').\n";
             } else {
                 // ----------------------------------------------------------
                 // Scenario 1: monolithic load (legacy path)
                 // ----------------------------------------------------------
                 animModel = AnimationLoader::load(absPath);
+                std::cout << "[EntityFactory::spawn]   load() result: "
+                          << (animModel ? "success" : "FAILED")
+                          << " (path='" << absPath << "').\n";
             }
 
             if (!animModel) {
@@ -380,6 +393,11 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                 // Default the model-space correction to the loader's auto-detected
                 // coordinateCorrection.  The prefab can override it with model_rotation.
                 amc.modelRotationMat = animModel->coordinateCorrection;
+                {
+                    bool isIdentity = (amc.modelRotationMat == glm::mat4(1.0f));
+                    std::cout << "[EntityFactory::spawn]   modelRotationMat initialized from coordinateCorrection: "
+                              << (isIdentity ? "identity" : "non-identity") << ".\n";
+                }
                 // Optional per-prefab visual scale / offset.
                 amc.scale = prefab.value("scale", 1.0f);
                 if (prefab.contains("components") &&
@@ -400,6 +418,8 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                         rotMat = glm::rotate(rotMat, glm::radians(ry), glm::vec3(0.0f, 1.0f, 0.0f));
                         rotMat = glm::rotate(rotMat, glm::radians(rz), glm::vec3(0.0f, 0.0f, 1.0f));
                         amc.modelRotationMat = rotMat;
+                        std::cout << "[EntityFactory::spawn]   model_rotation override applied: ("
+                                  << rx << ", " << ry << ", " << rz << ") degrees.\n";
                     }
 
                     // ---- Modular Equipment System (opt-in) ----
