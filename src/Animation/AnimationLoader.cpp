@@ -160,7 +160,8 @@ static AnimatedMesh processMesh(aiMesh* mesh, const aiScene* scene,
             result.indices.push_back(mesh->mFaces[i].mIndices[j]);
     }
 
-    // Bone weights — up to 4 influences per vertex
+    // Bone weights — two-pass: accumulate all influences, sort by weight (desc), top 4, renormalize
+    std::vector<std::vector<std::pair<int, float>>> vertInfluences(result.vertices.size());
     for (unsigned int b = 0; b < mesh->mNumBones; ++b) {
         aiBone* aiBone = mesh->mBones[b];
         std::string boneName(aiBone->mName.C_Str());
@@ -170,21 +171,26 @@ static AnimatedMesh processMesh(aiMesh* mesh, const aiScene* scene,
         if (it != boneIndexMap.end()) {
             boneID = it->second;
         }
+        if (boneID < 0) continue;  // bone not in skeleton — skip to keep bind-pose
 
         for (unsigned int w = 0; w < aiBone->mNumWeights; ++w) {
             unsigned int vertIdx = aiBone->mWeights[w].mVertexId;
             float        weight  = aiBone->mWeights[w].mWeight;
-
             if (vertIdx >= result.vertices.size()) continue;
-            AnimatedVertex& v = result.vertices[vertIdx];
-            // Fill the first empty slot (weight == 0)
-            for (int slot = 0; slot < 4; ++slot) {
-                if (v.boneWeights[slot] == 0.0f) {
-                    v.boneIDs[slot]     = boneID;
-                    v.boneWeights[slot] = weight;
-                    break;
-                }
-            }
+            vertInfluences[vertIdx].push_back({boneID, weight});
+        }
+    }
+    for (unsigned int i = 0; i < result.vertices.size(); ++i) {
+        auto& infl = vertInfluences[i];
+        std::sort(infl.begin(), infl.end(),
+                  [](const std::pair<int,float>& a, const std::pair<int,float>& b){ return a.second > b.second; });
+        if (infl.size() > 4) infl.resize(4);
+        float sum = 0.0f;
+        for (const auto& p : infl) sum += p.second;
+        if (sum > 0.0f) for (auto& p : infl) p.second /= sum;
+        for (int slot = 0; slot < static_cast<int>(infl.size()); ++slot) {
+            result.vertices[i].boneIDs[slot]     = infl[slot].first;
+            result.vertices[i].boneWeights[slot] = infl[slot].second;
         }
     }
 
@@ -649,11 +655,11 @@ std::vector<AnimatedMesh> AnimationLoader::loadModularPart(
             if (masterBone) {
                 remapTable[localID] = masterBone->id;
             } else {
-                remapTable[localID] = 0;
+                remapTable[localID] = -1;
                 std::cerr << "[AnimationLoader::loadModularPart] WARNING: bone '"
                           << boneName << "' in '" << path
                           << "' has no match in master skeleton — "
-                          << "vertices weighted to this bone will follow bone 0 (root). "
+                          << "vertices weighted to this bone will be held in bind-pose. "
                           << "Ensure bone names match between the part and master skeleton.\n";
             }
         }
@@ -661,10 +667,10 @@ std::vector<AnimatedMesh> AnimationLoader::loadModularPart(
         {
             int matched = 0, mismatched = 0;
             for (const auto& [lid, mid] : remapTable) {
-                if (mid != 0 || lid == 0) ++matched; else ++mismatched;
+                if (mid >= 0) ++matched; else ++mismatched;
             }
             std::cout << "[AnimationLoader::loadModularPart]   Bone remap: "
-                      << matched << " matched, " << mismatched << " fallback-to-root, "
+                      << matched << " matched, " << mismatched << " fallback-to-bind-pose, "
                       << remapTable.size() << " total.\n";
         }
 
@@ -687,25 +693,32 @@ std::vector<AnimatedMesh> AnimationLoader::loadModularPart(
             for (unsigned int j = 0; j < aiM->mFaces[i].mNumIndices; ++j)
                 mesh.indices.push_back(aiM->mFaces[i].mIndices[j]);
 
-        // 4) Bone weights — remapped to master skeleton indices
+        // 4) Bone weights — remapped to master skeleton indices (two-pass: sort by weight, top 4, renormalize)
+        std::vector<std::vector<std::pair<int, float>>> vertInfluences(mesh.vertices.size());
         for (unsigned int b = 0; b < aiM->mNumBones; ++b) {
             aiBone* bone = aiM->mBones[b];
-            int localID = static_cast<int>(b);
+            int localID  = static_cast<int>(b);
             int masterID = remapTable[localID];  // always populated in loop above
+            if (masterID < 0) continue;          // unresolved bone — skip to keep bind-pose
 
             for (unsigned int w = 0; w < bone->mNumWeights; ++w) {
                 unsigned int vertIdx = bone->mWeights[w].mVertexId;
                 float        weight  = bone->mWeights[w].mWeight;
                 if (vertIdx >= mesh.vertices.size()) continue;
-
-                AnimatedVertex& v = mesh.vertices[vertIdx];
-                for (int slot = 0; slot < 4; ++slot) {
-                    if (v.boneWeights[slot] == 0.0f) {
-                        v.boneIDs[slot]     = masterID;
-                        v.boneWeights[slot] = weight;
-                        break;
-                    }
-                }
+                vertInfluences[vertIdx].push_back({masterID, weight});
+            }
+        }
+        for (unsigned int i = 0; i < mesh.vertices.size(); ++i) {
+            auto& infl = vertInfluences[i];
+            std::sort(infl.begin(), infl.end(),
+                      [](const std::pair<int,float>& a, const std::pair<int,float>& b){ return a.second > b.second; });
+            if (infl.size() > 4) infl.resize(4);
+            float sum = 0.0f;
+            for (const auto& p : infl) sum += p.second;
+            if (sum > 0.0f) for (auto& p : infl) p.second /= sum;
+            for (int slot = 0; slot < static_cast<int>(infl.size()); ++slot) {
+                mesh.vertices[i].boneIDs[slot]     = infl[slot].first;
+                mesh.vertices[i].boneWeights[slot] = infl[slot].second;
             }
         }
 
