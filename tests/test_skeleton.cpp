@@ -1,5 +1,5 @@
 // tests/test_skeleton.cpp
-// Unit tests for Skeleton::rootTransform accumulation and computeBoneMatrices().
+// Unit tests for Skeleton bone hierarchy and computeBoneMatrices().
 
 #include <gtest/gtest.h>
 #include <glm/glm.hpp>
@@ -46,10 +46,9 @@ protected:
     Bone* childBone = nullptr;
 };
 
-TEST_F(SkeletonTest, IdentityRootTransform_ProducesIdentityBoneMatrices) {
-    // With identity rootTransform and identity bind-pose, bone matrices should
-    // be identity (globalTransform * offsetMatrix = I * I^-1 = I).
-    skeleton.rootTransform = glm::mat4(1.0f);
+TEST_F(SkeletonTest, IdentityBindPose_ProducesIdentityBoneMatrices) {
+    // With identity bind-pose, bone matrices should be identity
+    // (globalTransform * offsetMatrix = I * I^-1 = I).
     auto matrices = skeleton.computeBoneMatrices();
 
     ASSERT_EQ(matrices.size(), 2u);
@@ -59,29 +58,19 @@ TEST_F(SkeletonTest, IdentityRootTransform_ProducesIdentityBoneMatrices) {
         << "Child bone matrix should be identity in rest pose";
 }
 
-TEST_F(SkeletonTest, NonIdentityRootTransform_IsApplied) {
-    // If we set rootTransform to a rotation, all bone matrices should reflect it.
-    // With rootTransform R:
-    //   boneMatrix = (R * localTransformChain) * offsetMatrix
-    //              = R * globalTransform_bind * inverse(globalTransform_bind)
-    //   In bind pose this simplifies to R.
-    // So root bone matrix = R * I * I^-1 = R
-    glm::mat4 R = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f),
-                               glm::vec3(1.0f, 0.0f, 0.0f));
-    skeleton.rootTransform = R;
+TEST_F(SkeletonTest, ComputeBoneMatrices_StartsFromIdentity) {
+    // computeBoneMatrices starts recursion from identity so that models
+    // whose offsetMatrix already encodes the full bind-pose inverse
+    // (including ancestor transforms) render correctly without double-applying.
     auto matrices = skeleton.computeBoneMatrices();
 
     ASSERT_EQ(matrices.size(), 2u);
-    // Root: (R * localTransform_root) * offsetMatrix_root
-    //     = (R * I) * I = R
-    EXPECT_TRUE(matApproxEq(matrices[0], R))
-        << "Root bone matrix should equal the rootTransform rotation";
-}
-
-TEST_F(SkeletonTest, DefaultRootTransform_IsIdentity) {
-    // Verify that the default rootTransform is identity.
-    Skeleton fresh;
-    EXPECT_TRUE(matApproxEq(fresh.rootTransform, glm::mat4(1.0f)));
+    // For bone 0 (root): globalTransform = I * localTransform = I
+    //   matrix = I * offsetMatrix(I) = I
+    EXPECT_TRUE(matApproxEq(matrices[0], glm::mat4(1.0f)));
+    // For bone 1 (child): globalTransform = I * T(0,1,0) = T(0,1,0)
+    //   matrix = T(0,1,0) * inverse(T(0,1,0)) = I
+    EXPECT_TRUE(matApproxEq(matrices[1], glm::mat4(1.0f)));
 }
 
 TEST_F(SkeletonTest, BoneCount) {
@@ -99,4 +88,10 @@ TEST_F(SkeletonTest, GetBoneById) {
     EXPECT_EQ(skeleton.getBone(1), childBone);
     EXPECT_EQ(skeleton.getBone(-1), nullptr);
     EXPECT_EQ(skeleton.getBone(5), nullptr);
+}
+
+TEST_F(SkeletonTest, EmptySkeleton_ComputeReturnsEmpty) {
+    Skeleton empty;
+    auto matrices = empty.computeBoneMatrices();
+    EXPECT_TRUE(matrices.empty());
 }
