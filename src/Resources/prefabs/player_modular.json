@@ -30,10 +30,11 @@
       "interact_range": 2.0
     },
     "AnimatedModelComponent": {
-      "master_skeleton": "Models/Characters/player_modular/Animations/Meshy_AI_Iron_Armor_T_Pose_Sta_biped_Idle_4.glb",
+      "master_skeleton": "Models/Characters/player_modular/Animations/Meshy_AI_Low_Poly_Man_in_White_biped_Character_output.glb",
+      "mesh_path": "Models/Characters/player_modular/Meshes/Man_Naked/Meshy_AI_Low_Poly_Man_in_White_biped/Meshy_AI_Low_Poly_Man_in_White_biped_Character_output.glb",
       "is_modular": true,
       "model_rotation": {
-        "x": -90.0,
+        "x": 0.0,
         "y": 0.0,
         "z": 0.0
       },
@@ -51,7 +52,7 @@
         "Torso": "Models/Characters/player_modular/Meshes/Armor/Plate_Set/SK_Man_Torso_Armor.glb",
         "Head": "Models/Characters/player_modular/Meshes/Armor/Plate_Set/SK_Man_Head_Armor.glb"
       },
-      "scale": 0.05
+      "scale": 0.058
     }
   }
 }
