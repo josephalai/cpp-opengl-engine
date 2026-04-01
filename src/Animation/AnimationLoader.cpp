@@ -599,7 +599,7 @@ std::vector<AnimatedMesh> AnimationLoader::loadModularPart(
         }
 
         // 6) Upload to GPU
-        setupAnimatedMeshGL(mesh);
+        AnimatedModel::setupMesh(mesh);
 
         result.push_back(std::move(mesh));
     }
