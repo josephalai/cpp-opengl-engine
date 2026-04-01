@@ -820,6 +820,43 @@ bool SceneLoaderJson::load(
             }
         }
 
+        // --- Fallback prefab path (if primary prefab failed) ---
+        if (!loaded && p.contains("fallback_prefab")) {
+            std::string fallbackPrefab = p["fallback_prefab"].get<std::string>();
+            if (!fallbackPrefab.empty() && PrefabManager::get().hasPrefab(fallbackPrefab)) {
+                std::cerr << "[SceneLoaderJson] Player primary prefab '" << prefabId
+                          << "' failed; trying fallback prefab '" << fallbackPrefab << "'\n";
+                auto ent = EntityFactory::spawn(
+                    registry, fallbackPrefab,
+                    glm::vec3(px, yVal, pz),
+                    nullptr,
+                    glm::vec3(prx, pry, prz),
+                    pscale);
+
+                if (ent != entt::null) {
+                    if (registry.any_of<AnimatedModelComponent>(ent)) {
+                        registry.get<AnimatedModelComponent>(ent).isLocalPlayer = true;
+                    }
+
+                    StringId aliasId(alias.empty() ? fallbackPrefab : alias);
+                    auto it = modelMap.find(aliasId);
+                    TexturedModel* playerModel = (it != modelMap.end()) ? it->second.model : nullptr;
+                    BoundingBox* playerBox = (it != modelMap.end())
+                        ? new BoundingBox(it->second.bbox, BoundingBoxIndex::genUniqueId())
+                        : new BoundingBox(nullptr, BoundingBoxIndex::genUniqueId());
+
+                    player = new Player(
+                        registry, playerModel, playerBox,
+                        glm::vec3(px, yVal, pz),
+                        glm::vec3(prx, pry, prz),
+                        pscale);
+                    InteractiveModel::setInteractiveBox(player);
+                    playerCamera = new PlayerCamera(player);
+                    loaded = true;
+                }
+            }
+        }
+
         // --- Legacy alias path (static OBJ model) ---
         if (!loaded && !alias.empty()) {
             StringId aliasId(alias);

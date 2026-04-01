@@ -241,6 +241,7 @@
   ],
   "player": {
     "prefab": "player_modular",
+    "fallback_prefab": "player",
     "animation_map": {
       "Idle": "Idle",
       "Patrol": "Walk",

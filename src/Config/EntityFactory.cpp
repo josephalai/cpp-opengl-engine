@@ -240,7 +240,10 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
             if (!animModel) {
                 std::cerr << "[EntityFactory] Failed to load animated model: "
                           << loadedFromPath << "\n";
-                // Fall through; entity is created without a visual component.
+                // Destroy the half-created entity and signal failure so callers
+                // (e.g. SceneLoaderJson) can try a fallback prefab.
+                registry.destroy(entity);
+                return entt::null;
             } else {
                 auto normalizeClipName = [](const std::string& raw) -> std::string {
                     std::string lower(raw);
