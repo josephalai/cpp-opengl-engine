@@ -84,14 +84,14 @@ else()
     if(NOT TARGET lua54_lib)
         file(GLOB LUA_SOURCES "${lua54_SOURCE_DIR}/src/*.c")
         # Remove the standalone executables so we only build the library
-        list(REMOVE_ITEM LUA_SOURCES 
-            "${lua54_SOURCE_DIR}/src/lua.c" 
+        list(REMOVE_ITEM LUA_SOURCES
+            "${lua54_SOURCE_DIR}/src/lua.c"
             "${lua54_SOURCE_DIR}/src/luac.c"
         )
-        
+
         add_library(lua54_lib STATIC ${LUA_SOURCES})
         target_include_directories(lua54_lib PUBLIC "${lua54_SOURCE_DIR}/src")
-        
+
         # OS-specific macros for Lua
         if(APPLE)
             target_compile_definitions(lua54_lib PRIVATE LUA_USE_MACOSX)
@@ -103,7 +103,7 @@ else()
         set(LUA_FOUND TRUE)
         set(LUA_LIBRARIES lua54_lib)
         set(LUA_INCLUDE_DIRS "${lua54_SOURCE_DIR}/src")
-        
+
         message(STATUS "Lua 5.4 source downloaded and added as a build target.")
     endif()
 endif()
@@ -175,27 +175,28 @@ target_include_directories(client_engine PRIVATE ${PNG_INCLUDE_DIR})
 # Assimp — Open Asset Import Library
 # =============================================================================
 # Default: use the system-installed Assimp (e.g. `brew install assimp`).
-# This is the same approach the project used before; it avoids any zlib or
-# other system-library conflicts that arise when building Assimp from source.
+# This avoids the zlib and third-party compiler warning issues that can appear
+# when building Assimp from source.
 #
-# If you need Draco mesh-compression support (for GLBs produced by
-# AssetForge.py with Draco enabled), you can opt-in to building Assimp from
-# source by passing -DENGINE_ASSIMP_WITH_DRACO=ON to cmake.
+# If you need Draco mesh-compression support (for GLBs produced by AssetForge.py
+# with Draco enabled), opt in with:
 #
-# IMPORTANT: the FetchContent path builds Assimp from source.  It sets
-# ASSIMP_BUILD_ZLIB=OFF so Assimp uses the same system zlib that PNG and
-# other dependencies already depend on.  If your system zlib is in an unusual
-# location you may still need to set ZLIB_ROOT or ZLIB_LIBRARY explicitly.
+#   -DENGINE_ASSIMP_WITH_DRACO=ON
 #
-# Alternatively — no build changes needed — export skins from AssetForge.py
-# WITHOUT Draco compression (set export_draco_mesh_compression_enable=False).
-# Standard Assimp loads uncompressed GLBs transparently.
+# IMPORTANT:
+# The FetchContent path builds Assimp from source and enables Draco. It sets
+# ASSIMP_BUILD_ZLIB=OFF so Assimp uses the same system zlib as PNG and the rest
+# of the build.
+#
+# On Apple Clang / Clang, current Assimp + bundled Draco can emit newer
+# diagnostics such as:
+#   -Wnontrivial-memcall
+#   -Wimplicit-const-int-float-conversion
+#
+# Those should not break the build for third-party code, so we suppress them
+# only on the dependency targets below.
 option(ENGINE_ASSIMP_WITH_DRACO
     "Build Assimp from source with Draco mesh-compression support (opt-in; see comments above)"
-    OFF)
-
-option(ENGINE_ASSIMP_WITH_DRACO
-    "Build Assimp from source with Draco mesh-compression support (opt-in)"
     OFF)
 
 if(ENGINE_ASSIMP_WITH_DRACO)
@@ -213,9 +214,39 @@ if(ENGINE_ASSIMP_WITH_DRACO)
     set(ASSIMP_INSTALL              OFF CACHE BOOL "" FORCE)
     set(ASSIMP_INSTALL_PDB          OFF CACHE BOOL "" FORCE)
     set(ASSIMP_INJECT_DEBUG_POSTFIX OFF CACHE BOOL "" FORCE)
-    set(BUILD_SHARED_LIBS           ON  CACHE BOOL "" FORCE)  # <--- KEY CHANGE: ensures draco_shared exists
+    set(BUILD_SHARED_LIBS           ON  CACHE BOOL "" FORCE)
 
     FetchContent_MakeAvailable(assimp)
+
+    # -------------------------------------------------------------------------
+    # Third-party warning compatibility patch for modern Clang / Apple Clang.
+    # Keep strictness for our own engine code, but do not let vendored Assimp /
+    # Draco sources fail the entire build because warnings are promoted to errors.
+    # -------------------------------------------------------------------------
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        if(TARGET assimp)
+            target_compile_options(assimp PRIVATE
+                -Wno-error=nontrivial-memcall
+                -Wno-error=implicit-const-int-float-conversion
+                -Wno-nontrivial-memcall
+                -Wno-implicit-const-int-float-conversion
+            )
+        endif()
+
+        if(TARGET draco_shared)
+            target_compile_options(draco_shared PRIVATE
+                -Wno-error=implicit-const-int-float-conversion
+                -Wno-implicit-const-int-float-conversion
+            )
+        endif()
+
+        if(TARGET draco_static)
+            target_compile_options(draco_static PRIVATE
+                -Wno-error=implicit-const-int-float-conversion
+                -Wno-implicit-const-int-float-conversion
+            )
+        endif()
+    endif()
 
     if(NOT TARGET assimp::assimp)
         add_library(assimp::assimp ALIAS assimp)
@@ -314,7 +345,7 @@ target_include_directories(headless_server PRIVATE
 
 target_compile_definitions(headless_server PRIVATE
     RESOURCE_ROOT="${CMAKE_SOURCE_DIR}"
-    HEADLESS_SERVER          
+    HEADLESS_SERVER
 )
 
 target_link_libraries(headless_server PRIVATE
