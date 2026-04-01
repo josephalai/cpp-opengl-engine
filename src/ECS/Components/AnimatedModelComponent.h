@@ -5,6 +5,10 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include "../../Animation/AnimatedModel.h"
 #include "../../Animation/AnimationController.h"
+#include "../../Animation/EquipmentSlot.h"
+#include "../../Animation/ModularMeshPart.h"
+#include <string>
+#include <unordered_map>
 
 /// ECS component that holds all state for a skeletal-mesh character.
 /// Replaces the legacy AnimatedEntity struct for the ECS rendering pipeline.
@@ -82,6 +86,58 @@ struct AnimatedModelComponent {
     /// Local-player entities own their model. Remote entities loaded via
     /// EntityFactory also own their model (each gets its own loaded copy).
     bool                 ownsModel   = false;
+
+    // -----------------------------------------------------------------
+    // Modular Skinned Character Equipment System (opt-in)
+    // -----------------------------------------------------------------
+    /// When true the renderer uses nakedParts/equippedArmor instead of
+    /// model->meshes.  When false (or absent) the legacy rendering path is
+    /// used — all existing prefabs work unchanged.
+    bool isModular = false;
+
+    /// Base ("naked") body parts indexed by (int)EquipmentSlot.
+    /// Null entries mean the slot has no naked geometry.
+    ModularMeshPart* nakedParts[static_cast<int>(EquipmentSlot::Count)] = {};
+
+    /// Currently equipped armor/equipment per slot.
+    /// Null entries mean nothing is equipped in that slot.
+    ModularMeshPart* equippedArmor[static_cast<int>(EquipmentSlot::Count)] = {};
+
+    /// One-shot log guard so buildActiveMeshes() only prints once per entity.
+    mutable bool activeMeshesLoggedOnce_ = false;
+
+    /// Default equipment asset paths (keyed by EquipmentSlot int).
+    /// Stored at load time from the prefab's "default_equipment" so that
+    /// the EquipmentPanel can re-equip a slot after unequipping it.
+    std::unordered_map<int, std::string> defaultEquipmentPaths;
+
+    // -----------------------------------------------------------------
+    // Runtime Equipment API
+    // -----------------------------------------------------------------
+
+    /// Equip a part in the given slot.  Loads the mesh from @p assetPath,
+    /// remaps its bone indices to the master skeleton, and stores it.
+    /// @param hidesNaked  When true (default), the naked body part in this slot
+    ///                    is hidden.  Pass false for accessories/jewelry that
+    ///                    should render on top of the naked geometry.
+    /// Requires model->skeleton to be the master skeleton.
+    void equipPart(EquipmentSlot slot, const std::string& assetPath,
+                   bool hidesNaked = true);
+
+    /// Remove the equipped part from a slot (reverts to naked geometry).
+    void unequipPart(EquipmentSlot slot);
+
+    /// Populate nakedParts from a map of slot→assetPath entries.
+    /// Requires model->skeleton to be the master skeleton.
+    void setNakedParts(
+        const std::vector<std::pair<EquipmentSlot, std::string>>& parts);
+
+    /// Build a flat list of pointers to the AnimatedMesh objects that should
+    /// be drawn this frame (respecting hidesNakedPart).
+    std::vector<const AnimatedMesh*> buildActiveMeshes() const;
+
+    /// Release all modular mesh resources.
+    void cleanUpModularParts();
 };
 
 #endif // ECS_ANIMATEDMODELCOMPONENT_H

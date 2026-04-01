@@ -17,6 +17,7 @@
 #include "../ECS/Components/AnimatedModelComponent.h"
 #include "../ECS/Components/AnimationControllerComponent.h"
 #include "../Animation/AnimationLoader.h"
+#include "../Animation/EquipmentSlot.h"
 #include "../Util/FileSystem.h"
 #include <glm/gtc/matrix_transform.hpp>
 #endif
@@ -36,6 +37,11 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                                   float scale) {
     const auto& prefab = PrefabManager::get().getPrefab(prefabId);
     if (prefab.is_null()) return entt::null;
+
+    std::cout << "[EntityFactory::spawn] Prefab '" << prefabId << "' found, "
+              << "position=(" << position.x << ", " << position.y << ", " << position.z << "), "
+              << "animated=" << prefab.value("animated", false)
+              << ", hasMesh=" << prefab.contains("mesh") << ".\n";
 
     entt::entity entity = registry.create();
 
@@ -159,8 +165,28 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
     // Animated prefabs get AnimatedModelComponent (skinned-mesh rendering via
     // AnimatedRenderer); static prefabs get AssimpModelComponent (rigid rendering
     // via MasterRenderer).  The server build compiles out this entire block.
-    if (prefab.contains("mesh")) {
-        const std::string meshPath = prefab["mesh"].get<std::string>();
+    //
+    // For fully-modular prefabs (is_modular: true) that have no top-level "mesh"
+    // because all body geometry comes from naked_parts/default_equipment, we fall
+    // back to components.AnimatedModelComponent.master_skeleton as the skeleton
+    // source (used by loadSkin() to extract the bind-pose bone hierarchy).
+    std::string meshPath;
+    bool hasMesh = prefab.contains("mesh");
+    if (hasMesh) {
+        meshPath = prefab["mesh"].get<std::string>();
+    } else if (prefab.value("animated", false) &&
+               prefab.contains("components") &&
+               prefab["components"].contains("AnimatedModelComponent")) {
+        const auto& amcJson = prefab["components"]["AnimatedModelComponent"];
+        if (amcJson.value("is_modular", false) && amcJson.contains("master_skeleton")) {
+            meshPath = amcJson["master_skeleton"].get<std::string>();
+            hasMesh = true;
+            std::cout << "[EntityFactory::spawn]   Modular prefab: using master_skeleton as mesh source: '"
+                      << meshPath << "'.\n";
+        }
+    }
+
+    if (hasMesh) {
 
         if (prefab.value("animated", false)) {
             // ---------------------------------------------------------------
@@ -192,6 +218,10 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
 
             const std::string absPath  = FileSystem::Scene(meshPath);
 
+            std::cout << "[EntityFactory] Spawning animated prefab '" << prefabId
+                      << "' — mode=" << (modularMode ? "modular" : "monolithic")
+                      << ", meshPath='" << meshPath << "'.\n";
+
             AnimatedModel* animModel = nullptr;
             std::string loadedFromPath = absPath;  // track the actual path used for diagnostics
             if (modularMode) {
@@ -211,17 +241,26 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                 }
                 loadedFromPath = skinAbsPath;
                 animModel = AnimationLoader::loadSkin(skinAbsPath);
+                std::cout << "[EntityFactory::spawn]   loadSkin() result: "
+                          << (animModel ? "success" : "FAILED")
+                          << " (path='" << skinAbsPath << "').\n";
             } else {
                 // ----------------------------------------------------------
                 // Scenario 1: monolithic load (legacy path)
                 // ----------------------------------------------------------
                 animModel = AnimationLoader::load(absPath);
+                std::cout << "[EntityFactory::spawn]   load() result: "
+                          << (animModel ? "success" : "FAILED")
+                          << " (path='" << absPath << "').\n";
             }
 
             if (!animModel) {
                 std::cerr << "[EntityFactory] Failed to load animated model: "
                           << loadedFromPath << "\n";
-                // Fall through; entity is created without a visual component.
+                // Destroy the half-created entity and signal failure so callers
+                // (e.g. SceneLoaderJson) can try a fallback prefab.
+                registry.destroy(entity);
+                return entt::null;
             } else {
                 auto normalizeClipName = [](const std::string& raw) -> std::string {
                     std::string lower(raw);
@@ -341,6 +380,11 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                 if (!idleFound && !firstStateName.empty())
                     controller->setState(firstStateName);
 
+                std::cout << "[EntityFactory] Animation controller for '" << prefabId
+                          << "': " << controller->getStateNames().size()
+                          << " state(s), initial='"
+                          << controller->getCurrentStateName() << "'.\n";
+
                 auto& amc       = registry.emplace<AnimatedModelComponent>(entity);
                 amc.model       = animModel;
                 amc.controller  = controller;
@@ -349,6 +393,11 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                 // Default the model-space correction to the loader's auto-detected
                 // coordinateCorrection.  The prefab can override it with model_rotation.
                 amc.modelRotationMat = animModel->coordinateCorrection;
+                {
+                    bool isIdentity = (amc.modelRotationMat == glm::mat4(1.0f));
+                    std::cout << "[EntityFactory::spawn]   modelRotationMat initialized from coordinateCorrection: "
+                              << (isIdentity ? "identity" : "non-identity") << ".\n";
+                }
                 // Optional per-prefab visual scale / offset.
                 amc.scale = prefab.value("scale", 1.0f);
                 if (prefab.contains("components") &&
@@ -369,8 +418,63 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                         rotMat = glm::rotate(rotMat, glm::radians(ry), glm::vec3(0.0f, 1.0f, 0.0f));
                         rotMat = glm::rotate(rotMat, glm::radians(rz), glm::vec3(0.0f, 0.0f, 1.0f));
                         amc.modelRotationMat = rotMat;
+                        std::cout << "[EntityFactory::spawn]   model_rotation override applied: ("
+                                  << rx << ", " << ry << ", " << rz << ") degrees.\n";
+                    }
+
+                    // ---- Modular Equipment System (opt-in) ----
+                    if (j.value("is_modular", false)) {
+                        amc.isModular = true;
+                        std::cout << "[EntityFactory] Modular equipment mode enabled for '"
+                                  << prefabId << "'.\n";
+
+                        // Load naked body parts
+                        if (j.contains("naked_parts") && j["naked_parts"].is_object()) {
+                            std::vector<std::pair<EquipmentSlot, std::string>> nakedEntries;
+                            for (auto& [slotName, pathVal] : j["naked_parts"].items()) {
+                                EquipmentSlot slot = equipmentSlotFromString(slotName);
+                                if (slot == EquipmentSlot::Count) {
+                                    std::cerr << "[EntityFactory] Unknown equipment slot '"
+                                              << slotName << "' in naked_parts\n";
+                                    continue;
+                                }
+                                nakedEntries.emplace_back(
+                                    slot, FileSystem::Scene(pathVal.get<std::string>()));
+                            }
+                            amc.setNakedParts(nakedEntries);
+                            std::cout << "[EntityFactory]   Loaded " << nakedEntries.size()
+                                      << " naked part(s).\n";
+                        }
+
+                        // Load default equipment
+                        if (j.contains("default_equipment") && j["default_equipment"].is_object()) {
+                            int equipCount = 0;
+                            for (auto& [slotName, pathVal] : j["default_equipment"].items()) {
+                                EquipmentSlot slot = equipmentSlotFromString(slotName);
+                                if (slot == EquipmentSlot::Count) {
+                                    std::cerr << "[EntityFactory] Unknown equipment slot '"
+                                              << slotName << "' in default_equipment\n";
+                                    continue;
+                                }
+                                const std::string absEquipPath =
+                                    FileSystem::Scene(pathVal.get<std::string>());
+                                amc.equipPart(slot, absEquipPath);
+                                // Remember the path so the EquipmentPanel can re-equip later.
+                                amc.defaultEquipmentPaths[static_cast<int>(slot)] = absEquipPath;
+                                ++equipCount;
+                            }
+                            std::cout << "[EntityFactory]   Equipped " << equipCount
+                                      << " default equipment piece(s).\n";
+                        }
                     }
                 }
+
+                std::cout << "[EntityFactory] Prefab '" << prefabId
+                          << "' spawned — scale=" << amc.scale
+                          << ", modular=" << (amc.isModular ? "yes" : "no")
+                          << ", meshes=" << (amc.model ? amc.model->meshes.size() : 0)
+                          << ", bones=" << (amc.model ? amc.model->skeleton.getBoneCount() : 0)
+                          << ".\n";
             }
         } else {
             // --- Static mesh: attach AssimpModelComponent ---

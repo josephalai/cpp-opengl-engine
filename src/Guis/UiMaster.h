@@ -132,6 +132,13 @@ public:
     /// Render the skills panel.
     static void renderSkillsPanel();
 
+    // ------------------------------------------------------------------
+    // Phase 6 — Equipment panel helper
+    // ------------------------------------------------------------------
+
+    /// Render the equipment toggle panel.
+    static void renderEquipmentPanel();
+
 private:
     /// Registered 2-D UI regions (pixel rectangles) for mouse-over detection.
     /// Layout: {x, y, w, h} tuples stored flat.

@@ -51,8 +51,10 @@ public:
 
     void cleanUp();
 
-private:
-    void setupMesh(AnimatedMesh& mesh);
+    /// Upload a single mesh to OpenGL (VAO/VBO/EBO).
+    /// Static so that callers without an AnimatedModel instance (e.g.
+    /// AnimationLoader::loadModularPart) can set up standalone meshes.
+    static void setupMesh(AnimatedMesh& mesh);
 };
 
 #endif // ENGINE_ANIMATEDMODEL_H

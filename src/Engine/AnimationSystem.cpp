@@ -6,8 +6,10 @@
 #include "../ECS/Components/AnimatedModelComponent.h"
 #include "../ECS/Components/TransformComponent.h"
 #include "../ECS/Components/NetworkSyncData.h"
+#include "../Animation/EquipmentSlot.h"
 #include "../Input/InputMaster.h"
 #include <iostream>
+#include <unordered_set>
 
 AnimationSystem::AnimationSystem(AnimatedRenderer*    renderer,
                                   entt::registry&      registry,
@@ -26,6 +28,17 @@ AnimationSystem::AnimationSystem(AnimatedRenderer*    renderer,
 void AnimationSystem::update(float deltaTime) {
     auto view = registry_.view<AnimatedModelComponent, TransformComponent>();
     if (view.begin() == view.end()) return;
+
+    // Throttled one-shot log — prints when entity count changes.
+    {
+        static size_t lastCount = ~size_t(0);
+        const auto count = static_cast<size_t>(view.size_hint());
+        if (count != lastCount) {
+            std::cout << "[AnimationSystem] ECS view: "
+                      << count << " entity(ies) with AnimatedModelComponent.\n";
+            lastCount = count;
+        }
+    }
 
     // --- 1. Sync transforms and drive animation state machines ---
     for (auto entity : view) {
@@ -209,6 +222,53 @@ void AnimationSystem::update(float deltaTime) {
         }
     }
 
+    // --- 2b. Number-key armor slot toggles (1=Head, 2=Torso, 3=Hands, 4=Legs, 5=Feet) ---
+    // Temporary testing: press 1-5 to toggle individual armor pieces on/off.
+    // Works regardless of whether the Equipment Panel is visible.
+    {
+        static bool prevKey[5] = {};
+        const KeyboardKeys slotKeys[5] = { One, Two, Three, Four, Five };
+        const EquipmentSlot slots[5] = {
+            EquipmentSlot::Head, EquipmentSlot::Torso, EquipmentSlot::Hands,
+            EquipmentSlot::Legs, EquipmentSlot::Feet
+        };
+
+        for (int k = 0; k < 5; ++k) {
+            bool nowDown = InputMaster::isKeyDown(slotKeys[k]);
+            bool risingEdge = nowDown && !prevKey[k];
+            prevKey[k] = nowDown;
+
+            if (!risingEdge) continue;
+
+            // Find the local modular player and toggle the slot.
+            for (auto entity : view) {
+                auto& amc = view.get<AnimatedModelComponent>(entity);
+                if (!amc.isLocalPlayer || !amc.isModular) continue;
+
+                int idx = static_cast<int>(slots[k]);
+                if (amc.equippedArmor[idx]) {
+                    // Currently equipped → unequip
+                    amc.unequipPart(slots[k]);
+                    std::cout << "[ArmorToggle] Key " << (k + 1) << " → unequipped "
+                              << equipmentSlotToString(slots[k]) << "\n";
+                } else {
+                    // Not equipped → re-equip from stored default path
+                    auto it = amc.defaultEquipmentPaths.find(idx);
+                    if (it != amc.defaultEquipmentPaths.end()) {
+                        amc.equipPart(slots[k], it->second);
+                        std::cout << "[ArmorToggle] Key " << (k + 1) << " → equipped "
+                                  << equipmentSlotToString(slots[k]) << "\n";
+                    } else {
+                        std::cout << "[ArmorToggle] Key " << (k + 1) << " → no default path for "
+                                  << equipmentSlotToString(slots[k]) << "\n";
+                    }
+                }
+                amc.activeMeshesLoggedOnce_ = false;
+                break;  // only the local player
+            }
+        }
+    }
+
     // --- 3. Build temporary AnimatedEntity list for AnimatedRenderer ---
     // AnimatedRenderer still takes std::vector<AnimatedEntity*>.  We build a
     // temporary list each frame from the ECS data.
@@ -228,7 +288,16 @@ void AnimationSystem::update(float deltaTime) {
     for (auto entity : view) {
         const auto& amc = view.get<AnimatedModelComponent>(entity);
         const auto& tc  = view.get<TransformComponent>(entity);
-        if (!amc.model) continue;
+        if (!amc.model) {
+            // One-shot per-entity warning: model is null, entity skipped.
+            static bool warnedNullModel = false;
+            if (!warnedNullModel) {
+                std::cerr << "[AnimationSystem] WARNING: entity skipped — "
+                             "AnimatedModelComponent has null model.\n";
+                warnedNullModel = true;
+            }
+            continue;
+        }
 
         AnimatedEntity ae;
         ae.model        = amc.model;
@@ -248,7 +317,31 @@ void AnimationSystem::update(float deltaTime) {
         ae.isLocalPlayer = amc.isLocalPlayer;
         ae.ownsModel    = false; 
         ae.pairedEntity = nullptr;
+
+        // Modular equipment: build the active mesh list from naked + equipped parts.
+        ae.isModular = amc.isModular;
+        if (amc.isModular) {
+            ae.activeMeshes = amc.buildActiveMeshes();
+        }
+
         tempStorage.push_back(ae);
+
+        // One-shot detailed entity log
+        {
+            static std::unordered_set<const void*> loggedEntities;
+            if (loggedEntities.find(amc.model) == loggedEntities.end()) {
+                loggedEntities.insert(amc.model);
+                std::cout << "[AnimationSystem] Building render entity: "
+                          << "isLocalPlayer=" << amc.isLocalPlayer
+                          << ", isModular=" << amc.isModular
+                          << ", scale=" << amc.scale
+                          << ", modelOffset=(" << amc.modelOffset.x << ", "
+                          << amc.modelOffset.y << ", " << amc.modelOffset.z << ")"
+                          << ", activeMeshes=" << (amc.isModular ? static_cast<int>(ae.activeMeshes.size()) : static_cast<int>(amc.model->meshes.size()))
+                          << ", bones=" << amc.model->skeleton.getBoneCount()
+                          << ".\n";
+            }
+        }
     }
 
     // Build the pointer list in a second pass now that tempStorage is stable

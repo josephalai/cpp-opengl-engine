@@ -11,6 +11,8 @@ int AnimatedModel::getClipIndex(const std::string& name) const {
 }
 
 void AnimatedModel::setupMeshes() {
+    std::cout << "[AnimatedModel::setupMeshes] Uploading "
+              << meshes.size() << " mesh(es) to GPU.\n";
     for (auto& mesh : meshes) {
         setupMesh(mesh);
     }
@@ -55,9 +57,17 @@ void AnimatedModel::setupMesh(AnimatedMesh& mesh) {
                           reinterpret_cast<void*>(offsetof(AnimatedVertex, boneWeights)));
 
     glBindVertexArray(0);
+
+    std::cout << "[AnimatedModel::setupMesh] VAO=" << mesh.VAO
+              << " VBO=" << mesh.VBO << " EBO=" << mesh.EBO
+              << " (" << mesh.vertices.size() << " verts, "
+              << mesh.indices.size() << " indices, tex="
+              << mesh.textureID << ").\n";
 }
 
 void AnimatedModel::cleanUp() {
+    std::cout << "[AnimatedModel::cleanUp] Releasing "
+              << meshes.size() << " mesh(es) GL resources.\n";
     for (auto& mesh : meshes) {
         if (mesh.VAO) glDeleteVertexArrays(1, &mesh.VAO);
         if (mesh.VBO) glDeleteBuffers(1, &mesh.VBO);

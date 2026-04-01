@@ -213,7 +213,9 @@ if(ENGINE_ASSIMP_WITH_DRACO)
     set(ASSIMP_INSTALL              OFF CACHE BOOL "" FORCE)
     set(ASSIMP_INSTALL_PDB          OFF CACHE BOOL "" FORCE)
     set(ASSIMP_INJECT_DEBUG_POSTFIX OFF CACHE BOOL "" FORCE)
-    set(BUILD_SHARED_LIBS           ON  CACHE BOOL "" FORCE)  # <--- KEY CHANGE: ensures draco_shared exists
+    set(BUILD_SHARED_LIBS           ON  CACHE BOOL "" FORCE)
+    # Add this line below to fix the compilation error
+    set(ASSIMP_WARNINGS_AS_ERRORS   OFF CACHE BOOL "" FORCE)
 
     FetchContent_MakeAvailable(assimp)
 
@@ -348,6 +350,53 @@ target_compile_definitions(asset_baker PRIVATE
 target_link_libraries(asset_baker PRIVATE
     ${BULLET_LIBRARIES}
 )
+
+# =============================================================================
+# Unit Tests (GoogleTest — headless, no OpenGL required)
+# =============================================================================
+option(ENGINE_BUILD_TESTS "Build the engine_tests target (GoogleTest)" OFF)
+
+if(ENGINE_BUILD_TESTS)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.14.0
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+
+    enable_testing()
+
+    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/tests/*.cpp")
+
+    set(TEST_ANIMATION_SOURCES
+        "${CMAKE_SOURCE_DIR}/src/Animation/Skeleton.cpp"
+        "${CMAKE_SOURCE_DIR}/src/Animation/Bone.cpp"
+        "${CMAKE_SOURCE_DIR}/src/Animation/AnimationController.cpp"
+        "${CMAKE_SOURCE_DIR}/src/Animation/AnimationBlender.cpp"
+        "${CMAKE_SOURCE_DIR}/src/Animation/AnimationClip.cpp"
+        "${CMAKE_SOURCE_DIR}/src/Animation/AnimationState.cpp"
+    )
+
+    add_executable(engine_tests ${TEST_SOURCES} ${TEST_ANIMATION_SOURCES})
+
+    target_include_directories(engine_tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${glm_SOURCE_DIR}
+    )
+
+    target_compile_definitions(engine_tests PRIVATE
+        HEADLESS_SERVER
+        RESOURCE_ROOT="${CMAKE_SOURCE_DIR}"
+    )
+
+    target_link_libraries(engine_tests PRIVATE
+        GTest::gtest_main
+    )
+
+    include(GoogleTest)
+    gtest_discover_tests(engine_tests)
+endif()
 
 # =============================================================================
 # Sol2 + Lua Linking (for both Server and Client)

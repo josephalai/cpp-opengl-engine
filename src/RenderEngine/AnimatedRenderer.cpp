@@ -1,6 +1,8 @@
 // src/RenderEngine/AnimatedRenderer.cpp
 
 #include "AnimatedRenderer.h"
+#include <iostream>
+#include <unordered_set>
 
 AnimatedRenderer::AnimatedRenderer(AnimatedShader* s) : shader(s) {
     // Create a 1×1 opaque-white RGBA fallback texture.
@@ -15,6 +17,8 @@ AnimatedRenderer::AnimatedRenderer(AnimatedShader* s) : shader(s) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
+    std::cout << "[AnimatedRenderer] Created fallback texture (GL id="
+              << fallbackTextureID_ << ").\n";
 }
 
 AnimatedRenderer::~AnimatedRenderer() {
@@ -29,6 +33,20 @@ void AnimatedRenderer::render(const std::vector<AnimatedEntity*>& entities,
                                const std::vector<Light*>& lights,
                                Camera* camera,
                                const glm::mat4& projectionMatrix) {
+    // Throttled one-time summary log (prints once, then every ~5 seconds only
+    // when the entity count changes).
+    {
+        static size_t lastLoggedCount = ~size_t(0);
+        static float  logCooldown     = 0.0f;
+        logCooldown -= deltaTime;
+        if (entities.size() != lastLoggedCount && logCooldown <= 0.0f) {
+            std::cout << "[AnimatedRenderer::render] Rendering "
+                      << entities.size() << " animated entity(ies).\n";
+            lastLoggedCount = entities.size();
+            logCooldown = 5.0f;
+        }
+    }
+
     shader->start();
     shader->loadViewMatrix(camera->getViewMatrix());
     shader->loadProjectionMatrix(projectionMatrix);
@@ -44,6 +62,22 @@ void AnimatedRenderer::render(const std::vector<AnimatedEntity*>& entities,
 
         shader->loadBoneMatrices(boneMatrices);
 
+        // One-shot detailed log per entity (prints only once per unique model pointer)
+        {
+            static std::unordered_set<const void*> loggedModels;
+            if (loggedModels.find(ae->model) == loggedModels.end()) {
+                loggedModels.insert(ae->model);
+                std::cout << "[AnimatedRenderer::render] New model encountered: "
+                          << ae->model->meshes.size() << " mesh(es), "
+                          << ae->model->skeleton.getBoneCount() << " bone(s), "
+                          << boneMatrices.size() << " bone matrices, "
+                          << "modular=" << (ae->isModular ? "yes" : "no")
+                          << ", scale=" << ae->scale
+                          << ", modelRotation=" << (ae->modelRotationMat == glm::mat4(1.0f) ? "identity" : "custom")
+                          << ".\n";
+            }
+        }
+
         // modelRotationMat is the authoritative model-space correction.
         // It defaults to the loader's coordinateCorrection (set in EntityFactory /
         // Engine / SceneLoaderJson), but a prefab's model_rotation field overrides
@@ -54,8 +88,17 @@ void AnimatedRenderer::render(const std::vector<AnimatedEntity*>& entities,
             * ae->modelRotationMat;
         shader->loadTransformationMatrix(transform);
 
-        for (const AnimatedMesh& mesh : ae->model->meshes) {
-            renderMesh(mesh, boneMatrices);
+        // ---- Render meshes ----
+        // Modular path: use the pre-built active mesh list (naked + equipment).
+        // Legacy path : iterate model->meshes directly.
+        if (ae->isModular && !ae->activeMeshes.empty()) {
+            for (const AnimatedMesh* mesh : ae->activeMeshes) {
+                renderMesh(*mesh, boneMatrices);
+            }
+        } else {
+            for (const AnimatedMesh& mesh : ae->model->meshes) {
+                renderMesh(mesh, boneMatrices);
+            }
         }
     }
 
@@ -64,6 +107,17 @@ void AnimatedRenderer::render(const std::vector<AnimatedEntity*>& entities,
 
 void AnimatedRenderer::renderMesh(const AnimatedMesh& mesh,
                                    const std::vector<glm::mat4>& /*boneMatrices*/) {
+    // One-shot log when fallback texture is used
+    {
+        static bool loggedFallback = false;
+        if (!loggedFallback && mesh.textureID == 0) {
+            std::cout << "[AnimatedRenderer::renderMesh] Using fallback white texture "
+                      << "(mesh has no embedded texture). This is normal for "
+                      << "untextured models.\n";
+            loggedFallback = true;
+        }
+    }
+
     glActiveTexture(GL_TEXTURE0);
     // Always bind a texture so the fragment shader's alpha-discard sees alpha=1.
     // If the mesh has no embedded texture, bind the 1×1 white fallback so the

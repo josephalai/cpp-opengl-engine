@@ -820,6 +820,53 @@ bool SceneLoaderJson::load(
             }
         }
 
+        // --- Fallback prefab path (if primary prefab failed) ---
+        if (!loaded && p.contains("fallback_prefab")) {
+            std::string fallbackPrefab = p["fallback_prefab"].get<std::string>();
+            if (!fallbackPrefab.empty() && PrefabManager::get().hasPrefab(fallbackPrefab)) {
+                std::cerr << "[SceneLoaderJson] Player primary prefab '" << prefabId
+                          << "' failed; trying fallback prefab '" << fallbackPrefab << "'\n";
+                auto ent = EntityFactory::spawn(
+                    registry, fallbackPrefab,
+                    glm::vec3(px, yVal, pz),
+                    nullptr,
+                    glm::vec3(prx, pry, prz),
+                    pscale);
+
+                if (ent != entt::null) {
+                    if (registry.any_of<AnimatedModelComponent>(ent)) {
+                        auto& amc = registry.get<AnimatedModelComponent>(ent);
+                        amc.isLocalPlayer = true;
+                        std::cout << "[SceneLoaderJson] Fallback player entity created"
+                                  << " — AMC scale=" << amc.scale
+                                  << ", meshes=" << (amc.model ? amc.model->meshes.size() : 0)
+                                  << ", bones=" << (amc.model ? amc.model->skeleton.getBoneCount() : 0)
+                                  << ", clips=" << (amc.model ? amc.model->clips.size() : 0)
+                                  << "\n";
+                    } else {
+                        std::cerr << "[SceneLoaderJson] WARNING: Fallback entity has no "
+                                     "AnimatedModelComponent — player will be invisible.\n";
+                    }
+
+                    StringId aliasId(alias.empty() ? fallbackPrefab : alias);
+                    auto it = modelMap.find(aliasId);
+                    TexturedModel* playerModel = (it != modelMap.end()) ? it->second.model : nullptr;
+                    BoundingBox* playerBox = (it != modelMap.end())
+                        ? new BoundingBox(it->second.bbox, BoundingBoxIndex::genUniqueId())
+                        : new BoundingBox(nullptr, BoundingBoxIndex::genUniqueId());
+
+                    player = new Player(
+                        registry, playerModel, playerBox,
+                        glm::vec3(px, yVal, pz),
+                        glm::vec3(prx, pry, prz),
+                        pscale);
+                    InteractiveModel::setInteractiveBox(player);
+                    playerCamera = new PlayerCamera(player);
+                    loaded = true;
+                }
+            }
+        }
+
         // --- Legacy alias path (static OBJ model) ---
         if (!loaded && !alias.empty()) {
             StringId aliasId(alias);
