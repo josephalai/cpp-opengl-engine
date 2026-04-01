@@ -835,7 +835,17 @@ bool SceneLoaderJson::load(
 
                 if (ent != entt::null) {
                     if (registry.any_of<AnimatedModelComponent>(ent)) {
-                        registry.get<AnimatedModelComponent>(ent).isLocalPlayer = true;
+                        auto& amc = registry.get<AnimatedModelComponent>(ent);
+                        amc.isLocalPlayer = true;
+                        std::cout << "[SceneLoaderJson] Fallback player entity created"
+                                  << " — AMC scale=" << amc.scale
+                                  << ", meshes=" << (amc.model ? amc.model->meshes.size() : 0)
+                                  << ", bones=" << (amc.model ? amc.model->skeleton.getBoneCount() : 0)
+                                  << ", clips=" << (amc.model ? amc.model->clips.size() : 0)
+                                  << "\n";
+                    } else {
+                        std::cerr << "[SceneLoaderJson] WARNING: Fallback entity has no "
+                                     "AnimatedModelComponent — player will be invisible.\n";
                     }
 
                     StringId aliasId(alias.empty() ? fallbackPrefab : alias);
