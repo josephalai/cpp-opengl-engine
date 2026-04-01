@@ -152,10 +152,6 @@ std::vector<const AnimatedMesh*> AnimatedModelComponent::buildActiveMeshes() con
                           << "\n";
             }
         }
-    }
-
-    // One-shot summary — prints only once per entity lifetime.
-    if (!activeMeshesLoggedOnce_) {
         std::cout << "[AnimatedModelComponent::buildActiveMeshes] "
                   << active.size() << " active mesh(es) from "
                   << static_cast<int>(EquipmentSlot::Count) << " slot(s).\n";
