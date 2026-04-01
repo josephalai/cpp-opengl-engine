@@ -98,12 +98,10 @@ static unsigned int loadTextureFromFile(const std::string& path,
 static void buildBoneHierarchy(const aiNode* aiNode,
                                 Bone* parent,
                                 Skeleton& skeleton) {
-    static bool loggedFirst = false;
-    if (!loggedFirst && !parent) {
+    if (!parent) {
         std::cout << "[AnimationLoader::buildBoneHierarchy] Starting hierarchy walk from root node '"
                   << aiNode->mName.C_Str() << "' (skeleton has "
                   << skeleton.getBoneCount() << " registered bone(s)).\n";
-        loggedFirst = true;
     }
     std::string nodeName(aiNode->mName.C_Str());
     Bone* current = skeleton.getBoneByName(nodeName);
