@@ -248,6 +248,13 @@ void AnimationSystem::update(float deltaTime) {
         ae.isLocalPlayer = amc.isLocalPlayer;
         ae.ownsModel    = false; 
         ae.pairedEntity = nullptr;
+
+        // Modular equipment: build the active mesh list from naked + equipped parts.
+        ae.isModular = amc.isModular;
+        if (amc.isModular) {
+            ae.activeMeshes = amc.buildActiveMeshes();
+        }
+
         tempStorage.push_back(ae);
     }
 

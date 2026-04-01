@@ -1,0 +1,52 @@
+{
+  "id": "player_modular",
+  "description": "player_modular entity.",
+  "model_type": "player_modular",
+  "animated": true,
+  "physics": {
+    "type": "character_controller",
+    "radius": 0.5,
+    "height": 1.8
+  },
+  "ai_script": "scripts/ai/guard.lua",
+  "components": {
+    "AnimationControllerComponent": {
+      "animations": {
+        "Idle": "Models/Characters/player_modular/Animations/Meshy_AI_Iron_Armor_T_Pose_Sta_biped_Idle_4.glb",
+        "Walk": "Models/Characters/player_modular/Animations/Meshy_AI_Iron_Armor_T_Pose_Sta_biped_Walking.glb",
+        "Run": "Models/Characters/player_modular/Animations/Meshy_AI_Iron_Armor_T_Pose_Sta_biped_Running.glb"
+      },
+      "default_state": "Idle"
+    },
+    "NetworkSyncComponent": {
+      "interpolation_delay": 0.2,
+      "max_buffer_size": 20
+    },
+    "AIComponent": {
+      "script": "GuardAI"
+    },
+    "InteractableComponent": {
+      "script": "scripts/interactions/guard.lua",
+      "interact_range": 2.0
+    },
+    "AnimatedModelComponent": {
+      "master_skeleton": "Models/Characters/player_modular/Animations/Meshy_AI_Iron_Armor_T_Pose_Sta_biped_Idle_4.glb",
+      "is_modular": true,
+      "naked_parts": {
+        "Hands": "Models/Characters/player_modular/Meshes/Man_Naked/SK_Man_Hands_Naked.glb",
+        "Feet": "Models/Characters/player_modular/Meshes/Man_Naked/SK_Man_Feet_Naked.glb",
+        "Legs": "Models/Characters/player_modular/Meshes/Man_Naked/SK_Man_Legs_Naked.glb",
+        "Torso": "Models/Characters/player_modular/Meshes/Man_Naked/SK_Man_Torso_Naked.glb",
+        "Head": "Models/Characters/player_modular/Meshes/Man_Naked/SK_Man_Head_Naked.glb"
+      },
+      "default_equipment": {
+        "Feet": "Models/Characters/player_modular/Meshes/Armor/Plate_Set/SK_Man_Feet_Armor.glb",
+        "Hands": "Models/Characters/player_modular/Meshes/Armor/Plate_Set/SK_Man_Hands_Armor.glb",
+        "Legs": "Models/Characters/player_modular/Meshes/Armor/Plate_Set/SK_Man_Legs_Armor.glb",
+        "Torso": "Models/Characters/player_modular/Meshes/Armor/Plate_Set/SK_Man_Torso_Armor.glb",
+        "Head": "Models/Characters/player_modular/Meshes/Armor/Plate_Set/SK_Man_Head_Armor.glb"
+      },
+      "scale": 0.05
+    }
+  }
+}

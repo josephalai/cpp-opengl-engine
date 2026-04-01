@@ -45,6 +45,13 @@ struct AnimatedEntity {
     /// NetworkSyncComponent driving this animated character's world position.
     /// Null for local-player entities.
     Entity*              pairedEntity  = nullptr;
+
+    // --- Modular Equipment System ---
+    /// When true, activeMeshes is used instead of model->meshes.
+    bool                                   isModular    = false;
+    /// Pre-built list of mesh pointers to render (from nakedParts + equippedArmor).
+    /// Only populated when isModular == true.
+    std::vector<const AnimatedMesh*>       activeMeshes;
 };
 
 class AnimatedRenderer {

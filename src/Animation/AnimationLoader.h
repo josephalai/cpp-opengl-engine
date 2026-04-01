@@ -5,12 +5,14 @@
 //   1. load()                  — Monolithic: mesh + skeleton + embedded animations (legacy).
 //   2. loadSkin()              — Modular: mesh + skeleton only; ignores mAnimations.
 //   3. loadExternalAnimation() — Modular: animation-only glb stitched onto an existing Skeleton.
+//   4. loadModularPart()       — Modular: equipment/body part GLB remapped to a master skeleton.
 
 #ifndef ENGINE_ANIMATIONLOADER_H
 #define ENGINE_ANIMATIONLOADER_H
 
 #include <memory>
 #include <string>
+#include <vector>
 #include "AnimatedModel.h"
 #include "AnimationClip.h"
 #include "Skeleton.h"
@@ -27,6 +29,14 @@ public:
     /// Use this when animations live in separate files (modular/MMO pipeline).
     /// Returns nullptr on failure.
     static AnimatedModel* loadSkin(const std::string& skinPath);
+
+    /// Load a modular equipment/body part from a GLB file and remap its vertex
+    /// bone indices to the master skeleton.  Returns ready-to-render sub-meshes
+    /// whose boneIDs reference bones in @p masterSkeleton (by name matching).
+    /// The returned meshes already have their OpenGL VAO/VBO/EBO set up.
+    static std::vector<AnimatedMesh> loadModularPart(
+        const std::string& path,
+        const Skeleton& masterSkeleton);
 
     /// Load an animation-only glb and map its channels onto an existing Skeleton.
     /// The channel names in the file (e.g. "mixamorig:RightArm") are matched by name

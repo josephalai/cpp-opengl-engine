@@ -1,5 +1,5 @@
 {
-  "_comment": "scene.json — JSON equivalent of scene.cfg. Loaded by SceneLoaderJson.",
+  "_comment": "scene.json \u2014 JSON equivalent of scene.cfg. Loaded by SceneLoaderJson.",
   "animated_characters": [],
   "assimp": [
     {
@@ -240,14 +240,13 @@
     }
   ],
   "player": {
-    "path": "Characters/man-1.glb",
-    "fallback_path": "Characters/characters.glb",
+    "prefab": "player_modular",
     "animation_map": {
       "Idle": "Idle",
-      "Patrol": "Walking",
-      "Run": "Running",
-      "Sprint": "Run_03",
-      "Walk": "Casual_Walk"
+      "Patrol": "Walk",
+      "Run": "Run",
+      "Sprint": "Run",
+      "Walk": "Walk"
     },
     "offset": {
       "ox": 0.0,
@@ -259,7 +258,6 @@
       "ry": 0.0,
       "rz": 0.0
     },
-    "scale": 0.05,
     "x": 100.0,
     "y": "terrain",
     "z": -80.0

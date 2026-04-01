@@ -17,6 +17,7 @@
 #include "../ECS/Components/AnimatedModelComponent.h"
 #include "../ECS/Components/AnimationControllerComponent.h"
 #include "../Animation/AnimationLoader.h"
+#include "../Animation/EquipmentSlot.h"
 #include "../Util/FileSystem.h"
 #include <glm/gtc/matrix_transform.hpp>
 #endif
@@ -159,8 +160,26 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
     // Animated prefabs get AnimatedModelComponent (skinned-mesh rendering via
     // AnimatedRenderer); static prefabs get AssimpModelComponent (rigid rendering
     // via MasterRenderer).  The server build compiles out this entire block.
-    if (prefab.contains("mesh")) {
-        const std::string meshPath = prefab["mesh"].get<std::string>();
+    //
+    // For fully-modular prefabs (is_modular: true) that have no top-level "mesh"
+    // because all body geometry comes from naked_parts/default_equipment, we fall
+    // back to components.AnimatedModelComponent.master_skeleton as the skeleton
+    // source (used by loadSkin() to extract the bind-pose bone hierarchy).
+    std::string meshPath;
+    bool hasMesh = prefab.contains("mesh");
+    if (hasMesh) {
+        meshPath = prefab["mesh"].get<std::string>();
+    } else if (prefab.value("animated", false) &&
+               prefab.contains("components") &&
+               prefab["components"].contains("AnimatedModelComponent")) {
+        const auto& amcJson = prefab["components"]["AnimatedModelComponent"];
+        if (amcJson.value("is_modular", false) && amcJson.contains("master_skeleton")) {
+            meshPath = amcJson["master_skeleton"].get<std::string>();
+            hasMesh = true;
+        }
+    }
+
+    if (hasMesh) {
 
         if (prefab.value("animated", false)) {
             // ---------------------------------------------------------------
@@ -369,6 +388,41 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                         rotMat = glm::rotate(rotMat, glm::radians(ry), glm::vec3(0.0f, 1.0f, 0.0f));
                         rotMat = glm::rotate(rotMat, glm::radians(rz), glm::vec3(0.0f, 0.0f, 1.0f));
                         amc.modelRotationMat = rotMat;
+                    }
+
+                    // ---- Modular Equipment System (opt-in) ----
+                    if (j.value("is_modular", false)) {
+                        amc.isModular = true;
+
+                        // Load naked body parts
+                        if (j.contains("naked_parts") && j["naked_parts"].is_object()) {
+                            std::vector<std::pair<EquipmentSlot, std::string>> nakedEntries;
+                            for (auto& [slotName, pathVal] : j["naked_parts"].items()) {
+                                EquipmentSlot slot = equipmentSlotFromString(slotName);
+                                if (slot == EquipmentSlot::Count) {
+                                    std::cerr << "[EntityFactory] Unknown equipment slot '"
+                                              << slotName << "' in naked_parts\n";
+                                    continue;
+                                }
+                                nakedEntries.emplace_back(
+                                    slot, FileSystem::Scene(pathVal.get<std::string>()));
+                            }
+                            amc.setNakedParts(nakedEntries);
+                        }
+
+                        // Load default equipment
+                        if (j.contains("default_equipment") && j["default_equipment"].is_object()) {
+                            for (auto& [slotName, pathVal] : j["default_equipment"].items()) {
+                                EquipmentSlot slot = equipmentSlotFromString(slotName);
+                                if (slot == EquipmentSlot::Count) {
+                                    std::cerr << "[EntityFactory] Unknown equipment slot '"
+                                              << slotName << "' in default_equipment\n";
+                                    continue;
+                                }
+                                amc.equipPart(slot,
+                                    FileSystem::Scene(pathVal.get<std::string>()));
+                            }
+                        }
                     }
                 }
             }
