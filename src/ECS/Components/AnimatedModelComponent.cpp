@@ -43,6 +43,11 @@ void AnimatedModelComponent::equipPart(EquipmentSlot slot,
     part->meshes     = std::move(meshes);
     part->hidesNakedPart = hidesNaked;
     equippedArmor[idx] = part;
+
+    std::cout << "[AnimatedModelComponent::equipPart] Equipped slot "
+              << idx << " with '" << assetPath << "' ("
+              << part->meshes.size() << " mesh(es), hidesNaked="
+              << (hidesNaked ? "yes" : "no") << ").\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -53,6 +58,8 @@ void AnimatedModelComponent::unequipPart(EquipmentSlot slot) {
     if (idx < 0 || idx >= static_cast<int>(EquipmentSlot::Count)) return;
 
     if (equippedArmor[idx]) {
+        std::cout << "[AnimatedModelComponent::unequipPart] Removing slot " << idx
+                  << " ('" << equippedArmor[idx]->assetPath << "').\n";
         equippedArmor[idx]->cleanUp();
         delete equippedArmor[idx];
         equippedArmor[idx] = nullptr;
@@ -90,6 +97,9 @@ void AnimatedModelComponent::setNakedParts(
         part->meshes     = std::move(meshes);
         part->hidesNakedPart = false;  // naked parts don't hide themselves
         nakedParts[idx]  = part;
+        std::cout << "[AnimatedModelComponent::setNakedParts] Slot " << idx
+                  << " loaded from '" << assetPath << "' ("
+                  << part->meshes.size() << " mesh(es)).\n";
     }
 }
 
@@ -115,6 +125,14 @@ std::vector<const AnimatedMesh*> AnimatedModelComponent::buildActiveMeshes() con
             for (const auto& m : nakedParts[i]->meshes)
                 active.push_back(&m);
         }
+    }
+
+    // One-shot summary — prints only once per entity lifetime.
+    if (!activeMeshesLoggedOnce_) {
+        std::cout << "[AnimatedModelComponent::buildActiveMeshes] "
+                  << active.size() << " active mesh(es) from "
+                  << static_cast<int>(EquipmentSlot::Count) << " slot(s).\n";
+        activeMeshesLoggedOnce_ = true;
     }
 
     return active;

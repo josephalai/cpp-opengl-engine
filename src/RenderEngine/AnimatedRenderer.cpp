@@ -1,6 +1,7 @@
 // src/RenderEngine/AnimatedRenderer.cpp
 
 #include "AnimatedRenderer.h"
+#include <iostream>
 
 AnimatedRenderer::AnimatedRenderer(AnimatedShader* s) : shader(s) {
     // Create a 1×1 opaque-white RGBA fallback texture.
@@ -15,6 +16,8 @@ AnimatedRenderer::AnimatedRenderer(AnimatedShader* s) : shader(s) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D, 0);
+    std::cout << "[AnimatedRenderer] Created fallback texture (GL id="
+              << fallbackTextureID_ << ").\n";
 }
 
 AnimatedRenderer::~AnimatedRenderer() {
@@ -29,6 +32,20 @@ void AnimatedRenderer::render(const std::vector<AnimatedEntity*>& entities,
                                const std::vector<Light*>& lights,
                                Camera* camera,
                                const glm::mat4& projectionMatrix) {
+    // Throttled one-time summary log (prints once, then every ~5 seconds only
+    // when the entity count changes).
+    {
+        static size_t lastLoggedCount = ~size_t(0);
+        static float  logCooldown     = 0.0f;
+        logCooldown -= deltaTime;
+        if (entities.size() != lastLoggedCount && logCooldown <= 0.0f) {
+            std::cout << "[AnimatedRenderer::render] Rendering "
+                      << entities.size() << " animated entity(ies).\n";
+            lastLoggedCount = entities.size();
+            logCooldown = 5.0f;
+        }
+    }
+
     shader->start();
     shader->loadViewMatrix(camera->getViewMatrix());
     shader->loadProjectionMatrix(projectionMatrix);

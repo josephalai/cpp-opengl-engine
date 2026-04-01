@@ -101,6 +101,9 @@ struct AnimatedModelComponent {
     /// Null entries mean nothing is equipped in that slot.
     ModularMeshPart* equippedArmor[static_cast<int>(EquipmentSlot::Count)] = {};
 
+    /// One-shot log guard so buildActiveMeshes() only prints once per entity.
+    mutable bool activeMeshesLoggedOnce_ = false;
+
     // -----------------------------------------------------------------
     // Runtime Equipment API
     // -----------------------------------------------------------------

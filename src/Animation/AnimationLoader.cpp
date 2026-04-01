@@ -198,9 +198,15 @@ AnimatedModel* AnimationLoader::load(const std::string& path) {
         aiProcess_FlipUVs     | aiProcess_CalcTangentSpace);
 
     if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode) {
-        std::cerr << "[AnimationLoader] Assimp error: " << importer.GetErrorString() << "\n";
+        std::cerr << "[AnimationLoader::load] Assimp error for '" << path
+                  << "': " << importer.GetErrorString() << "\n";
         return nullptr;
     }
+
+    std::cout << "[AnimationLoader::load] Opening '" << path
+              << "': " << scene->mNumMeshes << " mesh(es), "
+              << scene->mNumAnimations << " animation(s), "
+              << scene->mNumMaterials << " material(s).\n";
 
     auto* model = new AnimatedModel();
     model->directory = path.substr(0, path.find_last_of('/'));
@@ -223,6 +229,8 @@ AnimatedModel* AnimationLoader::load(const std::string& path) {
             }
         }
     }
+    std::cout << "[AnimationLoader::load]   Bone index map: "
+              << boneIndexMap.size() << " bone(s).\n";
 
     // 2) Build bone hierarchy from the scene node tree
     buildBoneHierarchy(scene->mRootNode, nullptr, model->skeleton);
@@ -230,11 +238,25 @@ AnimatedModel* AnimationLoader::load(const std::string& path) {
     // If no root bone was identified (no named bones matched nodes), use first
     if (!model->skeleton.root && !model->skeleton.bones.empty()) {
         model->skeleton.root = model->skeleton.bones[0];
+        std::cout << "[AnimationLoader::load]   No root bone identified; "
+                  << "defaulting to first bone: '"
+                  << model->skeleton.root->name << "'.\n";
+    } else if (model->skeleton.root) {
+        std::cout << "[AnimationLoader::load]   Skeleton root: '"
+                  << model->skeleton.root->name << "'.\n";
+    } else {
+        std::cerr << "[AnimationLoader::load]   WARNING: skeleton has no bones.\n";
     }
 
     // 3) Process meshes
     for (unsigned int m = 0; m < scene->mNumMeshes; ++m) {
-        model->meshes.push_back(processMesh(scene->mMeshes[m], scene,
+        aiMesh* aiM = scene->mMeshes[m];
+        std::cout << "[AnimationLoader::load]   Mesh " << m << " '"
+                  << aiM->mName.C_Str() << "': "
+                  << aiM->mNumVertices << " verts, "
+                  << aiM->mNumFaces << " faces, "
+                  << aiM->mNumBones << " bone(s).\n";
+        model->meshes.push_back(processMesh(aiM, scene,
                                              model->directory, boneIndexMap));
     }
 
@@ -271,6 +293,10 @@ AnimatedModel* AnimationLoader::load(const std::string& path) {
             clip.channels[ch->mNodeName.C_Str()] = std::move(ba);
         }
 
+        std::cout << "[AnimationLoader::load]   Clip " << a << " '"
+                  << anim->mName.C_Str() << "': "
+                  << anim->mNumChannels << " channel(s), dur="
+                  << anim->mDuration << ", tps=" << tps << ".\n";
         model->clips.push_back(std::move(clip));
     }
 
@@ -298,6 +324,10 @@ AnimatedModel* AnimationLoader::load(const std::string& path) {
     // 6) Upload to GPU
     model->setupMeshes();
 
+    std::cout << "[AnimationLoader::load] Loaded '" << path
+              << "': " << model->meshes.size() << " mesh(es), "
+              << model->skeleton.getBoneCount() << " bone(s), "
+              << model->clips.size() << " clip(s).\n";
     return model;
 }
 
@@ -310,10 +340,14 @@ AnimatedModel* AnimationLoader::loadSkin(const std::string& skinPath) {
         aiProcess_FlipUVs     | aiProcess_CalcTangentSpace);
 
     if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode) {
-        std::cerr << "[AnimationLoader::loadSkin] Assimp error: "
-                  << importer.GetErrorString() << "\n";
+        std::cerr << "[AnimationLoader::loadSkin] Assimp error for '"
+                  << skinPath << "': " << importer.GetErrorString() << "\n";
         return nullptr;
     }
+
+    std::cout << "[AnimationLoader::loadSkin] Opening '" << skinPath
+              << "': " << scene->mNumMeshes << " mesh(es), "
+              << scene->mNumMaterials << " material(s).\n";
 
     auto* model = new AnimatedModel();
     model->directory = skinPath.substr(0, skinPath.find_last_of('/'));
@@ -351,7 +385,13 @@ AnimatedModel* AnimationLoader::loadSkin(const std::string& skinPath) {
 
     // 3) Process meshes
     for (unsigned int m = 0; m < scene->mNumMeshes; ++m) {
-        model->meshes.push_back(processMesh(scene->mMeshes[m], scene,
+        aiMesh* aiM = scene->mMeshes[m];
+        std::cout << "[AnimationLoader::loadSkin]   Mesh " << m << " '"
+                  << aiM->mName.C_Str() << "': "
+                  << aiM->mNumVertices << " verts, "
+                  << aiM->mNumFaces << " faces, "
+                  << aiM->mNumBones << " bone(s).\n";
+        model->meshes.push_back(processMesh(aiM, scene,
                                              model->directory, boneIndexMap));
     }
 
@@ -518,11 +558,19 @@ std::vector<AnimatedMesh> AnimationLoader::loadModularPart(
         return result;
     }
 
+    std::cout << "[AnimationLoader::loadModularPart] Opening '" << path
+              << "': " << scene->mNumMeshes << " mesh(es).\n";
+
     const std::string directory = path.substr(0, path.find_last_of('/'));
 
     // For each Assimp mesh, build a local→master bone remap and process vertices.
     for (unsigned int m = 0; m < scene->mNumMeshes; ++m) {
         aiMesh* aiM = scene->mMeshes[m];
+        std::cout << "[AnimationLoader::loadModularPart]   Mesh " << m << " '"
+                  << aiM->mName.C_Str() << "': "
+                  << aiM->mNumVertices << " verts, "
+                  << aiM->mNumFaces << " faces, "
+                  << aiM->mNumBones << " bone(s).\n";
 
         // 1) Build local bone-name → local-index map AND remap table.
         //    localIndex → masterIndex.  -1 means "bone not found in master".

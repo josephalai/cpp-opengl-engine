@@ -27,6 +27,17 @@ void AnimationSystem::update(float deltaTime) {
     auto view = registry_.view<AnimatedModelComponent, TransformComponent>();
     if (view.begin() == view.end()) return;
 
+    // Throttled one-shot log — prints when entity count changes.
+    {
+        static size_t lastCount = ~size_t(0);
+        const auto count = static_cast<size_t>(view.size_hint());
+        if (count != lastCount) {
+            std::cout << "[AnimationSystem] ECS view: "
+                      << count << " entity(ies) with AnimatedModelComponent.\n";
+            lastCount = count;
+        }
+    }
+
     // --- 1. Sync transforms and drive animation state machines ---
     for (auto entity : view) {
         auto& amc = view.get<AnimatedModelComponent>(entity);
@@ -228,7 +239,16 @@ void AnimationSystem::update(float deltaTime) {
     for (auto entity : view) {
         const auto& amc = view.get<AnimatedModelComponent>(entity);
         const auto& tc  = view.get<TransformComponent>(entity);
-        if (!amc.model) continue;
+        if (!amc.model) {
+            // One-shot per-entity warning: model is null, entity skipped.
+            static bool warnedNullModel = false;
+            if (!warnedNullModel) {
+                std::cerr << "[AnimationSystem] WARNING: entity skipped — "
+                             "AnimatedModelComponent has null model.\n";
+                warnedNullModel = true;
+            }
+            continue;
+        }
 
         AnimatedEntity ae;
         ae.model        = amc.model;

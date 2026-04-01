@@ -211,6 +211,10 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
 
             const std::string absPath  = FileSystem::Scene(meshPath);
 
+            std::cout << "[EntityFactory] Spawning animated prefab '" << prefabId
+                      << "' — mode=" << (modularMode ? "modular" : "monolithic")
+                      << ", meshPath='" << meshPath << "'.\n";
+
             AnimatedModel* animModel = nullptr;
             std::string loadedFromPath = absPath;  // track the actual path used for diagnostics
             if (modularMode) {
@@ -363,6 +367,11 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                 if (!idleFound && !firstStateName.empty())
                     controller->setState(firstStateName);
 
+                std::cout << "[EntityFactory] Animation controller for '" << prefabId
+                          << "': " << controller->getStateNames().size()
+                          << " state(s), initial='"
+                          << controller->getCurrentStateName() << "'.\n";
+
                 auto& amc       = registry.emplace<AnimatedModelComponent>(entity);
                 amc.model       = animModel;
                 amc.controller  = controller;
@@ -396,6 +405,8 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                     // ---- Modular Equipment System (opt-in) ----
                     if (j.value("is_modular", false)) {
                         amc.isModular = true;
+                        std::cout << "[EntityFactory] Modular equipment mode enabled for '"
+                                  << prefabId << "'.\n";
 
                         // Load naked body parts
                         if (j.contains("naked_parts") && j["naked_parts"].is_object()) {
@@ -411,10 +422,13 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                                     slot, FileSystem::Scene(pathVal.get<std::string>()));
                             }
                             amc.setNakedParts(nakedEntries);
+                            std::cout << "[EntityFactory]   Loaded " << nakedEntries.size()
+                                      << " naked part(s).\n";
                         }
 
                         // Load default equipment
                         if (j.contains("default_equipment") && j["default_equipment"].is_object()) {
+                            int equipCount = 0;
                             for (auto& [slotName, pathVal] : j["default_equipment"].items()) {
                                 EquipmentSlot slot = equipmentSlotFromString(slotName);
                                 if (slot == EquipmentSlot::Count) {
@@ -424,10 +438,20 @@ entt::entity EntityFactory::spawn(entt::registry& registry,
                                 }
                                 amc.equipPart(slot,
                                     FileSystem::Scene(pathVal.get<std::string>()));
+                                ++equipCount;
                             }
+                            std::cout << "[EntityFactory]   Equipped " << equipCount
+                                      << " default equipment piece(s).\n";
                         }
                     }
                 }
+
+                std::cout << "[EntityFactory] Prefab '" << prefabId
+                          << "' spawned — scale=" << amc.scale
+                          << ", modular=" << (amc.isModular ? "yes" : "no")
+                          << ", meshes=" << (amc.model ? amc.model->meshes.size() : 0)
+                          << ", bones=" << (amc.model ? amc.model->skeleton.getBoneCount() : 0)
+                          << ".\n";
             }
         } else {
             // --- Static mesh: attach AssimpModelComponent ---
