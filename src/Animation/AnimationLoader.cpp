@@ -638,7 +638,8 @@ std::vector<AnimatedMesh> AnimationLoader::loadModularPart(
         // 1) Build local bone-name → local-index map AND remap table.
         //    localIndex → masterIndex.  -1 means "bone not found in master".
         std::unordered_map<std::string, int> localBoneMap;
-        std::unordered_map<int, int> remapTable;   // localID → masterID
+        std::unordered_map<int, int> remapTable;           // localID → masterID
+        std::unordered_map<int, glm::mat4> correctionMap;  // localID → correction matrix
 
         for (unsigned int b = 0; b < aiM->mNumBones; ++b) {
             std::string boneName(aiM->mBones[b]->mName.C_Str());
@@ -648,8 +649,19 @@ std::vector<AnimatedMesh> AnimationLoader::loadModularPart(
             const Bone* masterBone = masterSkeleton.getBoneByName(boneName);
             if (masterBone) {
                 remapTable[localID] = masterBone->id;
+
+                // Compute the correction that rebases vertices from the part's
+                // bone space into the master skeleton's bone space:
+                //   correctionMatrix = inverse(masterOffsetMatrix) * partOffsetMatrix
+                // At render time the master's offsetMatrix is applied, so pre-baking
+                // this correction makes the vertices authored in the part's bind pose
+                // look correct when decoded by the master's bind pose.
+                glm::mat4 partOffset   = toGlm(aiM->mBones[b]->mOffsetMatrix);
+                glm::mat4 masterOffset = masterBone->offsetMatrix;
+                correctionMap[localID] = glm::inverse(masterOffset) * partOffset;
             } else {
-                remapTable[localID] = 0;
+                remapTable[localID]    = 0;
+                correctionMap[localID] = glm::mat4(1.0f); // identity — no correction
                 std::cerr << "[AnimationLoader::loadModularPart] WARNING: bone '"
                           << boneName << "' in '" << path
                           << "' has no match in master skeleton — "
@@ -709,7 +721,48 @@ std::vector<AnimatedMesh> AnimationLoader::loadModularPart(
             }
         }
 
-        // 5) Texture
+        // 5) Apply bind-pose correction: rebase each vertex from the part's bone
+        //    space into the master skeleton's bone space.  For each vertex we blend
+        //    the per-bone correction matrices using the stored bone weights, then
+        //    transform position and normal by the resulting blended matrix.
+        //    This must happen BEFORE uploading to the GPU.
+        //
+        //    Build a masterID → correctionMatrix lookup (used in the per-vertex loop).
+        std::unordered_map<int, glm::mat4> masterIDToCorrectionMap;
+        for (const auto& [localID, masterID] : remapTable) {
+            masterIDToCorrectionMap[masterID] = correctionMap[localID];
+        }
+
+        for (AnimatedVertex& v : mesh.vertices) {
+            // Build blended correction matrix from up to 4 influencing bones.
+            glm::mat4 blended(0.0f);
+            float totalWeight = 0.0f;
+            for (int slot = 0; slot < 4; ++slot) {
+                float w = v.boneWeights[slot];
+                if (w == 0.0f) continue;
+
+                int masterID = v.boneIDs[slot];
+                auto it = masterIDToCorrectionMap.find(masterID);
+                glm::mat4 corr = (it != masterIDToCorrectionMap.end())
+                                     ? it->second
+                                     : glm::mat4(1.0f);
+                blended     += w * corr;
+                totalWeight += w;
+            }
+
+            if (totalWeight > 0.0f) {
+                blended /= totalWeight; // normalize in case weights don't sum to 1
+
+                glm::vec4 pos4 = blended * glm::vec4(v.position, 1.0f);
+                v.position = glm::vec3(pos4);
+
+                // Transform normal with the upper-left 3x3 (no translation needed).
+                glm::mat3 normalMat = glm::mat3(blended);
+                v.normal = glm::normalize(normalMat * v.normal);
+            }
+        }
+
+        // 7) Texture
         if (aiM->mMaterialIndex < scene->mNumMaterials) {
             aiMaterial* mat = scene->mMaterials[aiM->mMaterialIndex];
             if (mat->GetTextureCount(aiTextureType_DIFFUSE) > 0) {
@@ -723,7 +776,7 @@ std::vector<AnimatedMesh> AnimationLoader::loadModularPart(
                   << mesh.vertices.size() << " verts, " << mesh.indices.size() << " indices, "
                   << "textureID=" << mesh.textureID << ".\n";
 
-        // 6) Upload to GPU
+        // 8) Upload to GPU
         AnimatedModel::setupMesh(mesh);
 
         result.push_back(std::move(mesh));
